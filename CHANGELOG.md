@@ -14,6 +14,12 @@ language)`) as words. Captions already hid them; now the transcript itself
   leaves them out, so discovery and the editorial model never read them.
   Each recording's transcript is assembled once more; nothing is
   transcribed again.
+- **One recording in two projects.** Cancelling one project's analysis could
+  fail the other's with "artifact key is already in flight": the cancelled
+  step kept its unfinished output reserved, and the other gave up after three
+  quick retries. A cancelled step now lets go of what it started, and a step
+  whose output another run is already making waits for it, without using up
+  a retry, then reuses it.
 
 ## 0.3.0 — Editorial AI on Windows and Linux
 

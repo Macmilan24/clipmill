@@ -1378,6 +1378,66 @@ fn fail_task_inner(
     })
 }
 
+/// Put a leased task back in the queue without spending the attempt its lease
+/// took. Another lease is making the very output this task would make, so a
+/// later lease finds it published, or free to make if that lease gives up.
+pub(super) fn defer_task(
+    connection: &mut Connection,
+    lease_id: &str,
+    wait_reason: &str,
+    now: u64,
+    retry_at: u64,
+) -> Result<Vec<TaskEventRecord>, StoreError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let row: Option<(String, String, String, i64)> = transaction
+        .query_row(
+            "SELECT t.task_id, t.job_id, j.project_id, t.attempt
+             FROM task_leases l JOIN tasks t ON t.task_id = l.task_id
+             JOIN jobs j ON j.job_id = t.job_id
+             WHERE l.lease_id = ?1 AND l.status = 1",
+            [lease_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()?;
+    let Some((task_id, job_id, project_id, attempt)) = row else {
+        return Err(StoreError::Conflict);
+    };
+    let restored_attempt = attempt.saturating_sub(1);
+    transaction.execute(
+        "UPDATE task_leases SET status = 3 WHERE lease_id = ?1",
+        [lease_id],
+    )?;
+    transaction.execute(
+        "UPDATE tasks SET state = ?1, attempt = ?2, next_attempt_unix_millis = ?3,
+            wait_reason = ?4, updated_unix_millis = ?5
+         WHERE task_id = ?6",
+        params![
+            TaskState::Retryable as i32,
+            restored_attempt,
+            sqlite_u64(retry_at, "deferred lease timestamp")?,
+            wait_reason,
+            sqlite_u64(now, "deferral timestamp")?,
+            task_id
+        ],
+    )?;
+    let event = insert_event(
+        &transaction,
+        &project_id,
+        &job_id,
+        &task_id,
+        TaskState::Retryable as i32,
+        u32_from_i64(restored_attempt, "task attempt")?,
+        "",
+        0,
+        0,
+        wait_reason,
+        FailureClass::Unspecified as i32,
+        now,
+    )?;
+    transaction.commit()?;
+    Ok(vec![event])
+}
+
 #[allow(clippy::too_many_lines)]
 pub(super) fn expire_task_leases(
     connection: &mut Connection,

@@ -21,7 +21,10 @@ use std::{
 };
 
 use clipmill_artifacts::{ArtifactLease, ArtifactPath};
-use clipmill_contracts::proto::{ipc::v1::JobState, worker::v1::FailureClass};
+use clipmill_contracts::proto::{
+    ipc::v1::{JobState, TaskState},
+    worker::v1::FailureClass,
+};
 use clipmill_core::ArtifactId;
 use clipmilld::{ArtifactCoordinator, Config, Daemon, DaemonError};
 use serde_json::Value;
@@ -29,7 +32,8 @@ use tempfile::TempDir;
 use tokio::{sync::oneshot, task::JoinHandle, time::sleep};
 
 use support::{
-    create, get_job, register_source, submit_ingest, wait_until_ready, workspace_tempdir,
+    cancel_job, create, get_job, register_source, submit_ingest, wait_until_ready,
+    workspace_tempdir,
 };
 
 fn workspace_tool(name: &str) -> PathBuf {
@@ -82,6 +86,10 @@ async fn stop(shutdown: oneshot::Sender<()>, task: JoinHandle<Result<(), DaemonE
 }
 
 fn generate_av_media(ffmpeg: &Path, path: &Path, seconds: u32) {
+    generate_sized_av_media(ffmpeg, path, "320x180", seconds);
+}
+
+fn generate_sized_av_media(ffmpeg: &Path, path: &Path, size: &str, seconds: u32) {
     let status = Command::new(ffmpeg)
         .args([
             "-hide_banner",
@@ -92,7 +100,7 @@ fn generate_av_media(ffmpeg: &Path, path: &Path, seconds: u32) {
             "lavfi",
             "-i",
         ])
-        .arg(format!("testsrc2=size=320x180:rate=24:duration={seconds}"))
+        .arg(format!("testsrc2=size={size}:rate=24:duration={seconds}"))
         .args(["-f", "lavfi", "-i"])
         .arg(format!(
             "sine=frequency=440:sample_rate=48000:duration={seconds}"
@@ -401,6 +409,84 @@ async fn full_ingest_derives_everything_verifies_and_caches() {
         "warm ingest was not a cache lookup ({warm_elapsed:?})"
     );
 
+    stop(shutdown, task).await;
+}
+
+#[tokio::test]
+#[ignore = "requires the pinned FFmpeg sidecars (./tools/fetch-ffmpeg.sh)"]
+async fn one_recording_in_two_projects_survives_the_first_run_being_cancelled() {
+    let temp = workspace_tempdir();
+    let media_path = temp.path().join("shared.mp4");
+    // Long enough that the first run is still making its proxy when cancelled.
+    generate_sized_av_media(&workspace_tool("ffmpeg"), &media_path, "1280x720", 120);
+    let (socket, _artifacts, shutdown, task) = running(config(&temp)).await;
+    wait_until_ready(&socket).await.expect("daemon ready");
+    let mut jobs = Vec::new();
+    for name in ["first", "second"] {
+        let project = create(&socket, &format!("{name}-project"), name)
+            .await
+            .expect("project");
+        let source = register_source(
+            &socket,
+            &format!("{name}-register"),
+            &project.project_id,
+            &media_path,
+        )
+        .await
+        .expect("register source")
+        .source
+        .expect("source record");
+        let submitted = submit_ingest(
+            &socket,
+            &format!("{name}-submit"),
+            &project.project_id,
+            &source.source_id,
+        )
+        .await
+        .expect("submit ingest");
+        jobs.push(submitted.job_id);
+    }
+
+    // Cancel the first run while it makes the proxy the second one needs too.
+    let deadline = Instant::now() + Duration::from_mins(1);
+    loop {
+        let job = get_job(&socket, "first-peek", &jobs[0])
+            .await
+            .expect("get job");
+        let making_proxy = job.tasks.iter().any(|task| {
+            task.output_kind == "media.proxy.v1" && task.state == TaskState::Running as i32
+        });
+        if making_proxy {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the first run never started its proxy"
+        );
+        sleep(Duration::from_millis(20)).await;
+    }
+    cancel_job(&socket, "first-cancel", &jobs[0])
+        .await
+        .expect("cancel the first run");
+
+    let second = wait_for_job(
+        &socket,
+        "second-wait",
+        &jobs[1],
+        JobState::Succeeded,
+        Duration::from_mins(5),
+    )
+    .await;
+    // Waiting on the first run's output spent none of the second's attempts.
+    let attempts = second
+        .tasks
+        .iter()
+        .map(|task| (task.kind.as_str(), task.attempt))
+        .collect::<Vec<_>>();
+    assert!(
+        attempts.iter().all(|(_, attempt)| *attempt == 1),
+        "{attempts:?}"
+    );
     stop(shutdown, task).await;
 }
 

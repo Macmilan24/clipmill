@@ -30,8 +30,8 @@ use crate::{
     db::{DbHandle, StoreError},
     endpoint::Stream,
     jobs::{
-        EventHub, HEARTBEAT_INTERVAL, LEASE_TTL, LeaseRequest, LeasedTask, ResourceCapacity,
-        SchedulerHandle,
+        EventHub, HEARTBEAT_INTERVAL, IDENTICAL_OUTPUT_REASON, IDENTICAL_OUTPUT_WAIT, LEASE_TTL,
+        LeaseRequest, LeasedTask, ResourceCapacity, SchedulerHandle,
     },
     media,
     models::ModelRegistry,
@@ -388,17 +388,19 @@ impl WorkerService {
                     self.scheduler.notify();
                 }
                 PrepareOutcome::InFlight { .. } => {
+                    // Another lease is making this output. Wait for it
+                    // without spending an attempt, then reuse it.
+                    let now = now_millis();
                     let events = self
                         .database
-                        .fail_task(
+                        .defer_task(
                             task.lease_id.clone(),
-                            FailureClass::Transient as i32,
-                            "artifact key is already in flight".to_owned(),
-                            now_millis(),
+                            IDENTICAL_OUTPUT_REASON,
+                            now,
+                            now.saturating_add(duration_millis(IDENTICAL_OUTPUT_WAIT)),
                         )
                         .await?;
                     self.events.publish_all(events);
-                    self.scheduler.notify();
                 }
                 PrepareOutcome::Miss(staging) => {
                     let shared_buffer = match self.shm.create(&task.lease_id, &task.payload) {

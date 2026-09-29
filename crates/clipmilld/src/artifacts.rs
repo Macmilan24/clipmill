@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     path::Path,
+    sync::{Arc, Mutex, PoisonError},
     thread,
     time::{Duration, Instant, SystemTime},
 };
@@ -146,6 +147,8 @@ fn log_open(
 #[derive(Clone, Debug)]
 pub(crate) struct ArtifactHandle {
     sender: mpsc::Sender<Command>,
+    /// On a handle lent to one task: the staging areas opened through it.
+    opened: Option<Arc<Mutex<Vec<StagingId>>>>,
 }
 
 #[derive(Debug)]
@@ -196,7 +199,12 @@ impl ArtifactActor {
                                     staging_context.insert(staging.id().clone(), context.clone());
                                 }
                                 log_prepare(&context, &result, started);
-                                let _reply = reply.send(result);
+                                // A caller gone before the reply would never
+                                // commit the area; free its key now.
+                                if let Err(Ok(PrepareOutcome::Miss(staging))) = reply.send(result) {
+                                    staging_context.remove(staging.id());
+                                    let _abandoned = store.abandon(staging.id());
+                                }
                             }
                             Command::Commit {
                                 staging_id,
@@ -267,7 +275,10 @@ impl ArtifactActor {
         match ready_receiver.recv() {
             Ok(Ok(recovery)) => Ok((
                 Self {
-                    handle: ArtifactHandle { sender },
+                    handle: ArtifactHandle {
+                        sender,
+                        opened: None,
+                    },
                     thread: Some(actor_thread),
                 },
                 recovery,
@@ -308,6 +319,15 @@ impl ArtifactActor {
 }
 
 impl ArtifactHandle {
+    /// A handle for one task's work. It remembers the staging areas it opens,
+    /// so `abandon_unfinished` can let go of any the task left open.
+    pub(crate) fn for_task(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+            opened: Some(Arc::default()),
+        }
+    }
+
     pub(crate) async fn prepare(
         &self,
         recipe: ArtifactRecipe,
@@ -317,10 +337,33 @@ impl ArtifactHandle {
             .send(Command::Prepare { recipe, reply })
             .await
             .map_err(|_| ArtifactServiceError::Stopped)?;
-        received
+        let outcome = received
             .await
-            .map_err(|_| ArtifactServiceError::Stopped)?
-            .map_err(Into::into)
+            .map_err(|_| ArtifactServiceError::Stopped)??;
+        if let (Some(opened), PrepareOutcome::Miss(staging)) = (&self.opened, &outcome) {
+            opened
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(staging.id().clone());
+        }
+        Ok(outcome)
+    }
+
+    /// Abandon each staging area this task handle opened and did not commit
+    /// or abandon: the task failed, or its lease was lost and its work
+    /// dropped mid-way. Left open, the output's key would stay in flight and
+    /// every later task wanting that output would wait on it. An area already
+    /// finished is gone from the store, and abandoning it changes nothing.
+    pub(crate) async fn abandon_unfinished(&self) {
+        let Some(opened) = &self.opened else {
+            return;
+        };
+        let opened = std::mem::take(&mut *opened.lock().unwrap_or_else(PoisonError::into_inner));
+        for staging_id in opened {
+            if let Err(error) = self.abandon(staging_id).await {
+                tracing::warn!(%error, "unfinished task staging could not be abandoned");
+            }
+        }
     }
 
     pub(crate) async fn commit(

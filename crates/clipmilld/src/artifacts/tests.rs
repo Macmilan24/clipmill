@@ -60,8 +60,8 @@ fn paused_actor(
     (actor, paused, resume)
 }
 
-async fn publish(handle: &ArtifactHandle, id: u8) -> ArtifactId {
-    let recipe = ArtifactRecipe::try_from_spec(RecipeSpec {
+fn recipe(id: u8) -> ArtifactRecipe {
+    ArtifactRecipe::try_from_spec(RecipeSpec {
         kind: "evidence.probe.v1".to_owned(),
         source_fingerprint: Sha256Digest::from_bytes([id; 32]),
         timebase: Timebase {
@@ -78,8 +78,11 @@ async fn publish(handle: &ArtifactHandle, id: u8) -> ArtifactId {
         config: Map::new(),
         semantic_version: "1.0.0".to_owned(),
     })
-    .unwrap();
-    let PrepareOutcome::Miss(staging) = handle.prepare(recipe).await.unwrap() else {
+    .unwrap()
+}
+
+async fn publish(handle: &ArtifactHandle, id: u8) -> ArtifactId {
+    let PrepareOutcome::Miss(staging) = handle.prepare(recipe(id)).await.unwrap() else {
         panic!("new recipe");
     };
     let path = "payload.bin".parse().unwrap();
@@ -93,6 +96,33 @@ async fn publish(handle: &ArtifactHandle, id: u8) -> ArtifactId {
         .await
         .unwrap();
     lease.artifact_id()
+}
+
+#[tokio::test]
+async fn a_task_handle_lets_go_of_what_its_task_left_unfinished() {
+    let temp = TempDir::new().unwrap();
+    let (actor, _) = ArtifactActor::start(&temp.path().join("artifacts")).unwrap();
+    let store = actor.handle();
+    let task = store.for_task();
+    let published = publish(&task, 1).await;
+    // Opened and never finished, as a cancelled run leaves its output.
+    let PrepareOutcome::Miss(_) = task.prepare(recipe(2)).await.unwrap() else {
+        panic!("new recipe");
+    };
+    assert!(matches!(
+        store.prepare(recipe(2)).await.unwrap(),
+        PrepareOutcome::InFlight { .. }
+    ));
+    task.abandon_unfinished().await;
+    assert!(matches!(
+        store.prepare(recipe(2)).await.unwrap(),
+        PrepareOutcome::Miss(_)
+    ));
+    let PrepareOutcome::Hit(finished) = store.prepare(recipe(1)).await.unwrap() else {
+        panic!("the finished output stays published");
+    };
+    assert_eq!(finished.artifact_id(), published);
+    actor.shutdown().await.unwrap();
 }
 
 #[tokio::test]
