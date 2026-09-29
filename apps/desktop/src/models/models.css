@@ -36,6 +36,32 @@
   color: var(--cm-text-secondary);
 }
 
+.model-job-more {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--cm-glass-border);
+  color: var(--cm-text-secondary);
+  font-size: 12px;
+  text-align: left;
+}
+
+.model-job-more:hover {
+  color: var(--cm-text-primary);
+}
+
+.model-job-more > svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 120ms ease;
+}
+
+.model-job-more > span {
+  color: var(--cm-text-muted);
+}
+
 .model-job-upgrade > svg {
   color: var(--cm-accent);
 }
