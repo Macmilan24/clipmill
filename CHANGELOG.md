@@ -8,6 +8,12 @@
 - **Windows: the editorial check completes.** The runtime check could not
   write its receipt on Windows (a POSIX-only flag), so Editorial AI was never
   admitted there; failure traces had the same problem.
+- **Transcripts leave out `[BLANK_AUDIO]`.** whisper.cpp writes silence and
+  sound markers (`[BLANK_AUDIO]`, `[music]`, `(speaking in foreign
+language)`) as words. Captions already hid them; now the transcript itself
+  leaves them out, so discovery and the editorial model never read them.
+  Each recording's transcript is assembled once more; nothing is
+  transcribed again.
 
 ## 0.3.0 — Editorial AI on Windows and Linux
 
