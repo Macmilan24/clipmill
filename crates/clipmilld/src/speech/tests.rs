@@ -522,3 +522,56 @@ fn the_median_of_an_even_list_does_not_depend_on_the_rounding_mode() {
     let (p50, _) = super::distribution(&[0.2, 0.4, 0.6, 0.8]);
     assert!((p50 - 0.6).abs() < f64::EPSILON);
 }
+
+/// whisper.cpp writes `[BLANK_AUDIO]` and other annotations as words, and an
+/// annotation with spaces as several. The transcript leaves them all out,
+/// numbers the spoken words without a gap, and cleans its segment text too.
+#[test]
+fn annotations_recognition_writes_as_words_are_left_out() {
+    let mut recognized = recognized();
+    let first_segment = recognized.segments[0].text.as_str().to_owned();
+    recognized.segments[0].text = format!("[BLANK_AUDIO] {first_segment} (laughs)")
+        .parse()
+        .expect("text");
+    let mut timed = alignment();
+    let spoken = timed.words.len() - 4;
+    timed.words[1].text = "[BLANK_AUDIO]".parse().expect("text");
+    // Within the second segment, as recognition writes one.
+    timed.words[5].text = "(speaking".parse().expect("text");
+    timed.words[6].text = "in".parse().expect("text");
+    timed.words[7].text = "language).".parse().expect("text");
+
+    let assembled =
+        assemble(&activity(), &recognized, &timed, inputs(), ASSEMBLER).expect("assembles");
+    let words = &assembled.document.words;
+    assert_eq!(words.len(), spoken);
+    assert!(words.iter().all(|word| {
+        let text = word.text.as_str();
+        !text.contains('[') && !text.contains('(') && !text.contains(')')
+    }));
+    assert!(
+        words
+            .iter()
+            .enumerate()
+            .all(|(position, word)| word.index == u64::try_from(position).unwrap()),
+        "the spoken words are numbered without a gap"
+    );
+    assert_eq!(
+        assembled.document.segments[0].text.as_str(),
+        first_segment,
+        "the segment's text loses its annotations"
+    );
+}
+
+#[test]
+fn only_a_bracket_that_closes_is_an_annotation() {
+    assert_eq!(
+        super::strip_annotations("[BLANK_AUDIO] Hello (laughs) there"),
+        "Hello there"
+    );
+    assert_eq!(
+        super::strip_annotations("I think (you know"),
+        "I think (you know"
+    );
+    assert_eq!(super::strip_annotations("[music]"), "");
+}

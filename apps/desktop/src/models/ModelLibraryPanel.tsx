@@ -1,5 +1,6 @@
 import {
   Boxes,
+  ChevronRight,
   Download,
   Eye,
   Globe,
@@ -21,6 +22,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 
 import { useReadiness } from '../analysis/readiness.js';
 import type { ShellApi } from '../daemon/api.js';
@@ -66,7 +68,7 @@ export function ModelLibraryPanel({ api }: { readonly api: ShellApi }): JSX.Elem
 
   return (
     <section aria-labelledby="models-heading" className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div data-tour="models" className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="models-heading" className="flex items-center gap-2 text-sm font-semibold">
             <Boxes className="size-4 text-[var(--cm-text-secondary)]" />
@@ -193,7 +195,7 @@ function SetupCard({
     return model !== undefined && isDownloading(model);
   });
   return (
-    <Card className="model-setup gap-0 py-0" data-testid="model-setup">
+    <Card className="model-setup gap-0 py-0" data-testid="model-setup" data-tour="models-setup">
       <CardContent className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold">Download what analysis needs</h3>
@@ -245,6 +247,46 @@ function JobCard({
   const planned = byName.get(job.model);
   const plannedReady = planned?.installState === 'installed';
   const upgrade = upgradeNote(job, library);
+  // In use: the model the job runs, and any other one with a download under
+  // way, paused or failed, or only half here. The rest fold away until asked for.
+  const current = models.filter(
+    (model) =>
+      model.name === job.model || model.download !== undefined || model.installState === 'partial',
+  );
+  const inUse = current.length > 0 ? current : models;
+  const available = models.filter((model) => !inUse.includes(model));
+  const availableHere = available.filter((model) => model.installState === 'installed').length;
+  const [showAvailable, setShowAvailable] = useState(false);
+  const row = (model: LibraryModel) => (
+    <ModelRow
+      key={model.name}
+      model={model}
+      job={job}
+      library={library}
+      pending={state.pending}
+      actions={{
+        onDownload: () => {
+          void state.run(`download:${model.name}`, () => api.downloadModels([model.name]));
+        },
+        onCancel: () => {
+          void state.run(`cancel:${model.name}`, () => api.cancelModelDownload(model.name));
+        },
+        onUse: () => {
+          void state.run(`choose:${model.name}`, () =>
+            api.setModelChoice(job.capability, model.name),
+          );
+        },
+        onVerify: () => {
+          void state.run(`verify:${model.name}`, () => api.verifyModel(model.name));
+        },
+        onRemove: () => {
+          void state.run(`remove:${model.name}`, () =>
+            model.custom ? api.forgetModel(model.name) : api.removeModel(model.name),
+          );
+        },
+      }}
+    />
+  );
   return (
     <section aria-labelledby={`job-${job.capability}`}>
       <Card className="preference-section model-job gap-0 overflow-hidden py-0">
@@ -303,42 +345,24 @@ function JobCard({
           </p>
         )}
         <CardContent className="p-0">
-          <ul className="divide-y divide-[var(--cm-glass-border)]">
-            {models.map((model) => (
-              <ModelRow
-                key={model.name}
-                model={model}
-                job={job}
-                library={library}
-                pending={state.pending}
-                actions={{
-                  onDownload: () => {
-                    void state.run(`download:${model.name}`, () =>
-                      api.downloadModels([model.name]),
-                    );
-                  },
-                  onCancel: () => {
-                    void state.run(`cancel:${model.name}`, () =>
-                      api.cancelModelDownload(model.name),
-                    );
-                  },
-                  onUse: () => {
-                    void state.run(`choose:${model.name}`, () =>
-                      api.setModelChoice(job.capability, model.name),
-                    );
-                  },
-                  onVerify: () => {
-                    void state.run(`verify:${model.name}`, () => api.verifyModel(model.name));
-                  },
-                  onRemove: () => {
-                    void state.run(`remove:${model.name}`, () =>
-                      model.custom ? api.forgetModel(model.name) : api.removeModel(model.name),
-                    );
-                  },
-                }}
-              />
-            ))}
-          </ul>
+          <ul className="divide-y divide-[var(--cm-glass-border)]">{inUse.map(row)}</ul>
+          {available.length > 0 && (
+            <button
+              type="button"
+              className="model-job-more"
+              aria-expanded={showAvailable}
+              onClick={() => setShowAvailable((shown) => !shown)}
+            >
+              <ChevronRight className={cn(showAvailable && 'rotate-90')} aria-hidden="true" />
+              Other models ({available.length})
+              {availableHere > 0 && <span>· {availableHere} on this computer</span>}
+            </button>
+          )}
+          {showAvailable && (
+            <ul className="divide-y divide-[var(--cm-glass-border)] border-t border-[var(--cm-glass-border)]">
+              {available.map(row)}
+            </ul>
+          )}
           {models.length === 0 && (
             <p className="px-5 py-5 text-xs text-[var(--cm-text-secondary)]">
               No model is registered for this job.

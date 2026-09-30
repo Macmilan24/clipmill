@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { type ShellApi, daemonApi } from '../daemon/api.js';
-import { outputFormat, recallFormat, sizeName } from '../export/format.js';
+import { outputFormat, recallFormat, recallPattern, sizeName } from '../export/format.js';
 import type { ExportBatch, ExportBatchItem } from '../daemon/client.js';
 import { useEditDocuments } from '../editor/documents.js';
 import { deliveryProgressText, deliveryWaitText, useDelivery } from '../export/delivery.js';
@@ -50,7 +50,7 @@ export function BatchExportScreen({ api = daemonApi, onBack, onEdit }: BatchExpo
   const [selected, setSelected] = useState<readonly string[]>([]);
   const [choices, setChoices] = useState<Readonly<Record<string, ClipChoices>>>({});
   const [folder, setFolder] = useState('');
-  const [pattern, setPattern] = useState('{index}-{clip}');
+  const [pattern, setPattern] = useState(() => recallPattern());
   const [checks, setChecks] = useState<Readonly<Record<string, CheckResult>>>({});
   const configuration = JSON.stringify([selected, choices, folder, pattern]);
   const [checkedConfiguration, setCheckedConfiguration] = useState('');

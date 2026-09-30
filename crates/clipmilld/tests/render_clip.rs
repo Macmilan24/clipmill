@@ -202,6 +202,47 @@ fn read_payload(lease: &ArtifactLease, name: &str) -> Vec<u8> {
     bytes
 }
 
+/// Say where two renders of one document part: keep both beside the demo
+/// output, which CI publishes, and list the first packets that differ.
+fn explain_mismatch(first: &[u8], second: &[u8]) {
+    let folder = std::env::var("CLIPMILL_RENDER_DEMO_DIR")
+        .map_or_else(|_| std::env::temp_dir(), PathBuf::from)
+        .join("byte-stability");
+    std::fs::create_dir_all(&folder).expect("mismatch folder");
+    let packets = |name: &str, bytes: &[u8]| -> Vec<String> {
+        let path = folder.join(name);
+        std::fs::write(&path, bytes).expect("keep the render");
+        let output = Command::new(workspace_tool("ffprobe"))
+            .args(["-v", "error", "-show_data_hash", "sha256", "-show_entries"])
+            .arg("packet=stream_index,pts,dts,duration,size,flags,data_hash")
+            .args(["-of", "csv=p=0"])
+            .arg(&path)
+            .output()
+            .expect("run ffprobe");
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    };
+    let a = packets("round-0.mp4", first);
+    let b = packets("round-1.mp4", second);
+    eprintln!(
+        "byte stability: {} and {} packets; renders kept in {}",
+        a.len(),
+        b.len(),
+        folder.display()
+    );
+    let differing = a
+        .iter()
+        .zip(&b)
+        .enumerate()
+        .filter(|(_, (left, right))| left != right)
+        .take(12);
+    for (index, (left, right)) in differing {
+        eprintln!("packet {index}:\n  round 0: {left}\n  round 1: {right}");
+    }
+}
+
 fn digest(bytes: &[u8]) -> String {
     format!(
         "sha256:{}",
@@ -840,6 +881,7 @@ async fn the_same_document_renders_to_the_same_bytes_in_a_store_that_never_saw_i
     generate_source(&workspace_tool("ffmpeg"), &source_path, 15);
 
     let mut digests = Vec::new();
+    let mut clips = Vec::new();
     for round in 0..2 {
         let temp = workspace_tempdir();
         let (socket, artifacts, shutdown, task) = running(config(&temp)).await;
@@ -850,15 +892,20 @@ async fn the_same_document_renders_to_the_same_bytes_in_a_store_that_never_saw_i
             .open(artifact_id.parse::<ArtifactId>().expect("artifact id"))
             .await
             .expect("render artifact");
+        let clip = read_payload(&lease, "clip.mp4");
         digests.push((
             artifact_id,
-            digest(&read_payload(&lease, "clip.mp4")),
+            digest(&clip),
             digest(&read_payload(&lease, "clip.srt")),
         ));
+        clips.push(clip);
         drop(lease);
         stop(shutdown, task).await;
     }
 
+    if digests[0].1 != digests[1].1 {
+        explain_mismatch(&clips[0], &clips[1]);
+    }
     assert_eq!(
         digests[0].1, digests[1].1,
         "the same document must render to the same MP4 bytes"

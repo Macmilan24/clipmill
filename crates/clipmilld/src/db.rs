@@ -382,6 +382,21 @@ impl DbActor {
                                         failed_unix_millis,
                                     ));
                                 }
+                                Command::DeferTask {
+                                    lease_id,
+                                    wait_reason,
+                                    now_unix_millis,
+                                    retry_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(job_store::defer_task(
+                                        &mut connection,
+                                        &lease_id,
+                                        wait_reason,
+                                        now_unix_millis,
+                                        retry_unix_millis,
+                                    ));
+                                }
                                 Command::CompleteFailedTask {
                                     lease_id,
                                     failure_class,
@@ -1166,6 +1181,29 @@ impl DbHandle {
         received.await.map_err(|_| StoreError::Stopped)?
     }
 
+    /// Hand a leased task back to wait for an identical output another lease
+    /// is making; see `job_store::defer_task`.
+    pub(crate) async fn defer_task(
+        &self,
+        lease_id: String,
+        wait_reason: &'static str,
+        now_unix_millis: u64,
+        retry_unix_millis: u64,
+    ) -> Result<Vec<TaskEventRecord>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::DeferTask {
+                lease_id,
+                wait_reason,
+                now_unix_millis,
+                retry_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn complete_failed_task(
         &self,
@@ -1804,6 +1842,13 @@ enum Command {
         failure_class: i32,
         detail: String,
         failed_unix_millis: u64,
+        reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
+    },
+    DeferTask {
+        lease_id: String,
+        wait_reason: &'static str,
+        now_unix_millis: u64,
+        retry_unix_millis: u64,
         reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
     },
     CompleteFailedTask {
@@ -4312,6 +4357,55 @@ mod tests {
             ),
             Err(StoreError::Conflict)
         ));
+    }
+
+    #[test]
+    fn a_task_waiting_on_an_identical_output_keeps_its_attempts() {
+        let temp = TempDir::new().expect("tempdir");
+        let (_path, mut connection) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Wait", 10);
+        create_project(&mut connection, "create-wait", &[1; 32], &project).expect("project");
+        let project_id = project.project_id.parse().expect("project id");
+        let plan = JobPlan::demo(&project_id, b"wait".to_vec(), 20);
+        job_store::submit_job(&mut connection, "submit-wait", &[2; 32], &plan).expect("submit");
+        let lease = |connection: &mut Connection, now| {
+            job_store::lease_next_task(
+                connection,
+                &LeaseId::new().to_string(),
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                now,
+                now + 15_000,
+                ResourceCapacity::w4_builtin(),
+            )
+            .expect("lease")
+            .task
+        };
+        // More waits than the task has attempts: none of them spends one.
+        for round in 0..5 {
+            let now = 30 + round * 3_000;
+            let leased = lease(&mut connection, now).expect("runnable task");
+            assert_eq!(leased.attempt, 1);
+            let events = job_store::defer_task(
+                &mut connection,
+                &leased.lease_id,
+                crate::jobs::IDENTICAL_OUTPUT_REASON,
+                now,
+                now + 2_000,
+            )
+            .expect("wait");
+            assert_eq!(events[0].state, TaskState::Retryable as i32);
+            assert_eq!(events[0].wait_reason, crate::jobs::IDENTICAL_OUTPUT_REASON);
+            assert!(
+                lease(&mut connection, now + 1_999).is_none(),
+                "leased before its wait"
+            );
+            assert!(matches!(
+                job_store::defer_task(&mut connection, &leased.lease_id, "", now, now),
+                Err(StoreError::Conflict)
+            ));
+        }
+        let job = job_store::get_job(&connection, &plan.job_id).expect("job");
+        assert_eq!(job.state, JobState::Running as i32);
     }
 
     #[test]

@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -173,6 +173,8 @@ pub mod request {
         CancelEngineInstall(super::CancelEngineInstallRequest),
         #[prost(message, tag = "82")]
         Shutdown(super::ShutdownRequest),
+        #[prost(message, tag = "83")]
+        CheckForUpdate(super::CheckForUpdateRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -183,7 +185,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -309,6 +311,8 @@ pub mod response {
         Engine(super::EngineResponse),
         #[prost(message, tag = "66")]
         Shutdown(super::ShutdownResponse),
+        #[prost(message, tag = "67")]
+        CheckForUpdate(super::CheckForUpdateResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -2554,6 +2558,27 @@ pub struct LocalLockStatusV1 {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetLocalLockRequest {}
+/// ---- Updates: whether a newer release is out ----
+///
+/// The app asks at most once a day, and only while the person leaves "Say when
+/// a new version is out" on in Settings. The daemon asks GitHub which of the
+/// project's published releases is newest and takes only its version from the
+/// answer. That look-up is a network operation, and the Local Lock counts it.
+/// Nothing is downloaded or installed.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CheckForUpdateRequest {}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CheckForUpdateResponse {
+    /// This daemon's version, e.g. "0.3.0".
+    #[prost(string, tag = "1")]
+    pub current_version: ::prost::alloc::string::String,
+    /// The newest published release, e.g. "0.4.0". Not a draft or a pre-release.
+    #[prost(string, tag = "2")]
+    pub latest_version: ::prost::alloc::string::String,
+    /// latest_version is newer than current_version.
+    #[prost(bool, tag = "3")]
+    pub newer: bool,
+}
 /// ---- Readiness: whether an analysis could run right now ----
 ///
 /// An analysis is planned against models the registry pins and workers that
@@ -2985,7 +3010,7 @@ pub struct YoutubeMetadataTaskPayloadV1 {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListModelsRequest {}
 /// One model, and where it stands on this device.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModelV1 {
     /// Registry name: the identity analyses are keyed against.
     #[prost(string, tag = "1")]
@@ -3054,6 +3079,14 @@ pub struct ModelV1 {
     /// A worker of that family is connected now.
     #[prost(bool, tag = "24")]
     pub worker_connected: bool,
+    /// How fast this model ran here, as the editorial runtime check measured it
+    /// on this machine: reading a long prompt and writing an answer, in tokens a
+    /// second. Zero until the check has measured this model here, and for a
+    /// runtime that does not report its speed (MLX).
+    #[prost(double, tag = "25")]
+    pub measured_prompt_tokens_per_second: f64,
+    #[prost(double, tag = "26")]
+    pub measured_output_tokens_per_second: f64,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ModelDownloadV1 {

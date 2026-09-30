@@ -16,7 +16,9 @@ import { latestExportOf, rememberExportRate, useDelivery } from '../export/deliv
 import {
   type FormatChoice,
   outputFormat,
+  DEFAULT_PATTERN,
   recallFolder,
+  recallPattern,
   recallFormat,
   rememberFolder,
   rememberFormat,
@@ -49,7 +51,6 @@ export function effectivePattern(typed: string): string {
   }
   return UNIQUE_TOKENS.some((token) => pattern.includes(token)) ? pattern : `${pattern}-{index}`;
 }
-const DEFAULT_PATTERN = '{index}-{clip}';
 /**
  * The model work that shaped every clip this pipeline produces: captions from
  * recognition, and a crop path from a face pass. Declared rather than inferred,
@@ -81,7 +82,7 @@ export function ExportScreen({
   const [durationTicks, setDurationTicks] = useState(0);
   const [title, setTitle] = useState('');
   const [destination, setDestination] = useState(() => recallFolder());
-  const [pattern, setPattern] = useState('{index}-{clip}');
+  const [pattern, setPattern] = useState(() => recallPattern());
   const [attestation, setAttestation] = useState('');
   const [rightsApproval, setRightsApproval] = useState<string | null>(null);
   const [plan, setPlan] = useState<ExportPlan | null>(null);

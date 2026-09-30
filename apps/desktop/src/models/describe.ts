@@ -42,6 +42,41 @@ export function modelFacts(model: LibraryModel): string {
     .join(' · ');
 }
 
+/** A typical editorial step: a long prompt read, and an answer written. */
+const STEP_PROMPT_TOKENS = 6_000;
+const STEP_OUTPUT_TOKENS = 800;
+/** A step slower than this makes an analysis slow enough to say so. */
+const SLOW_STEP_SECONDS = 120;
+
+export interface SpeedNote {
+  readonly tone: 'neutral' | 'warning';
+  readonly text: string;
+}
+
+/**
+ * How fast the model ran on this computer, as the editorial runtime check
+ * measured it, and a warning when that makes analyses slow. Measured, never
+ * guessed: nothing is said before the check has run, and nothing is refused.
+ */
+export function speedNote(model: LibraryModel): SpeedNote | null {
+  const reads = model.measuredPromptTokensPerSecond ?? 0;
+  const writes = model.measuredOutputTokensPerSecond ?? 0;
+  if (reads <= 0 || writes <= 0) return null;
+  const measured = `Measured here: reads about ${rate(reads)} and writes about ${rate(writes)} tokens a second.`;
+  const seconds = STEP_PROMPT_TOKENS / reads + STEP_OUTPUT_TOKENS / writes;
+  if (seconds <= SLOW_STEP_SECONDS) return { tone: 'neutral', text: measured };
+  return {
+    tone: 'warning',
+    text: `${measured} Each editorial step takes about ${Math.round(seconds / 60)} minutes here, so an analysis will be slow; a smaller model is faster.`,
+  };
+}
+
+function rate(tokensPerSecond: number): string {
+  return tokensPerSecond >= 10
+    ? Math.round(tokensPerSecond).toLocaleString('en-US')
+    : tokensPerSecond.toFixed(1);
+}
+
 export interface FitWarning {
   readonly tone: 'warning' | 'danger';
   readonly text: string;

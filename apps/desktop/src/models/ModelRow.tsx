@@ -1,6 +1,7 @@
 import {
   CircleAlert,
   Download,
+  Gauge,
   RotateCw,
   ShieldCheck,
   Trash2,
@@ -23,6 +24,7 @@ import {
   modelFacts,
   percentOf,
   progressText,
+  speedNote,
   workerWarning,
 } from './describe.js';
 
@@ -60,6 +62,7 @@ export function ModelRow({
   const download = model.download;
   const planned = job.model === model.name;
   const warning = fitWarning(model, library);
+  const speed = model.supported ? speedNote(model) : null;
   const missingWorker =
     installed && model.supported
       ? workerWarning(
@@ -106,6 +109,23 @@ export function ModelRow({
             >
               <TriangleAlert aria-hidden="true" />
               {warning.text}
+            </p>
+          )}
+          {speed !== null && (
+            <p
+              className={cn(
+                'model-row-note',
+                speed.tone === 'warning'
+                  ? 'text-[var(--cm-warning-ink)]'
+                  : 'text-[var(--cm-text-secondary)]',
+              )}
+            >
+              {speed.tone === 'warning' ? (
+                <TriangleAlert aria-hidden="true" />
+              ) : (
+                <Gauge aria-hidden="true" />
+              )}
+              {speed.text}
             </p>
           )}
           {missingWorker !== null && (

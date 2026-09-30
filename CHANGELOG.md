@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.4.0 — Studio tour, activity and update notices
+
+- **A studio tour.** Two minutes through where everything is, from a long
+  recording to a posted clip: each step lights the control it is about and
+  dims the rest, and the screens that fill up only once there is a project
+  (Results, review, the Editor, Export) are shown as small drawings instead
+  of empty pages. It moves between screens and starts nothing. The welcome
+  offers it at its end, and Settings → Getting started runs it again.
+
+- **Says when a new version is out.** Once a day, ClipMill asks GitHub which
+  release is newest and, when it is newer, says so at the top of the window
+  with a link to its page. Nothing is downloaded or installed. The first
+  question waits a day after installing. It counts as a network operation in
+  Local Lock, and Settings → About turns it off.
+- **An activity tray.** A button at the top of the window counts what is
+  running (analyses, exports, model downloads, component installs, YouTube
+  imports and uploads) and lists each with how far it has come; a row opens
+  where that work is shown. When an analysis or export finishes while the
+  window is in the background, the Dock icon bounces and the title says so,
+  whichever screen is open.
+- **Models is shorter.** Each job shows the model it uses, and any download
+  under way; the other models fold under "Other models", which says how many
+  are already on this computer.
+- **More in Settings.** A Review section: whether a decision moves on to the
+  next clip, and the speed clips play at (the player remembers a change too).
+  Editing & export gains where exports go, how files are named, and the
+  caption look new projects start with.
+- **How fast Editorial AI runs here.** On Windows and Linux, Models shows the
+  speed the editorial model measured on this computer, and warns when an
+  analysis would be slow, suggesting a smaller model. It never refuses one.
+- **Windows: the editorial check completes.** The runtime check could not
+  write its receipt on Windows (a POSIX-only flag), so Editorial AI was never
+  admitted there; failure traces had the same problem.
+- **Transcripts leave out `[BLANK_AUDIO]`.** whisper.cpp writes silence and
+  sound markers (`[BLANK_AUDIO]`, `[music]`, `(speaking in foreign
+language)`) as words. Captions already hid them; now the transcript itself
+  leaves them out, so discovery and the editorial model never read them.
+  Each recording's transcript is assembled once more; nothing is
+  transcribed again.
+- **The same clip exports to the same file.** On processors with AVX-512,
+  exporting an unchanged clip twice could produce two slightly different
+  files, because the H.264 encoder's frame threads do not repeat themselves
+  there. The encoder now splits each frame between its threads instead.
+- **One recording in two projects.** Cancelling one project's analysis could
+  fail the other's with "artifact key is already in flight": the cancelled
+  step kept its unfinished output reserved, and the other gave up after three
+  quick retries. A cancelled step now lets go of what it started, and a step
+  whose output another run is already making waits for it, without using up
+  a retry, then reuses it.
+
 ## 0.3.0 — Editorial AI on Windows and Linux
 
 - **Editorial AI on Windows and Linux.** A local Qwen3.5 model can now propose

@@ -31,6 +31,13 @@ function row(title: string): HTMLElement {
   return screen.getByRole('listitem', { name: title });
 }
 
+/** Unfold every job's other models, once the library has been read. */
+async function openOthers() {
+  for (const more of await screen.findAllByRole('button', { name: /^Other models/ })) {
+    fireEvent.click(more);
+  }
+}
+
 describe('the model library', () => {
   it('offers a fresh install everything analysis needs in one download', async () => {
     const models = show(freshLibrary());
@@ -60,6 +67,12 @@ describe('the model library', () => {
     show(installedLibrary());
     const transcription = await screen.findByRole('region', { name: 'Transcription' });
     expect(within(transcription).getByText('Whisper Base')).toBeTruthy();
+    // The one in use shows; the others fold away until asked for.
+    expect(within(transcription).queryByText('Whisper Large v3 Turbo')).toBeNull();
+    const more = within(transcription).getByRole('button', { name: /^Other models/ });
+    expect(more.textContent).toBe('Other models (1)');
+    fireEvent.click(more);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
     expect(within(transcription).getByText('Whisper Large v3 Turbo')).toBeTruthy();
     expect(within(row('Whisper Base')).getByText('In use')).toBeTruthy();
     expect(within(row('Whisper Large v3 Turbo')).getByText(/1.5 GB download/)).toBeTruthy();
@@ -105,6 +118,7 @@ describe('the model library', () => {
         installedBytes: 1_624_555_275,
       }),
     );
+    await openOthers();
     const large = await screen.findByRole('listitem', { name: 'Whisper Large v3 Turbo' });
     fireEvent.click(
       within(large).getByRole('button', { name: 'Use Whisper Large v3 Turbo for transcription' }),
@@ -168,6 +182,7 @@ describe('the model library', () => {
         job.capability === 'asr' ? { ...job, models: [...job.models, 'whisper-small'] } : job,
       ),
     });
+    await openOthers();
     const small = await screen.findByRole('listitem', { name: 'Whisper small' });
     expect(within(small).getByText('Added by you')).toBeTruthy();
     fireEvent.click(within(small).getByRole('button', { name: 'Remove Whisper small' }));
@@ -189,6 +204,7 @@ describe('the model library', () => {
         { memoryFit: 'tight' },
       ),
     );
+    await openOthers();
     const large = await screen.findByRole('listitem', { name: 'Whisper Large v3 Turbo' });
     expect(
       within(large).getByText(
@@ -203,6 +219,20 @@ describe('the model library', () => {
     expect(
       within(row('Qwen3.5 9B')).getByText(/analysis can use 18 GB on this computer/),
     ).toBeTruthy();
+  });
+
+  it('says how fast the editorial model ran here, and warns when that is slow', async () => {
+    show(
+      withModel(installedLibrary(), 'qwen3-5-editorial-mlx', {
+        measuredPromptTokensPerSecond: 40,
+        measuredOutputTokensPerSecond: 4.5,
+      }),
+    );
+    const qwen = await screen.findByRole('listitem', { name: 'Qwen3.5 9B' });
+    expect(
+      within(qwen).getByText(/reads about 40 and writes about 4.5 tokens a second/),
+    ).toBeTruthy();
+    expect(within(qwen).getByText(/Each editorial step takes about 5 minutes/)).toBeTruthy();
   });
 
   it('says why a model cannot run here and does not offer the download', async () => {
@@ -264,6 +294,7 @@ describe('the model library', () => {
         job.capability === 'asr' ? { ...job, models: [...job.models, 'qwen3-asr-mlx'] } : job,
       ),
     });
+    await openOthers();
     const mlx = await screen.findByRole('listitem', { name: 'Qwen3-ASR 1.7B' });
     expect(
       within(mlx).getByText(

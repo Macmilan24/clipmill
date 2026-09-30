@@ -1,14 +1,15 @@
 /**
- * Editing and export preferences: how time reads, what an export starts from,
- * the caption styles kept on this machine, and the keys.
+ * Editing and export preferences: how time reads, what new projects and
+ * exports start from, the caption styles kept on this machine, and the keys.
  *
- * Each is a choice the Editor or the Export screen also makes in place; this
- * is where it is made once, for every clip that follows.
+ * Each is a choice New Project, the Editor or the Export screen also makes in
+ * place; this is where it is made once, for every clip that follows.
  */
-import { Bookmark, Keyboard, Sparkles, Trash2 } from 'lucide-react';
+import { Bookmark, Compass, FolderOpen, Keyboard, Sparkles, Trash2 } from 'lucide-react';
 import { type JSX, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -17,19 +18,27 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+import { daemonApi } from '../daemon/api.js';
 import { forgetStyle, savedStyles } from '../editor/captionStyles.js';
 import {
+  DEFAULT_PATTERN,
   type FormatChoice,
   HEIGHT_CHOICES,
   type HeightChoice,
   RATE_CHOICES,
   type RateChoice,
+  forgetFolder,
   heightLabel,
   rateLabel,
+  recallFolder,
   recallFormat,
+  recallPattern,
+  rememberFolder,
   rememberFormat,
+  rememberPattern,
 } from '../export/format.js';
-import { forgetOnboarding, openWelcome } from '../onboarding/state.js';
+import { CAPTION_LOOKS, setStartingLook, startingLook } from '../results/captionLook.js';
+import { forgetOnboarding, openTour, openWelcome } from '../onboarding/state.js';
 import { openShortcuts } from '../shell/ShortcutSheet.js';
 import { type TimeFormat, setTimeFormat, useTimeFormat } from '../shell/timeFormat.js';
 
@@ -37,9 +46,27 @@ export function EditingPreferences(): JSX.Element {
   const format = useTimeFormat();
   const [exportFormat, setExportFormat] = useState<FormatChoice>(() => recallFormat());
   const [styles, setStyles] = useState(() => savedStyles());
+  const [look, setLook] = useState(() => startingLook());
+  const [folder, setFolder] = useState(() => recallFolder());
+  const [pattern, setPattern] = useState(() => recallPattern());
   const changeExport = (next: FormatChoice) => {
     setExportFormat(next);
     rememberFormat(next);
+  };
+  const chooseFolder = () => {
+    daemonApi
+      .chooseExportFolder()
+      .then((chosen) => {
+        if (chosen) {
+          rememberFolder(chosen);
+          setFolder(chosen);
+        }
+      })
+      .catch(() => {});
+  };
+  const keepPattern = () => {
+    rememberPattern(pattern);
+    setPattern(recallPattern());
   };
   return (
     <div className="grid gap-5">
@@ -114,6 +141,82 @@ export function EditingPreferences(): JSX.Element {
 
       <div className="preference-row">
         <div>
+          <h3 className="text-sm font-medium">Exports go to</h3>
+          <p className="text-xs text-[var(--cm-text-secondary)] break-all">
+            {folder === ''
+              ? 'The first export asks for a folder; later ones start in the last one used.'
+              : folder}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={chooseFolder}>
+            <FolderOpen className="size-4" aria-hidden="true" />
+            Choose…
+          </Button>
+          {folder !== '' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                forgetFolder();
+                setFolder('');
+              }}
+            >
+              Forget
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="preference-row">
+        <div>
+          <label htmlFor="default-name-pattern" className="text-sm font-medium">
+            Files are named
+          </label>
+          <p className="text-xs text-[var(--cm-text-secondary)]">
+            Use {'{index}'}, {'{clip}'}, {'{project}'}, {'{duration}'}, {'{date}'} or {'{address}'}.
+            A plain name gets a clip number. Each export can still change it.
+          </p>
+        </div>
+        <Input
+          id="default-name-pattern"
+          className="w-[210px] font-mono text-xs"
+          value={pattern}
+          placeholder={DEFAULT_PATTERN}
+          onChange={(event) => setPattern(event.target.value)}
+          onBlur={keepPattern}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') keepPattern();
+          }}
+        />
+      </div>
+
+      <div className="preference-row">
+        <div>
+          <h3 className="text-sm font-medium">New projects’ captions</h3>
+          <p className="text-xs text-[var(--cm-text-secondary)]">
+            The look a new project’s clips start with. New Project can still choose another.
+          </p>
+        </div>
+        <div className="review-segmented" role="group" aria-label="Caption look for new projects">
+          {CAPTION_LOOKS.map((choice) => (
+            <button
+              key={choice.ref}
+              type="button"
+              aria-pressed={look === choice.ref}
+              onClick={() => {
+                setStartingLook(choice.ref);
+                setLook(choice.ref);
+              }}
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="preference-row">
+        <div>
           <h3 className="text-sm font-medium">Caption styles</h3>
           <p className="text-xs text-[var(--cm-text-secondary)]">
             Styles saved from the Editor’s Captions tab, ready for any clip.
@@ -162,20 +265,27 @@ export function EditingPreferences(): JSX.Element {
         <div>
           <h3 className="text-sm font-medium">Getting started</h3>
           <p className="text-xs text-[var(--cm-text-secondary)]">
-            The welcome, and the tips the Inspector and the Editor show the first time.
+            A tour of where everything is; the welcome, and the tips the Inspector and the Editor
+            show the first time.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            forgetOnboarding();
-            openWelcome();
-          }}
-        >
-          <Sparkles className="size-4" aria-hidden="true" />
-          Show them again
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={openTour}>
+            <Compass className="size-4" aria-hidden="true" />
+            Take the tour
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              forgetOnboarding();
+              openWelcome();
+            }}
+          >
+            <Sparkles className="size-4" aria-hidden="true" />
+            Show them again
+          </Button>
+        </div>
       </div>
     </div>
   );

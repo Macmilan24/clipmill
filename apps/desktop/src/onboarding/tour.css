@@ -1,0 +1,828 @@
+/* The studio tour: a lit control, a dimmed window, and a card beside it. */
+.studio-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+}
+
+.studio-tour-dim,
+.studio-tour-spotlight {
+  position: fixed;
+  pointer-events: auto;
+}
+
+.studio-tour-dim {
+  inset: 0;
+  background: rgb(3 6 14 / 0.66);
+  animation: studio-tour-fade 180ms ease both;
+}
+
+/* The lit control: a window in the dimming, and a ring around it. */
+.studio-tour-spotlight {
+  border: 2px solid var(--cm-accent);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--cm-accent) 22%, transparent),
+    0 0 0 200vmax rgb(3 6 14 / 0.66);
+  transition:
+    top 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    left 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    width 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    height 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.studio-tour-card {
+  position: fixed;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-card);
+  background: var(--cm-glass-elevated);
+  color: var(--cm-text-primary);
+  font-family: var(--cm-font-ui);
+  box-shadow:
+    0 24px 68px rgb(0 0 0 / 0.3),
+    0 5px 18px rgb(0 0 0 / 0.14);
+  pointer-events: auto;
+  animation: studio-tour-enter 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  transition:
+    top 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    left 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.studio-tour-card button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.studio-tour-card button:focus-visible {
+  outline: 2px solid var(--cm-accent-focus);
+  outline-offset: 3px;
+}
+
+.studio-tour-topline {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 50px;
+  padding: 0 54px 0 24px;
+  border-bottom: 1px solid var(--cm-glass-border);
+  color: var(--cm-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+}
+
+.studio-tour-mark {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  background: var(--cm-recessed);
+  color: var(--cm-accent-ink);
+}
+
+.studio-tour-close {
+  position: absolute;
+  top: 10px;
+  right: 11px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--cm-radius-control);
+  background: transparent;
+  color: var(--cm-text-muted);
+}
+
+.studio-tour-close > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.studio-tour-close:hover {
+  border-color: var(--cm-glass-border);
+  background: var(--cm-recessed);
+  color: var(--cm-text-primary);
+}
+
+.studio-tour-card--welcome .studio-tour-close {
+  color: var(--cm-viewer-ink);
+}
+
+.studio-tour-card--welcome .studio-tour-close:hover {
+  border-color: color-mix(in srgb, var(--cm-viewer-ink) 25%, transparent);
+  background: color-mix(in srgb, var(--cm-viewer-ink) 12%, transparent);
+}
+
+/* The first step's banner: a reel from source to finished clip. */
+.tour-banner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 26px 14px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--cm-glass-border);
+  background: var(--cm-viewer);
+  color: var(--cm-viewer-ink);
+}
+
+.tour-banner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    transparent 22%,
+    color-mix(in srgb, var(--cm-accent) 9%, transparent) 74%,
+    transparent
+  );
+}
+
+.tour-banner-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--cm-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.085em;
+}
+
+.tour-banner-logo {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--cm-accent);
+}
+
+.tour-banner-muted {
+  opacity: 0.56;
+}
+
+.tour-banner-reel {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1.25fr 0.8fr;
+  gap: 5px;
+  height: 36px;
+  margin-top: 18px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--cm-viewer-ink) 27%, transparent);
+  border-radius: 3px;
+}
+
+.tour-banner-frame {
+  position: relative;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--cm-viewer-ink) 26%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cm-viewer-ink) 9%, transparent);
+}
+
+.tour-banner-frame::before,
+.tour-banner-frame::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  background: color-mix(in srgb, var(--cm-viewer-ink) 28%, transparent);
+}
+
+.tour-banner-frame::before {
+  top: 8px;
+}
+
+.tour-banner-frame::after {
+  bottom: 8px;
+}
+
+.tour-banner-frame--found {
+  border-color: var(--cm-accent);
+  background: color-mix(in srgb, var(--cm-accent) 22%, transparent);
+}
+
+.tour-banner-playhead {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  left: 8%;
+  width: 1px;
+  background: var(--cm-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cm-accent) 17%, transparent);
+  animation: tour-banner-play 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+.tour-banner-captions {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr 0.8fr;
+  gap: 5px;
+  padding-inline: 5px;
+  margin-top: 8px;
+  text-align: center;
+  font-family: var(--cm-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.68;
+}
+
+.studio-tour-inner {
+  padding: 22px 26px 20px;
+  animation: studio-tour-copy 190ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.studio-tour-kicker {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.studio-tour-where {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 9px;
+  font-family: var(--cm-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.studio-tour-chapter {
+  flex: none;
+  color: var(--cm-accent-ink);
+}
+
+.studio-tour-divider {
+  flex: none;
+  width: 11px;
+  height: 1px;
+  background: var(--cm-glass-border);
+}
+
+.studio-tour-place {
+  overflow: hidden;
+  color: var(--cm-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-tour-count {
+  flex: none;
+  color: var(--cm-text-muted);
+  font-family: var(--cm-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.035em;
+}
+
+.studio-tour-count > span {
+  color: var(--cm-glass-border);
+}
+
+.studio-tour-progress {
+  display: flex;
+  gap: 3px;
+  height: 3px;
+  margin-top: 14px;
+}
+
+.studio-tour-progress > span {
+  flex: 1 1 0;
+  border-radius: 2px;
+  background: var(--cm-glass-border);
+  transition: background-color 200ms ease;
+}
+
+.studio-tour-progress > span.is-done {
+  background: var(--cm-accent);
+}
+
+.studio-tour-title {
+  margin: 20px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.22;
+}
+
+.studio-tour-card--welcome .studio-tour-title {
+  font-size: 24px;
+}
+
+.studio-tour-body {
+  margin-top: 9px;
+  color: var(--cm-text-secondary);
+  font-size: 13px;
+  line-height: 1.62;
+}
+
+.studio-tour-body strong {
+  color: var(--cm-text-primary);
+  font-weight: 600;
+}
+
+.studio-tour-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 18px 12px 24px;
+  border-top: 1px solid var(--cm-glass-border);
+  background: color-mix(in srgb, var(--cm-recessed) 62%, var(--cm-glass-elevated));
+}
+
+.studio-tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.studio-tour-skip,
+.studio-tour-back,
+.studio-tour-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--cm-radius-control);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.studio-tour-skip > svg,
+.studio-tour-back > svg,
+.studio-tour-next > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.studio-tour-skip {
+  color: var(--cm-text-muted);
+}
+
+.studio-tour-skip:hover {
+  background: var(--cm-recessed);
+  color: var(--cm-text-primary);
+}
+
+.studio-tour-back {
+  color: var(--cm-text-secondary);
+}
+
+.studio-tour-back:hover {
+  border-color: var(--cm-glass-border);
+  background: var(--cm-glass);
+  color: var(--cm-text-primary);
+}
+
+.studio-tour-next {
+  min-width: 92px;
+  justify-content: center;
+  padding-inline: 13px;
+  border-color: var(--cm-accent);
+  background: var(--cm-accent);
+  color: var(--cm-accent-foreground);
+}
+
+.studio-tour-next:hover {
+  border-color: var(--cm-accent-hover);
+  background: var(--cm-accent-hover);
+}
+
+.studio-tour-skip:active,
+.studio-tour-back:active,
+.studio-tour-next:active {
+  transform: scale(0.97);
+}
+
+/* Pictures of screens that fill up once there is a project. */
+.tour-picture {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: var(--cm-radius-control);
+  background: var(--cm-recessed);
+  font-size: 9.5px;
+  line-height: 1.3;
+}
+
+.tour-line {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cm-text-secondary) 45%, transparent);
+}
+
+.tour-line--dim {
+  opacity: 0.4;
+}
+
+.tour-line--live {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--cm-text-secondary) 45%, transparent) 0 38%,
+    var(--cm-accent) 38% 58%,
+    color-mix(in srgb, var(--cm-text-secondary) 45%, transparent) 58%
+  );
+}
+
+/* A vertical frame with someone in it. */
+.tour-frame,
+.tour-results-thumb {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #4a4239 0%, #3b352f 60%, #6f604c 60%, #7b6b55 100%);
+}
+
+.tour-frame {
+  width: 62px;
+  aspect-ratio: 9 / 16;
+  flex: none;
+}
+
+.tour-frame--small {
+  width: 52px;
+}
+
+.tour-frame--tiny {
+  width: 26px;
+}
+
+.tour-person {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  width: 34%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #d8b08a;
+  transform: translateX(-50%);
+}
+
+.tour-person::after {
+  content: '';
+  position: absolute;
+  top: 110%;
+  left: 50%;
+  width: 150%;
+  height: 160%;
+  border-radius: 40% 40% 0 0;
+  background: #9b8468;
+  transform: translateX(-50%);
+}
+
+.tour-caption {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 16%;
+  color: #fff;
+  font-size: 7.5px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  text-shadow: 0 1px 0 #000;
+}
+
+.tour-caption em {
+  color: #ffd65c;
+  font-style: normal;
+}
+
+.tour-results-filters,
+.tour-review-decide,
+.tour-export-route {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tour-results-filters span,
+.tour-review-decide span,
+.tour-export-route > span:not(.tour-export-arrow) {
+  padding: 3px 6px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: 999px;
+  background: var(--cm-glass);
+  color: var(--cm-text-secondary);
+}
+
+.tour-results-filters span.is-on,
+.tour-review-decide span.is-primary {
+  border-color: var(--cm-accent);
+  background: var(--cm-accent);
+  color: var(--cm-accent-foreground);
+}
+
+.tour-results-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tour-results-card {
+  display: grid;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: 6px;
+  background: var(--cm-glass);
+}
+
+.tour-results-card.is-hovered {
+  border-color: var(--cm-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cm-accent) 20%, transparent);
+}
+
+.tour-results-thumb {
+  aspect-ratio: 4 / 4.2;
+}
+
+.tour-results-scrub {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--cm-accent);
+  animation: tour-scrub 2.6s ease-in-out infinite alternate;
+}
+
+.tour-results-score {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 8.5px;
+}
+
+.tour-review-top,
+.tour-editor-top {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.tour-review-words {
+  display: grid;
+  flex: 1;
+  gap: 5px;
+  padding-top: 2px;
+}
+
+.tour-review-mark {
+  justify-self: start;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--cm-accent);
+  color: var(--cm-accent-foreground);
+  font-size: 7.5px;
+}
+
+.tour-review-strip {
+  position: relative;
+  height: 14px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--cm-text-secondary) 30%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.tour-review-cut {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 28%;
+  width: 40%;
+  border: 2px solid var(--cm-accent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--cm-accent) 14%, transparent);
+}
+
+.tour-editor-words {
+  flex: 1;
+  color: var(--cm-text-primary);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.tour-editor-words p {
+  margin: 0;
+}
+
+.tour-editor-words s {
+  color: var(--cm-danger-ink);
+}
+
+.tour-editor-words mark {
+  padding: 0 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cm-accent) 25%, transparent);
+  color: inherit;
+}
+
+.tour-editor-dim {
+  color: var(--cm-text-muted);
+}
+
+.tour-editor-timeline {
+  position: relative;
+  display: grid;
+  gap: 4px;
+}
+
+.tour-editor-track {
+  position: relative;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--cm-glass);
+}
+
+.tour-editor-track > span {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 2px;
+  background: var(--cm-accent-selected);
+}
+
+.tour-editor-track > span.is-on {
+  background: var(--cm-accent);
+}
+
+.tour-editor-track--wave {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--cm-text-secondary) 35%, transparent) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+.tour-editor-playhead {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: 46%;
+  width: 2px;
+  border-radius: 1px;
+  background: #d9a13b;
+}
+
+.tour-export-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border: 1px solid var(--cm-glass-border);
+  border-radius: 6px;
+  background: var(--cm-glass);
+}
+
+.tour-export-name {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  color: var(--cm-text-primary);
+  font-size: 10px;
+}
+
+.tour-export-facts {
+  color: var(--cm-text-muted);
+  font-size: 9px;
+}
+
+.tour-export-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.tour-export-chips span {
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--cm-accent-selected);
+  color: var(--cm-accent-ink);
+  font-size: 8.5px;
+}
+
+.tour-export-route {
+  align-items: center;
+}
+
+.tour-export-route > span.is-muted {
+  border-style: dashed;
+  color: var(--cm-text-muted);
+}
+
+.tour-export-arrow {
+  width: 12px;
+  height: 1px;
+  background: var(--cm-text-muted);
+}
+
+@keyframes studio-tour-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes studio-tour-copy {
+  from {
+    opacity: 0.35;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes studio-tour-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tour-banner-play {
+  to {
+    left: 92%;
+  }
+}
+
+@keyframes tour-scrub {
+  from {
+    width: 8%;
+  }
+  to {
+    width: 92%;
+  }
+}
+
+@media (max-width: 520px) {
+  .studio-tour-inner {
+    padding: 18px 18px 16px;
+  }
+  .studio-tour-topline,
+  .tour-banner {
+    padding-inline: 18px;
+  }
+  .studio-tour-footer {
+    padding-inline: 12px;
+  }
+  .studio-tour-title {
+    font-size: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-tour-card,
+  .studio-tour-inner,
+  .studio-tour-dim,
+  .tour-banner-playhead,
+  .tour-results-scrub {
+    animation: none;
+  }
+  .studio-tour-card,
+  .studio-tour-spotlight,
+  .studio-tour-card button {
+    transition: none;
+  }
+}

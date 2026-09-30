@@ -41,6 +41,25 @@ READY_SCHEMA = {
     "required": ["ready"],
     "additionalProperties": False,
 }
+# A representative reply for the speed Models reports: a prompt of about
+# 1,500 tokens and an answer of about 80. The readiness reply is too short to
+# say how fast a long prompt is read, and a GPU reads one many times faster.
+MEASURE_PROMPT = "Read the passage, then list twenty words from it.\n\n" + " ".join(
+    ["The editor watches the talk and marks the moments worth keeping."] * 120
+)
+MEASURE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "words": {
+            "type": "array",
+            "items": {"type": "string", "maxLength": 16},
+            "minItems": 20,
+            "maxItems": 20,
+        }
+    },
+    "required": ["words"],
+    "additionalProperties": False,
+}
 
 
 def prove(binding: worker_pb2.ModelBinding, receipt: Path, fingerprint: str) -> dict:
@@ -59,7 +78,12 @@ def prove(binding: worker_pb2.ModelBinding, receipt: Path, fingerprint: str) -> 
         )
         if json.loads(raw) != {"ready": True}:
             raise RuntimeError("the model did not complete the readiness JSON")
-        timings = getattr(runtime, "last_timings", {})
+        # llama.cpp reports its speed; MLX does not, and the Mac needs no warning.
+        timings = {}
+        if hasattr(runtime, "last_timings"):
+            raw, _ = runtime.generate(MEASURE_PROMPT, MEASURE_SCHEMA, 256)
+            json.loads(raw)
+            timings = runtime.last_timings
     finally:
         runtime.close()
     document = {
@@ -73,12 +97,15 @@ def prove(binding: worker_pb2.ModelBinding, receipt: Path, fingerprint: str) -> 
         "tokens": tokens,
     }
     if timings:
-        # What llama-server measured for this reply: reading the prompt and
-        # writing the answer, in tokens a second.
+        # What llama-server measured for the representative reply: reading
+        # the prompt and writing the answer, in tokens a second.
         document["prompt_tokens_per_second"] = timings.get("prompt_per_second", 0)
         document["output_tokens_per_second"] = timings.get("predicted_per_second", 0)
     pending = receipt.with_suffix(".pending")
-    descriptor = os.open(pending, os.O_CREAT | os.O_TRUNC | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+    # O_NOFOLLOW is POSIX only; on Windows the data folder's access list is
+    # the boundary.
+    flags = os.O_CREAT | os.O_TRUNC | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(pending, flags, 0o600)
     with os.fdopen(descriptor, "w") as handle:
         json.dump(document, handle)
         handle.flush()

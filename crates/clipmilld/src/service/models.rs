@@ -73,7 +73,41 @@ impl Service {
     fn library_reply(&self, request_id: String, library: &ModelLibrary) -> Reply {
         let mut listing = library.list(&self.profile_bindings(), self.memory_budget());
         self.mark_workers(&mut listing);
+        self.mark_measured_speed(&mut listing);
         response_reply(request_id, response::Body::ModelLibrary(listing))
+    }
+
+    /// How fast the editorial model ran here, from the runtime check's receipt:
+    /// set on the model it proved, when that receipt names this machine.
+    fn mark_measured_speed(&self, listing: &mut ListModelsResponse) {
+        let (Some(storage), Some(fingerprint)) = (
+            &self.storage,
+            self.device_profiler
+                .as_ref()
+                .and_then(crate::device::DeviceProfiler::known_fingerprint),
+        ) else {
+            return;
+        };
+        let Ok(bytes) = std::fs::read(storage.state.join(crate::selection::EDITORIAL_RECEIPT))
+        else {
+            return;
+        };
+        let Ok(proof) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            return;
+        };
+        let Some((digest, prompt, output)) = measured_speed(&proof, fingerprint) else {
+            return;
+        };
+        for model in &mut listing.models {
+            if self
+                .models
+                .get(&model.name)
+                .is_some_and(|manifest| format!("sha256:{}", manifest.digest()) == digest)
+            {
+                model.measured_prompt_tokens_per_second = prompt;
+                model.measured_output_tokens_per_second = output;
+            }
+        }
     }
 
     /// Whether the worker that runs each model is connected now. A model is
@@ -266,4 +300,69 @@ fn refusal_reply(request_id: String, refusal: &Refusal) -> Reply {
         Refusal::Unavailable(_) => ErrorCode::Unavailable,
     };
     error_reply(request_id, code, refusal.message())
+}
+
+/// What an editorial runtime receipt says this machine measured: the digest of
+/// the model it ran and its reading and writing speeds, in tokens a second.
+/// None unless the receipt is valid, names this machine and carries both, which
+/// only llama.cpp's does.
+fn measured_speed<'a>(
+    proof: &'a serde_json::Value,
+    fingerprint: &str,
+) -> Option<(&'a str, f64, f64)> {
+    if proof["schema_version"] != "clipmill.editorial.runtime.v1"
+        || proof["hardware_fingerprint"] != fingerprint
+        || proof["validated"] != true
+    {
+        return None;
+    }
+    let speed = |key: &str| {
+        proof[key]
+            .as_f64()
+            .filter(|value| value.is_finite() && *value > 0.0)
+    };
+    Some((
+        proof["model_digest"].as_str()?,
+        speed("prompt_tokens_per_second")?,
+        speed("output_tokens_per_second")?,
+    ))
+}
+
+#[cfg(test)]
+mod speed_tests {
+    #![allow(clippy::unwrap_used)]
+
+    use serde_json::json;
+
+    use super::measured_speed;
+
+    #[test]
+    fn a_receipt_gives_its_speeds_only_for_this_machine() {
+        let proof = json!({
+            "schema_version": "clipmill.editorial.runtime.v1",
+            "runtime": "llama.cpp@b11255/clipmill-json-v1",
+            "hardware_fingerprint": "here",
+            "model_digest": "sha256:abc",
+            "validated": true,
+            "prompt_tokens_per_second": 912.5,
+            "output_tokens_per_second": 41.0,
+        });
+        assert_eq!(
+            measured_speed(&proof, "here"),
+            Some(("sha256:abc", 912.5, 41.0))
+        );
+        assert_eq!(measured_speed(&proof, "another machine"), None);
+        let mut failed = proof.clone();
+        failed["validated"] = json!(false);
+        assert_eq!(measured_speed(&failed, "here"), None);
+        // An MLX receipt reports no speed.
+        let mut mlx = proof.clone();
+        mlx.as_object_mut()
+            .unwrap()
+            .remove("output_tokens_per_second");
+        assert_eq!(measured_speed(&mlx, "here"), None);
+        let mut nonsense = proof;
+        nonsense["prompt_tokens_per_second"] = json!(-3.0);
+        assert_eq!(measured_speed(&nonsense, "here"), None);
+    }
 }
