@@ -28,6 +28,13 @@ pub const VTT_FILE: &str = "clip.vtt";
 pub const MANIFEST_FILE: &str = "render-manifest.json";
 /// Fixed worker count keeps the x264 output independent of machine defaults.
 pub const ENCODER_THREADS: u32 = 4;
+/// The encoder's threads share each frame rather than working on several
+/// frames at once. On processors with AVX-512, x264's frame threads are not
+/// repeatable: the same input, encoded ten times on one such machine, came out
+/// as two or three different files on Intel Xeon and AMD EPYC alike. With
+/// slice threads every frame is finished before the next starts, and the same
+/// ten encodes came out as one file on each of those machines.
+pub const X264_PARAMS: &str = "sliced-threads=1";
 
 /// A source the document's segments may reference, resolved to something the
 /// decoder can open.
@@ -145,6 +152,7 @@ impl RenderPlan {
         config.insert("frame_count".to_owned(), json!(self.frame_count));
         config.insert("duration_ticks".to_owned(), json!(self.duration_ticks));
         config.insert("encoder_threads".to_owned(), json!(ENCODER_THREADS));
+        config.insert("x264_params".to_owned(), json!(X264_PARAMS));
         config.insert(
             "segments".to_owned(),
             json!(
@@ -211,6 +219,8 @@ impl RenderPlan {
             "high".to_owned(),
             "-threads:v".to_owned(),
             ENCODER_THREADS.to_string(),
+            "-x264-params".to_owned(),
+            X264_PARAMS.to_owned(),
             "-r".to_owned(),
             format!("{}/{}", profile.frame_rate.num, profile.frame_rate.den),
             "-frames:v".to_owned(),
