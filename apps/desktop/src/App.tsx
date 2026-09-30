@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -29,7 +30,13 @@ import { useUpdateNotice } from './shell/updates.js';
 import { TopBar } from './shell/TopBar.js';
 import { useAnalysisActivity } from './shell/useAnalysisActivity.js';
 import { ShortcutSheet, useShortcutSheet } from './shell/ShortcutSheet.js';
-import { CoachEnabled, OPEN_WELCOME_EVENT, shouldWelcome } from './onboarding/state.js';
+import {
+  CoachEnabled,
+  OPEN_TOUR_EVENT,
+  OPEN_WELCOME_EVENT,
+  shouldWelcome,
+} from './onboarding/state.js';
+import { StudioTour } from './onboarding/StudioTour.js';
 import { Welcome } from './onboarding/Welcome.js';
 import { recall, remember } from './shell/memory.js';
 import {
@@ -202,6 +209,18 @@ export function App(): JSX.Element {
     window.addEventListener(OPEN_WELCOME_EVENT, again);
     return () => window.removeEventListener(OPEN_WELCOME_EVENT, again);
   }, []);
+  // The studio tour, when the welcome or Settings asks for it. It ends where
+  // it began, or on New Project when the person goes to start one.
+  const routeNow = useRef(route);
+  useEffect(() => {
+    routeNow.current = route;
+  }, [route]);
+  const [tourFrom, setTourFrom] = useState<Route | null>(null);
+  useEffect(() => {
+    const start = () => setTourFrom((current) => current ?? routeNow.current);
+    window.addEventListener(OPEN_TOUR_EVENT, start);
+    return () => window.removeEventListener(OPEN_TOUR_EVENT, start);
+  }, []);
   // The two workspaces give the picture the height: the trail and engine
   // line fold away — the workspace's own heading names the clip and leads
   // back — unless the engine is not ready, which is then the first thing on
@@ -218,6 +237,17 @@ export function App(): JSX.Element {
           onClose={() => setWelcoming(false)}
           onStart={() => navigate('new-project')}
         />
+        {tourFrom && (
+          <StudioTour
+            onNavigate={navigate}
+            onEnd={(outcome) => {
+              const from = tourFrom;
+              setTourFrom(null);
+              if (outcome === 'start') navigate('new-project');
+              else setRoute(from);
+            }}
+          />
+        )}
         <SidebarProvider
           // The sidebar becomes an icon rail in compact desktop windows.
           style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}

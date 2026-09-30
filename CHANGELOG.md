@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.4.0 — Activity, update notices and fixes
+## 0.4.0 — Studio tour, activity and update notices
+
+- **A studio tour.** Two minutes through where everything is, from a long
+  recording to a posted clip: each step lights the control it is about and
+  dims the rest, and the screens that fill up only once there is a project
+  (Results, review, the Editor, Export) are shown as small drawings instead
+  of empty pages. It moves between screens and starts nothing. The welcome
+  offers it at its end, and Settings → Getting started runs it again.
 
 - **Says when a new version is out.** Once a day, ClipMill asks GitHub which
   release is newest and, when it is newer, says so at the top of the window

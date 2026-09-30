@@ -362,7 +362,7 @@ export function NewProject({
       {connected && <SetupCard setup={setup} />}
 
       <div className="import-layout">
-        <Card className="import-source">
+        <Card className="import-source" data-tour="new-project-source">
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5 text-section-title">
               <FileVideo className="size-4" /> Source footage
@@ -486,7 +486,7 @@ export function NewProject({
           </CardContent>
         </Card>
 
-        <Card className="import-options">
+        <Card className="import-options" data-tour="new-project-preferences">
           <CardHeader>
             <CardTitle className="text-section-title">Clip preferences</CardTitle>
           </CardHeader>
@@ -763,7 +763,7 @@ export function NewProject({
             </div>
           </CardContent>
         </Card>
-        <Card className="import-start">
+        <Card className="import-start" data-tour="new-project-start">
           <CardContent>
             <Label
               htmlFor="rights"

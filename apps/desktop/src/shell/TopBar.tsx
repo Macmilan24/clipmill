@@ -74,7 +74,10 @@ export function TopBar({
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex items-center gap-4 text-[var(--cm-text-secondary)]">
+      <div
+        data-tour="topbar-status"
+        className="flex items-center gap-4 text-[var(--cm-text-secondary)]"
+      >
         {update && (
           <span className="flex items-center rounded-full border border-[var(--cm-glass-border)] pl-2.5 text-[11px]">
             <button

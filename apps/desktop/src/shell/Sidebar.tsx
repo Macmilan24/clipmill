@@ -65,6 +65,7 @@ export function AppSidebar({
 
   return (
     <Sidebar
+      data-tour="rail"
       collapsible="none"
       className="studio-sidebar glass h-full rounded-none border-y-0 border-l-0 shadow-none"
     >
@@ -92,6 +93,7 @@ export function AppSidebar({
                   }
                 >
                   <SidebarMenuButton
+                    data-tour={`nav-${section.id}`}
                     isActive={active}
                     aria-label={section.label}
                     aria-current={active ? 'page' : undefined}
@@ -117,6 +119,7 @@ export function AppSidebar({
 
       <SidebarFooter className="mx-2 mb-4 gap-0 border-t border-[var(--cm-glass-border)] px-0 pt-3">
         <div
+          data-tour="local-lock"
           title={`${lock.headline}. ${lock.caption}`}
           className={cn(
             'flex flex-col items-center gap-1.5 text-center text-[10px] font-(--cm-weight-heading)',
