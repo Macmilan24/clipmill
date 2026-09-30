@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — Activity, update notices and fixes
 
 - **Says when a new version is out.** Once a day, ClipMill asks GitHub which
   release is newest and, when it is newer, says so at the top of the window
