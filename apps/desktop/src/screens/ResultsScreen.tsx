@@ -11,6 +11,7 @@ import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
 import type { ClipDecision, Project } from '../daemon/client.js';
 import { exactCaptionsOf } from '../editor/exactCaptions.js';
+import { setAutoAdvance, useAutoAdvance } from '../inspector/preferences.js';
 import { nextUndecided } from '../inspector/review.js';
 import type { ClipRow } from '../results/model.js';
 import { ManualClip } from '../results/ManualClip.js';
@@ -171,21 +172,7 @@ export function ResultsScreen({
   };
 
   /** Whether a decision moves on to the next undecided clip; kept per machine. */
-  const [autoAdvance, setAutoAdvance] = useState(() => {
-    try {
-      return localStorage.getItem('clipmill.review.advance') !== 'off';
-    } catch {
-      return true;
-    }
-  });
-  const chooseAutoAdvance = (on: boolean) => {
-    setAutoAdvance(on);
-    try {
-      localStorage.setItem('clipmill.review.advance', on ? 'on' : 'off');
-    } catch {
-      /* Still in effect for this session. */
-    }
-  };
+  const autoAdvance = useAutoAdvance();
 
   /**
    * What each Inspector decision replaced, newest last, so the last can be
@@ -306,7 +293,7 @@ export function ResultsScreen({
         busy={results.busy}
         notice={results.notice}
         autoAdvance={autoAdvance}
-        onAutoAdvance={chooseAutoAdvance}
+        onAutoAdvance={setAutoAdvance}
         onSelect={inspect}
         onBack={onBack}
         onApprove={(window, open) => {

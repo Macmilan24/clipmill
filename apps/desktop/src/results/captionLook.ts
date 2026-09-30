@@ -10,6 +10,25 @@ export const CAPTION_LOOKS = [
 ] as const;
 
 export const DEFAULT_LOOK = CAPTION_LOOKS[0].ref;
+const STARTING_KEY = 'clipmill.captionLookDefault';
+
+/** The look a new project's clips start with, as set in Settings. */
+export function startingLook(): string {
+  try {
+    const stored = localStorage.getItem(STARTING_KEY);
+    return CAPTION_LOOKS.find((look) => look.ref === stored)?.ref ?? DEFAULT_LOOK;
+  } catch {
+    return DEFAULT_LOOK;
+  }
+}
+
+export function setStartingLook(styleRef: string): void {
+  try {
+    localStorage.setItem(STARTING_KEY, styleRef);
+  } catch {
+    // New projects start with the default look instead.
+  }
+}
 
 const key = (projectId: string) => `clipmill.captionLook.${projectId}`;
 const highlightKey = (projectId: string) => `clipmill.captionHighlight.${projectId}`;

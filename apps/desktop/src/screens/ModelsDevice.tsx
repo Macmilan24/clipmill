@@ -422,7 +422,7 @@ export function ModelsDevice({
 
   return (
     <div className="preferences-page models-page">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header data-tour="models-title" className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="workspace-title">Models &amp; Device</h1>
           <p className="workspace-subtitle mt-1 max-w-[620px]">

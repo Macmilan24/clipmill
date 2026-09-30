@@ -32,6 +32,7 @@ import type { ExactCaptions } from '../editor/exactCaptions.js';
 import { DetailsPanel } from '../inspector/DetailsPanel.js';
 import { Monitor, type MonitorView } from '../inspector/Monitor.js';
 import { PlaybackController } from '../inspector/playback.js';
+import { reviewSpeed } from '../inspector/preferences.js';
 import { Queue, type QueueFilter } from '../inspector/Queue.js';
 import { type Cut, clockTenths, lengthLabel, overlapsOf, sameCut } from '../inspector/review.js';
 import { BoundaryStrip, Overview, initialView, zoomView } from '../inspector/Timeline.js';
@@ -176,7 +177,7 @@ function Review({
 }: ClipInspectorProps & { readonly row: ClipRow }) {
   // One clock per clip, starting on its first frame.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by clip upstream
-  const controller = useMemo(() => new PlaybackController(row.startTicks), []);
+  const controller = useMemo(() => new PlaybackController(row.startTicks, reviewSpeed()), []);
   useEffect(() => () => controller.dispose(), [controller]);
 
   const chosen: Cut = { startTicks: row.startTicks, endTicks: row.endTicks };

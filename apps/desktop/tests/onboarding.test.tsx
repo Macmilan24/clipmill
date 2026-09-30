@@ -6,11 +6,13 @@ import {
   CoachEnabled,
   coachSeen,
   forgetOnboarding,
+  OPEN_TOUR_EVENT,
   rememberWelcome,
   shouldWelcome,
   WELCOME_KEY,
 } from '../src/onboarding/state.js';
 import { Welcome } from '../src/onboarding/Welcome.js';
+import { EditingPreferences } from '../src/screens/EditingPreferences.js';
 import { MEMORY_KEY } from '../src/shell/memory.js';
 
 beforeEach(() => localStorage.clear());
@@ -51,6 +53,25 @@ describe('the welcome', () => {
     expect(onStart).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();
     expect(localStorage.getItem(WELCOME_KEY)).toBe('started');
+  });
+
+  it('offers the studio tour at its end, from Settings too', () => {
+    const toured = vi.fn();
+    window.addEventListener(OPEN_TOUR_EVENT, toured);
+    const onClose = vi.fn();
+    const welcome = render(<Welcome open onClose={onClose} onStart={vi.fn()} />);
+    for (let step = 0; step < 3; step += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Take the tour' }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(localStorage.getItem(WELCOME_KEY)).toBe('toured');
+    expect(toured).toHaveBeenCalledOnce();
+    welcome.unmount();
+    render(<EditingPreferences />);
+    fireEvent.click(screen.getByRole('button', { name: 'Take the tour' }));
+    expect(toured).toHaveBeenCalledTimes(2);
+    window.removeEventListener(OPEN_TOUR_EVENT, toured);
   });
 });
 

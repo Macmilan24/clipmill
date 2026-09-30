@@ -37,6 +37,7 @@ mod shm;
 mod sources;
 mod speech;
 mod storage;
+mod updates;
 mod worker;
 mod youtube_transport;
 

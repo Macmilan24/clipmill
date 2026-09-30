@@ -1,16 +1,15 @@
 /**
  * The welcome a new installation opens to: four short steps from a long
- * recording to an exported clip, then straight to New Project or a look
- * around. Everything it describes is on screen once it closes; the tips in
- * the Inspector and the Editor point at the real controls when they first
- * open.
+ * recording to an exported clip, then straight to New Project, or the studio
+ * tour, which shows where each of those things is. The tips in the Inspector
+ * and the Editor point at the real controls when they first open.
  */
 import { Clapperboard, Download, ListChecks, ShieldCheck } from 'lucide-react';
 import { type JSX, useState } from 'react';
 
 import { Button } from '../components/ui/button.js';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog.js';
-import { type WelcomeOutcome, rememberWelcome } from './state.js';
+import { type WelcomeOutcome, openTour, rememberWelcome } from './state.js';
 import './onboarding.css';
 
 const COMMAND = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform) ? '⌘' : 'Ctrl';
@@ -57,6 +56,7 @@ export function Welcome({
     setAt(0);
     if (outcome === 'started') onStart();
     onClose();
+    if (outcome === 'toured') openTour();
   };
   return (
     <Dialog
@@ -85,8 +85,8 @@ export function Welcome({
             )}
             {last ? (
               <>
-                <Button variant="outline" size="sm" onClick={() => end('closed')}>
-                  Look around first
+                <Button variant="outline" size="sm" onClick={() => end('toured')}>
+                  Take the tour
                 </Button>
                 <Button size="sm" onClick={() => end('started')}>
                   Start a project

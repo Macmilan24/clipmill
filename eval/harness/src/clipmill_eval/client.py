@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from clipmill.ipc.v1 import daemon_pb2
+from clipmill_worker_sdk import endpoint
 
 MAX_FRAME_BYTES = 4 * 1024 * 1024
 
@@ -130,6 +131,23 @@ class DaemonClient:
             if not body.chunk or len(collected) >= body.total_bytes:
                 break
         return bytes(collected)
+
+    def engine(self) -> daemon_pb2.EngineResponse:
+        """The components a packaged daemon installs and runs, and their state."""
+        response = self._call(daemon_pb2.Request(get_engine=daemon_pb2.GetEngineRequest()))
+        return _require_body(response, "engine")
+
+    def install_engine(self, parts: tuple[str, ...] = ()) -> daemon_pb2.EngineResponse:
+        """Install the named parts, or every one this computer runs."""
+        response = self._call(
+            daemon_pb2.Request(install_engine=daemon_pb2.InstallEngineRequest(parts=list(parts)))
+        )
+        return _require_body(response, "engine")
+
+    def shutdown(self) -> None:
+        """Ask the daemon to stop; it answers before it does."""
+        response = self._call(daemon_pb2.Request(shutdown=daemon_pb2.ShutdownRequest()))
+        _require_body(response, "shutdown")
 
     def get_job(self, job_id: str) -> daemon_pb2.Job:
         response = self._call(daemon_pb2.Request(get_job=daemon_pb2.GetJobRequest(job_id=job_id)))
@@ -288,10 +306,8 @@ class DaemonClient:
         return response
 
     def _connect(self) -> socket.socket:
-        connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        connection.settimeout(self.timeout_seconds)
-        connection.connect(str(self.socket_path))
-        return connection
+        # A Unix socket, or on Windows loopback behind the daemon's handshake.
+        return endpoint.connect(self.socket_path, timeout=self.timeout_seconds)
 
     @staticmethod
     def _raise_error(response: daemon_pb2.Response) -> None:

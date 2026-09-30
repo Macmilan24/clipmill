@@ -389,7 +389,7 @@ fn authorized_google_url(raw: &str) -> Result<tauri::Url, String> {
 async fn open_google_authorization(raw: &str) -> Result<(), String> {
     open_browser(authorized_google_url(raw)?.as_str()).await
 }
-async fn open_browser(url: &str) -> Result<(), String> {
+pub(crate) async fn open_browser(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let mut command = tokio::process::Command::new("/usr/bin/open");
     #[cfg(windows)]

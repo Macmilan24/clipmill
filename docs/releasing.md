@@ -39,9 +39,13 @@ decision R65 and [the threat model](threat-model.md).
 
     The workflow refuses a tag that does not name the app's version.
 
-5. When both build jobs pass, open the draft release, check the installers
+5. When the build jobs pass, open the draft release, check the installers
    (install each on a clean machine or account if you can), edit the notes and
-   publish.
+   publish. The **windows-smoke** workflow starts by itself once a release run
+   succeeds: it installs that run's Windows installer silently on a Windows
+   machine, sets its engine up from the network, runs its workers and a probe
+   job, and stops it (`tools/drills/packaged_smoke.py`). Wait for it before
+   publishing.
 
 A failed build can be re-run from the Actions page; a changed commit needs a
 new tag (delete the old tag and the draft first).

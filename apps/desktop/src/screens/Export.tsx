@@ -59,6 +59,7 @@ import {
 import {
   DEFAULT_FORMAT,
   type FormatChoice,
+  DEFAULT_PATTERN,
   HEIGHT_CHOICES,
   RATE_CHOICES,
   type RateChoice,
@@ -72,7 +73,6 @@ import {
 import '../export/export.css';
 
 /** What a user gets before they have an opinion; the daemon's default too. */
-const DEFAULT_PATTERN = '{index}-{clip}';
 
 /** The fastest of the hot captions, as the daemon put it. */
 function hottestRate(findings: readonly ExportFinding[]): number | null {

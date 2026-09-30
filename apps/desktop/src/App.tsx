@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -21,12 +22,21 @@ import {
   reconnectDaemon,
   subscribeDaemonState,
 } from './daemon/client.js';
+import { daemonApi } from './daemon/api.js';
 import { renderScreen } from './screens/registry.js';
+import { engineItems, runItems, useEngineWork } from './shell/activity.js';
 import { AppSidebar } from './shell/Sidebar.js';
+import { useUpdateNotice } from './shell/updates.js';
 import { TopBar } from './shell/TopBar.js';
 import { useAnalysisActivity } from './shell/useAnalysisActivity.js';
 import { ShortcutSheet, useShortcutSheet } from './shell/ShortcutSheet.js';
-import { CoachEnabled, OPEN_WELCOME_EVENT, shouldWelcome } from './onboarding/state.js';
+import {
+  CoachEnabled,
+  OPEN_TOUR_EVENT,
+  OPEN_WELCOME_EVENT,
+  shouldWelcome,
+} from './onboarding/state.js';
+import { StudioTour } from './onboarding/StudioTour.js';
 import { Welcome } from './onboarding/Welcome.js';
 import { recall, remember } from './shell/memory.js';
 import {
@@ -86,6 +96,17 @@ export function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const analysisActivity = useAnalysisActivity(state);
+  // The tray: analyses and exports from the tracker, and the engine's own work,
+  // read more often while the tray is open.
+  const [trayOpen, setTrayOpen] = useState(false);
+  const engineWork = useEngineWork(state.status === 'connected', trayOpen, daemonApi);
+  const activityItems = useMemo(
+    () => [
+      ...runItems(analysisActivity.runs, analysisActivity.projectNames),
+      ...engineItems(engineWork),
+    ],
+    [analysisActivity.runs, analysisActivity.projectNames, engineWork],
+  );
 
   // Restore both choices before the first React paint.
   useLayoutEffect(() => {
@@ -180,12 +201,25 @@ export function App(): JSX.Element {
 
   const { section, trail } = placementOf(route);
   const shortcuts = useShortcutSheet();
+  const update = useUpdateNotice(state.status === 'connected' ? state.daemonVersion : null);
   // The welcome, once for a new installation, and again when Settings asks.
   const [welcoming, setWelcoming] = useState(() => shouldWelcome());
   useEffect(() => {
     const again = () => setWelcoming(true);
     window.addEventListener(OPEN_WELCOME_EVENT, again);
     return () => window.removeEventListener(OPEN_WELCOME_EVENT, again);
+  }, []);
+  // The studio tour, when the welcome or Settings asks for it. It ends where
+  // it began, or on New Project when the person goes to start one.
+  const routeNow = useRef(route);
+  useEffect(() => {
+    routeNow.current = route;
+  }, [route]);
+  const [tourFrom, setTourFrom] = useState<Route | null>(null);
+  useEffect(() => {
+    const start = () => setTourFrom((current) => current ?? routeNow.current);
+    window.addEventListener(OPEN_TOUR_EVENT, start);
+    return () => window.removeEventListener(OPEN_TOUR_EVENT, start);
   }, []);
   // The two workspaces give the picture the height: the trail and engine
   // line fold away — the workspace's own heading names the clip and leads
@@ -203,6 +237,17 @@ export function App(): JSX.Element {
           onClose={() => setWelcoming(false)}
           onStart={() => navigate('new-project')}
         />
+        {tourFrom && (
+          <StudioTour
+            onNavigate={navigate}
+            onEnd={(outcome) => {
+              const from = tourFrom;
+              setTourFrom(null);
+              if (outcome === 'start') navigate('new-project');
+              else setRoute(from);
+            }}
+          />
+        )}
         <SidebarProvider
           // The sidebar becomes an icon rail in compact desktop windows.
           style={{ '--sidebar-width': 'var(--cm-shell-sidebar-width)' } as CSSProperties}
@@ -222,6 +267,19 @@ export function App(): JSX.Element {
                 onToggleTheme={toggleTheme}
                 state={state}
                 profile={profile}
+                update={update}
+                activity={{
+                  items: activityItems,
+                  open: trayOpen,
+                  onOpenChange: setTrayOpen,
+                  onOpen: (target) => {
+                    if (target.kind === 'analysis') {
+                      openAnalysis(target.projectId, target.jobId, 'library');
+                    } else {
+                      navigate(target.sectionId);
+                    }
+                  },
+                }}
               />
             )}
             <main

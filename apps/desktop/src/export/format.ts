@@ -141,3 +141,38 @@ export function rememberFolder(folder: string): void {
     // The next export asks again.
   }
 }
+
+/** Forget the folder, so the next export asks for one. */
+export function forgetFolder(): void {
+  try {
+    localStorage.removeItem(FOLDER_KEY);
+  } catch {
+    // Nothing was kept.
+  }
+}
+
+/** What an export names its files when nobody says otherwise. */
+export const DEFAULT_PATTERN = '{index}-{clip}';
+const PATTERN_KEY = 'clipmill.export.pattern';
+
+/** The name pattern a new export starts with, as set in Settings. */
+export function recallPattern(): string {
+  try {
+    return localStorage.getItem(PATTERN_KEY)?.trim() || DEFAULT_PATTERN;
+  } catch {
+    return DEFAULT_PATTERN;
+  }
+}
+
+/** Keep `pattern` for every export that follows; empty goes back to the default. */
+export function rememberPattern(pattern: string): void {
+  try {
+    if (pattern.trim() === '' || pattern.trim() === DEFAULT_PATTERN) {
+      localStorage.removeItem(PATTERN_KEY);
+    } else {
+      localStorage.setItem(PATTERN_KEY, pattern.trim());
+    }
+  } catch {
+    // Exports start from the default instead.
+  }
+}
