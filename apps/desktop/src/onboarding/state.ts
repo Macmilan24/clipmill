@@ -13,7 +13,7 @@ export type CoachPlace = 'inspector' | 'editor';
 
 const coachKey = (place: CoachPlace) => `clipmill.coach.${place}.v1`;
 
-export type WelcomeOutcome = 'started' | 'closed';
+export type WelcomeOutcome = 'started' | 'toured' | 'closed';
 
 function store(): KeyValueStore | null {
   try {
@@ -78,6 +78,13 @@ export const OPEN_WELCOME_EVENT = 'clipmill:welcome';
 
 export function openWelcome(): void {
   window.dispatchEvent(new Event(OPEN_WELCOME_EVENT));
+}
+
+/** Asks the app to run the studio tour, from the welcome or Settings. */
+export const OPEN_TOUR_EVENT = 'clipmill:tour';
+
+export function openTour(): void {
+  window.dispatchEvent(new Event(OPEN_TOUR_EVENT));
 }
 
 /**

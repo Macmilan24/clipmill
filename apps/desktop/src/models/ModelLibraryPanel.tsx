@@ -68,7 +68,7 @@ export function ModelLibraryPanel({ api }: { readonly api: ShellApi }): JSX.Elem
 
   return (
     <section aria-labelledby="models-heading" className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div data-tour="models" className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="models-heading" className="flex items-center gap-2 text-sm font-semibold">
             <Boxes className="size-4 text-[var(--cm-text-secondary)]" />
@@ -195,7 +195,7 @@ function SetupCard({
     return model !== undefined && isDownloading(model);
   });
   return (
-    <Card className="model-setup gap-0 py-0" data-testid="model-setup">
+    <Card className="model-setup gap-0 py-0" data-testid="model-setup" data-tour="models-setup">
       <CardContent className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold">Download what analysis needs</h3>

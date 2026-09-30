@@ -5,7 +5,7 @@
  * Each is a choice New Project, the Editor or the Export screen also makes in
  * place; this is where it is made once, for every clip that follows.
  */
-import { Bookmark, FolderOpen, Keyboard, Sparkles, Trash2 } from 'lucide-react';
+import { Bookmark, Compass, FolderOpen, Keyboard, Sparkles, Trash2 } from 'lucide-react';
 import { type JSX, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -38,7 +38,7 @@ import {
   rememberPattern,
 } from '../export/format.js';
 import { CAPTION_LOOKS, setStartingLook, startingLook } from '../results/captionLook.js';
-import { forgetOnboarding, openWelcome } from '../onboarding/state.js';
+import { forgetOnboarding, openTour, openWelcome } from '../onboarding/state.js';
 import { openShortcuts } from '../shell/ShortcutSheet.js';
 import { type TimeFormat, setTimeFormat, useTimeFormat } from '../shell/timeFormat.js';
 
@@ -265,20 +265,27 @@ export function EditingPreferences(): JSX.Element {
         <div>
           <h3 className="text-sm font-medium">Getting started</h3>
           <p className="text-xs text-[var(--cm-text-secondary)]">
-            The welcome, and the tips the Inspector and the Editor show the first time.
+            A tour of where everything is; the welcome, and the tips the Inspector and the Editor
+            show the first time.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            forgetOnboarding();
-            openWelcome();
-          }}
-        >
-          <Sparkles className="size-4" aria-hidden="true" />
-          Show them again
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={openTour}>
+            <Compass className="size-4" aria-hidden="true" />
+            Take the tour
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              forgetOnboarding();
+              openWelcome();
+            }}
+          >
+            <Sparkles className="size-4" aria-hidden="true" />
+            Show them again
+          </Button>
+        </div>
       </div>
     </div>
   );
