@@ -39,6 +39,10 @@ language)`) as words. Captions already hid them; now the transcript itself
   leaves them out, so discovery and the editorial model never read them.
   Each recording's transcript is assembled once more; nothing is
   transcribed again.
+- **The same clip exports to the same file.** On processors with AVX-512,
+  exporting an unchanged clip twice could produce two slightly different
+  files, because the H.264 encoder's frame threads do not repeat themselves
+  there. The encoder now splits each frame between its threads instead.
 - **One recording in two projects.** Cancelling one project's analysis could
   fail the other's with "artifact key is already in flight": the cancelled
   step kept its unfinished output reserved, and the other gave up after three
