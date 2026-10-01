@@ -11,12 +11,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@bufbuild/protobuf": "^2.13.0",
+    "@bufbuild/protobuf": "^2.15.0",
     "ajv": "^8.17.0"
   },
   "devDependencies": {
-    "@types/node": "^22.20.1",
+    "@types/node": "^22.20.4",
     "json-schema-to-typescript": "^15.0.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.11"
   }
 }
