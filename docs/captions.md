@@ -1,4 +1,4 @@
-# Captions (W21)
+# Captions
 
 Captions are the most-read typography this product ships, and they are read
 over a moving image by people who often cannot hear it. That is the whole

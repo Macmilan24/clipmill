@@ -1,4 +1,4 @@
-# Reframing (W20)
+# Reframing
 
 Turning a wide recording into a vertical clip means deciding two things, and
 they fail so differently that they are kept in separate places.

@@ -1,4 +1,4 @@
-# Artifact content-addressed store (W3)
+# Artifact content-addressed store
 
 `clipmill-artifacts` is the daemon-owned immutable evidence store. Filesystem
 objects hold reproducible outputs; SQLite holds mutable project roots. There is

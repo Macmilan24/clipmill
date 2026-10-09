@@ -1,4 +1,4 @@
-# Preview parity (W24)
+# Preview parity
 
 The editor's player is a claim: _this is what the export will look like_. A
 claim like that is worth nothing unless something checks it, and checking it is
