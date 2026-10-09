@@ -1,4 +1,4 @@
-# Results, the Inspector, and the edit director (W23)
+# Results, the Inspector, and the edit director
 
 Three things that are really one: a board of what the ranking believes in, one
 clip opened, and the step that turns a decision into an edit.
