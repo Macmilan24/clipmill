@@ -9,8 +9,6 @@ authors.workspace = true
 
 [dependencies]
 clipmill-contracts.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true
 
 [lints]
