@@ -53,7 +53,7 @@ memfd = "0.6.5"
 mmap-io = { version = "1.0.0", default-features = false }
 nix = { version = "0.31.3", features = ["fs", "mman", "signal", "socket", "uio"] }
 prost = "0.14"
-rusqlite = { version = "0.40.1", features = ["backup", "bundled"] }
+rusqlite = { version = "0.41.1", features = ["backup", "bundled"] }
 serde = { version = "1", features = ["derive"] }
 # `float_roundtrip` because the default parser is not exact: it reads
 # 0.9299999999999999 as the double nearest 0.93, so a float published in an

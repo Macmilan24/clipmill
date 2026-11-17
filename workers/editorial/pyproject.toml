@@ -8,7 +8,7 @@ dependencies = [
   "clipmill-worker-sdk",
   "mlx-vlm==0.7.1 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
   # Frames for llama.cpp on Windows and Linux; MLX brings its own.
-  "pillow>=12,<13",
+  "pillow>=13,<14",
   "torchvision>=0.21,<1 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
 ]
 [project.scripts]
