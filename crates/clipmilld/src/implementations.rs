@@ -178,6 +178,56 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         opt_in: false,
         accuracy: 1,
     },
+    // Qwen3.5 4B on Apple silicon, when a person picks it: the Mac that the
+    // 9B would crowd, 8 GB ones above all, still gets local editorial work.
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/propose/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "editorial-propose",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/review/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "editorial-review",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/look/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "editorial-look",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/metadata/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "youtube-metadata",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
     // The same editorial stages on Windows and Linux, through the pinned
     // llama.cpp server: Qwen3.5 9B by default, 4B when a person picks it.
     Implementation {
@@ -863,6 +913,28 @@ mod tests {
                 assert_eq!(implementation.backend, "llama.cpp");
                 assert_eq!(implementation.accelerator_class, "llama.cpp");
                 assert!(crate::jobs::accelerator_bit(implementation.accelerator_class).is_some());
+            }
+            assert!(!nine.opt_in && four.opt_in);
+            assert_ne!(nine.name, four.name);
+        }
+    }
+
+    /// A Mac offers the same choice: the 9B unless a person picks the 4B,
+    /// both on the editorial worker's MLX runtime and the Metal accelerator.
+    #[test]
+    fn every_editorial_stage_offers_the_4b_on_apple_silicon() {
+        for stage in [
+            "editorial-propose",
+            "editorial-review",
+            "editorial-look",
+            "youtube-metadata",
+        ] {
+            let nine = for_stage_and_model(stage, "qwen3-5-editorial-mlx").expect(stage);
+            let four = for_stage_and_model(stage, "qwen3-5-4b-editorial-mlx").expect(stage);
+            for implementation in [nine, four] {
+                assert_eq!(implementation.worker, "editorial");
+                assert_eq!(implementation.backend, "mlx");
+                assert_eq!(implementation.accelerator_class, "metal");
             }
             assert!(!nine.opt_in && four.opt_in);
             assert_ne!(nine.name, four.name);
