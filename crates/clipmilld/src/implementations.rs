@@ -56,6 +56,18 @@ pub(crate) struct Implementation {
 /// replace.
 const IMPLEMENTATIONS: &[Implementation] = &[
     Implementation {
+        name: "clipmill-worker-audio-events@0.1.0",
+        capability: "audio-events",
+        stage: "audio-events",
+        model: "ced-mini-audio-events",
+        worker: "audio-events",
+        backend: "onnx-cpu",
+        accelerator_class: "",
+        portable: true,
+        opt_in: false,
+        accuracy: 1,
+    },
+    Implementation {
         name: "clipmill-worker-vad@0.1.0",
         capability: "vad",
         stage: "speech-vad",
@@ -518,6 +530,7 @@ pub(crate) fn foreign_to(family: &str, stages: &[String]) -> Vec<&'static str> {
 pub(crate) fn worker_title(family: &str) -> &'static str {
     match family {
         "speech-vad" => "speech-detection worker",
+        "audio-events" => "audio events worker",
         "speech-asr" => "whisper.cpp worker",
         "speech-align" => "word-timing worker",
         "speech-mlx" => "MLX speech worker",
@@ -722,6 +735,7 @@ mod tests {
             candidates_for_capability_names(),
             [
                 "asr",
+                "audio-events",
                 "detect-faces",
                 "forced-align",
                 "speaker-embed",
@@ -733,6 +747,7 @@ mod tests {
         assert!(
             candidates_for_capability_names().into_iter().eq([
                 "asr",
+                "audio-events",
                 "detect-faces",
                 "forced-align",
                 "speaker-embed",

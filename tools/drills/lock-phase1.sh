@@ -18,8 +18,8 @@
 #
 #   1. The egress canary must fail. If it succeeds, the denial is not active
 #      and everything after it is theatre, so this aborts rather than reports.
-#   2. A recording with real speech goes in. Analyze plans nineteen stages,
-#      five of them leased to worker processes that load pinned weights; a clip
+#   2. A recording with real speech goes in. Analyze plans twenty stages,
+#      six of them leased to worker processes that load pinned weights; a clip
 #      is directed from what they published; the render compiler writes it out.
 #   3. The canary is checked again at the end, because a stage that opened a
 #      socket and gave up is still a stage that tried.
@@ -159,7 +159,8 @@ echo "==> launching the worker fleet"
 identity_dir="$data_dir/state/worker-dev-identity"
 for entry in vad:clipmill-worker-vad asr-whispercpp:clipmill-worker-asr \
              align:clipmill-worker-align speakers:clipmill-worker-speakers \
-             shots:clipmill-worker-shots faces:clipmill-worker-faces; do
+             shots:clipmill-worker-shots faces:clipmill-worker-faces \
+             audio-events:clipmill-worker-audio-events; do
   family="${entry%%:*}"
   command="${entry##*:}"
   (

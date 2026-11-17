@@ -108,6 +108,12 @@ pub(crate) const JOBS: &[Job] = &[
         stages: &["speech-speakers"],
     },
     Job {
+        capability: "audio-events",
+        title: "Audio events",
+        summary: "Hears laughter, applause, music and shouting, so clips can find where the room reacted.",
+        stages: &["audio-events"],
+    },
+    Job {
         capability: "detect-faces",
         title: "Face tracking",
         summary: "Finds faces, so vertical crops follow the speaker.",

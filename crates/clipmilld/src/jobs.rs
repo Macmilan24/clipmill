@@ -11,10 +11,10 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::{
     ipc::v1::{
-        self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, CaptionsStagePayloadV1,
-        ClipDurationV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1, DetectShotsPayloadV1,
-        DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1,
-        EditorialStagePayloadV1, FacesStagePayloadV1, IndexStagePayloadV1,
+        self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, AudioEventsStagePayloadV1,
+        CaptionsStagePayloadV1, ClipDurationV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1,
+        DetectShotsPayloadV1, DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1,
+        DiscoverStagePayloadV1, EditorialStagePayloadV1, FacesStagePayloadV1, IndexStagePayloadV1,
         IndexTranscriptPayloadV1, IngestSourcePayloadV1, JobState, ProbeSourcePayloadV1,
         RankCandidatesPayloadV1, RankStagePayloadV1, ShotsStagePayloadV1, SkippedStageV1,
         SpeechAlignmentV1, SpeechDetectionV1, SpeechRecognitionV1, SpeechStagePayloadV1,
@@ -49,6 +49,9 @@ use crate::{
 /// Key version every speech stage payload carries, so a worker can refuse a
 /// payload the daemon never meant for it.
 pub(crate) const SPEECH_STAGE_KEY_VERSION: &str = "clipmill.speech-stage.v1";
+
+/// Key version the audio events stage payload carries.
+pub(crate) const AUDIO_EVENTS_STAGE_KEY_VERSION: &str = "clipmill.audio-events-stage.v1";
 
 /// Key version the shot-detection stage payload carries, for the same reason.
 pub(crate) const SHOTS_STAGE_KEY_VERSION: &str = "clipmill.shots-stage.v1";
@@ -605,6 +608,38 @@ fn faces_task(task_id: String, payload: &FacesStagePayloadV1) -> TaskSpec {
 /// Its payload is the speech chain's, naming its own stage and nothing else:
 /// how voices are told apart is the worker's, recorded in what it publishes,
 /// so the key moves with the implementation rather than with a knob here.
+/// What can be heard besides words: laughter, applause, music, shouting.
+fn audio_events_task(
+    task_id: String,
+    source_fingerprint: &str,
+    audio_task: &str,
+    models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
+) -> TaskSpec {
+    let implementation = speech_implementation("audio-events", bindings);
+    TaskSpec {
+        task_id,
+        ordinal: 0,
+        kind: "audio-events".to_owned(),
+        input_kinds: vec!["media.audio_16k.v1".to_owned()],
+        output_kind: "audio.events.v1".to_owned(),
+        payload: AudioEventsStagePayloadV1 {
+            key_version: AUDIO_EVENTS_STAGE_KEY_VERSION.to_owned(),
+            stage: "audio-events".to_owned(),
+            source_fingerprint: source_fingerprint.to_owned(),
+        }
+        .encode_to_vec(),
+        dependencies: vec![audio_task.to_owned()],
+        input_artifact_ids: Vec::new(),
+        // One session thread, fixed by the worker for the same reason the
+        // voice detector's is: an event's edge must not depend on the load.
+        resources: speech_resources(implementation, models, 1),
+        implementation: implementation.name.to_owned(),
+        max_attempts: 3,
+        is_final: false,
+    }
+}
+
 fn speakers_task(
     task_id: String,
     source_fingerprint: &str,
@@ -1566,6 +1601,7 @@ impl JobPlan {
 
         // The speech chain, reading the rendition this plan is about to derive.
         let mut speakers_id: Option<String> = None;
+        let mut audio_events_id: Option<String> = None;
         let transcript = match &handles.audio_16k {
             None => {
                 for kind in [
@@ -1574,6 +1610,7 @@ impl JobPlan {
                     "speech.alignment.v1",
                     "speech.transcript.v1",
                     "speech.speakers.v1",
+                    "audio.events.v1",
                 ] {
                     skip(kind, "no_audio");
                 }
@@ -1613,6 +1650,17 @@ impl JobPlan {
                     speakers_id = Some(speakers.task_id.clone());
                     tasks.push(speakers);
                 }
+                // The reactions a transcript cannot show, from the same rendition.
+                let events = audio_events_task(
+                    TaskId::new().to_string(),
+                    source.source_fingerprint,
+                    audio.task_id.as_str(),
+                    models,
+                    bindings,
+                );
+                stages.push(("audio.events.v1".to_owned(), events.task_id.clone()));
+                audio_events_id = Some(events.task_id.clone());
+                tasks.push(events);
                 Some(chain.transcript_task_id)
             }
         };
@@ -1727,6 +1775,10 @@ impl JobPlan {
                 if let Some(shots) = &shots {
                     timeline_dependencies.push(shots.clone());
                     timeline_kinds.push("evidence.shots.v1".to_owned());
+                }
+                if let Some(events) = &audio_events_id {
+                    timeline_dependencies.push(events.clone());
+                    timeline_kinds.push("audio.events.v1".to_owned());
                 }
                 tasks.push(builtin_task(
                     timeline_id.clone(),
@@ -4421,7 +4473,7 @@ mod analyze_tests {
     fn the_fan_in_depends_on_every_stage_that_published_something() {
         let plan = plan(true, true);
         let manifest = task(&plan, analysis::KIND_MANIFEST);
-        assert_eq!(manifest.dependencies.len(), 14);
+        assert_eq!(manifest.dependencies.len(), 15);
         assert_eq!(manifest.input_kinds.len(), manifest.dependencies.len());
         // Nothing declared: every input is a task in this plan.
         assert!(manifest.input_artifact_ids.is_empty());
@@ -4562,6 +4614,7 @@ mod analyze_tests {
                 "speech.alignment.v1",
                 "speech.transcript.v1",
                 "speech.speakers.v1",
+                "audio.events.v1",
                 "index.transcript.v1",
                 "timeline.index.v1",
                 "editorial.windows.v1",

@@ -41,6 +41,7 @@ export interface Stage {
     | "speech.alignment.v1"
     | "speech.transcript.v1"
     | "speech.speakers.v1"
+    | "audio.events.v1"
     | "evidence.shots.v1"
     | "vision.face_track.v1"
     | "index.transcript.v1"

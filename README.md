@@ -62,7 +62,7 @@ From the repository root:
 just setup
 
 # Speech recognition, alignment, voice activity, and face detection
-./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en yunet-face
+./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en yunet-face ced-mini-audio-events
 
 # Local editorial model (about 6.5 GB): MLX on Apple silicon, and GGUF on
 # Linux, where the worker runs it in the llama.cpp server CLIPMILL_LLAMA_SERVER

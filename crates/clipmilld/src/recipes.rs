@@ -283,6 +283,15 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
+    Recipe {
+        kind: "audio-events",
+        output_kind: "audio.events.v1",
+        semantic_version: "clipmill.audio.events.v1",
+        executor: Executor::Worker,
+        capability: Some("audio-events"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
     // Editorial windows. Builtin and modelless: the
     // cut an editorial model reads, arithmetic over the index and keyed on
     // the budget, so the model's own stages read a published artifact.

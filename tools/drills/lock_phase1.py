@@ -35,6 +35,7 @@ LEASED_STAGES = (
     "speech.asr.v1",
     "speech.alignment.v1",
     "speech.speakers.v1",
+    "audio.events.v1",
     "evidence.shots.v1",
 )
 TRANSCRIPT_KIND = "speech.transcript.v1"
@@ -278,7 +279,7 @@ def main() -> int:
     source_id = registered.source.source_id
     print(f"    registered {options.media.name} as {source_id}")
 
-    print("==> analyze: nineteen stages, five of them leased to worker processes")
+    print("==> analyze: twenty stages, six of them leased to worker processes")
     started = time.monotonic()
     job = wait_for_job(
         client,

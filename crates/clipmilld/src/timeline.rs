@@ -10,11 +10,11 @@ use std::collections::BTreeMap;
 use clipmill_artifacts::{ArtifactRecipe, NetworkPolicy, Producer, RecipeSpec, Timebase};
 use clipmill_contracts::proto::ipc::v1::IndexStagePayloadV1;
 use clipmill_contracts::schemas::{
-    evidence_shots::EvidenceShots, index_transcript::IndexTranscript,
+    audio_events::AudioEvents, evidence_shots::EvidenceShots, index_transcript::IndexTranscript,
     speech_speakers::SpeechSpeakers, speech_transcript::SpeechTranscript,
 };
 use clipmill_core::{ArtifactId, Sha256Digest};
-use clipmill_timeline::{Recording, Sentence, Shot, Topic, Turn, Utterance, Word};
+use clipmill_timeline::{Event, Recording, Sentence, Shot, Topic, Turn, Utterance, Word};
 use prost::Message;
 use serde_json::{Map, json};
 
@@ -59,6 +59,7 @@ pub(crate) async fn execute_timeline_task(
             Wanted::required("index.transcript.v1"),
             Wanted::optional("speech.speakers.v1"),
             Wanted::optional("evidence.shots.v1"),
+            Wanted::optional("audio.events.v1"),
         ],
     )
     .await?;
@@ -67,12 +68,17 @@ pub(crate) async fn execute_timeline_task(
     let speakers: Option<SpeechSpeakers> =
         resolved.read_optional("speech.speakers.v1", "speakers.json")?;
     let shots: Option<EvidenceShots> = resolved.read_optional("evidence.shots.v1", "shots.json")?;
+    let heard: Option<AudioEvents> =
+        resolved.read_optional("audio.events.v1", "audio_events.json")?;
     if transcript.source_fingerprint.as_str() != index.source_fingerprint.as_str()
         || speakers.as_ref().is_some_and(|speakers| {
             speakers.source_fingerprint.as_str() != index.source_fingerprint.as_str()
         })
         || shots.as_ref().is_some_and(|shots| {
             shots.source_fingerprint.as_str() != index.source_fingerprint.as_str()
+        })
+        || heard.as_ref().is_some_and(|heard| {
+            heard.source_fingerprint.as_str() != index.source_fingerprint.as_str()
         })
     {
         return Err(TaskExecutionError::deterministic(
@@ -81,7 +87,8 @@ pub(crate) async fn execute_timeline_task(
     }
     progress.set("stages", 1, 3);
 
-    let recording = recording(&transcript, &index, speakers.as_ref(), shots.as_ref());
+    let mut recording = recording(&transcript, &index, speakers.as_ref(), shots.as_ref());
+    recording.events = heard.as_ref().map_or_else(Vec::new, audio_events);
     let fingerprint: Sha256Digest = index
         .source_fingerprint
         .strip_prefix("sha256:")
@@ -249,4 +256,21 @@ fn recording(
         }),
         events: Vec::new(),
     }
+}
+
+/// Laughter, applause, music and the rest, as index events with their peak
+/// score, so the script can show them and a search can find them.
+fn audio_events(heard: &AudioEvents) -> Vec<Event> {
+    heard
+        .events
+        .iter()
+        .map(|event| Event {
+            kind: event.kind.to_string(),
+            start_ticks: event.start_ticks,
+            end_ticks: event.end_ticks.get(),
+            value: Some(event.peak),
+            label: None,
+            producer: heard.producer.implementation.to_string(),
+        })
+        .collect()
 }

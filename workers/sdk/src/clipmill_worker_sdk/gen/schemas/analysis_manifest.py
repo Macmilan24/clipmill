@@ -30,6 +30,7 @@ class Kind(StrEnum):
     speech_alignment_v1 = 'speech.alignment.v1'
     speech_transcript_v1 = 'speech.transcript.v1'
     speech_speakers_v1 = 'speech.speakers.v1'
+    audio_events_v1 = 'audio.events.v1'
     evidence_shots_v1 = 'evidence.shots.v1'
     vision_face_track_v1 = 'vision.face_track.v1'
     index_transcript_v1 = 'index.transcript.v1'

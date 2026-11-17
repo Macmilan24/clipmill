@@ -63,6 +63,11 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'Who speaks when, so the transcript can say',
   },
   {
+    kind: 'audio.events.v1',
+    label: 'Hear the room',
+    detail: 'Laughter, applause, music and shouting, the reactions words cannot show',
+  },
+  {
     kind: 'evidence.shots.v1',
     label: 'Detect shots',
     detail: 'Camera cuts, so framing stays stable within each shot',
@@ -80,7 +85,7 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
   {
     kind: 'timeline.index.v1',
     label: 'Build the timeline',
-    detail: 'Words, voices, pauses and shots in one searchable record',
+    detail: 'Words, voices, pauses, shots and reactions in one searchable record',
   },
   {
     kind: 'editorial.windows.v1',
