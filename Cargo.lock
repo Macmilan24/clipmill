@@ -612,6 +612,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-timeline"
+version = "0.4.0"
+dependencies = [
+ "rusqlite",
+ "tempfile",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "clipmill-youtube"
 version = "0.4.0"
 dependencies = [
