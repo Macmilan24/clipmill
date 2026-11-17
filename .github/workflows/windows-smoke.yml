@@ -40,7 +40,7 @@ env:
   # project's version (.python-version). Left to choose, uv took the image's
   # newest Python, for which pyarrow publishes no wheel, and every job that
   # syncs a worker tried to compile it.
-  UV_PYTHON: "3.12"
+  UV_PYTHON: '3.12'
 
 jobs:
   smoke:
