@@ -1,0 +1,151 @@
+{
+  "chapters": [
+    {
+      "chapter_id": "c1",
+      "end_ticks": 312.5,
+      "first_unit": "s0",
+      "last_unit": "s41",
+      "start_ticks": 0,
+      "summary": "The guest describes the deal that collapsed and what it cost them.",
+      "title": "Losing the company"
+    },
+    {
+      "chapter_id": "c2",
+      "end_ticks": 67050000,
+      "first_unit": "s42",
+      "last_unit": "s96",
+      "start_ticks": 28080000,
+      "summary": "How the second company began, and what they did differently.",
+      "title": "Starting again"
+    }
+  ],
+  "dropped": [
+    {
+      "code": "unknown_unit",
+      "item": "window 2",
+      "message": "An event cited s400, which is not in the window it was read from."
+    }
+  ],
+  "entities": [
+    {
+      "aliases": [
+        "North Wind"
+      ],
+      "entity_id": "e1",
+      "events": [
+        "m1"
+      ],
+      "kind": "organization",
+      "name": "Northwind"
+    },
+    {
+      "aliases": [
+        "Dana"
+      ],
+      "entity_id": "e2",
+      "events": [
+        "m4"
+      ],
+      "kind": "person",
+      "name": "Dana Ruiz"
+    }
+  ],
+  "events": [
+    {
+      "chapter_id": "c1",
+      "end_ticks": 2250000,
+      "entities": [
+        "e1"
+      ],
+      "event_id": "m1",
+      "first_unit": "s3",
+      "kind": "question",
+      "last_unit": "s3",
+      "mood": "serious",
+      "speakers": [
+        "A"
+      ],
+      "start_ticks": 1890000,
+      "title": "What happened when the deal fell through?"
+    },
+    {
+      "chapter_id": "c1",
+      "end_ticks": 5490000,
+      "entities": [],
+      "event_id": "m2",
+      "first_unit": "s4",
+      "kind": "story",
+      "last_unit": "s9",
+      "mood": "funny",
+      "speakers": [
+        "B"
+      ],
+      "start_ticks": 2250000,
+      "title": "Losing everything, even the office plant"
+    },
+    {
+      "chapter_id": "c1",
+      "end_ticks": 7560000,
+      "entities": [],
+      "event_id": "m3",
+      "first_unit": "s12",
+      "kind": "promise",
+      "last_unit": "s12",
+      "mood": "neutral",
+      "speakers": [
+        "B"
+      ],
+      "start_ticks": 7200000,
+      "title": "I'll tell you what saved us later"
+    },
+    {
+      "chapter_id": "c2",
+      "end_ticks": 54090000,
+      "entities": [
+        "e2"
+      ],
+      "event_id": "m4",
+      "first_unit": "s70",
+      "kind": "reveal",
+      "last_unit": "s75",
+      "mood": "surprising",
+      "speakers": [
+        "B"
+      ],
+      "start_ticks": 50400000,
+      "title": "A former customer lent them the money"
+    }
+  ],
+  "links": [
+    {
+      "from_event": "m1",
+      "kind": "question_answer",
+      "link_id": "l1",
+      "note": "The story answers the host's question.",
+      "to_event": "m2"
+    },
+    {
+      "from_event": "m3",
+      "kind": "promise_delivery",
+      "link_id": "l2",
+      "note": "The guest promises to say what saved them and reveals it eight minutes later.",
+      "to_event": "m4"
+    }
+  ],
+  "producer": {
+    "implementation": "clipmill-worker-editorial@0.1.0+mlx",
+    "model": "qwen3-5-4b-editorial-mlx",
+    "prompt_versions": [
+      "memory.read.v1/sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "memory.link.v1/sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    ],
+    "stage": "mind-memory"
+  },
+  "schema_version": "clipmill.mind.memory.v1",
+  "script": {
+    "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "level": "compact",
+    "windows": 3
+  },
+  "source_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
