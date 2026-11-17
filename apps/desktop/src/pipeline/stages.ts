@@ -78,6 +78,11 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'Structure over the words, for search and selection',
   },
   {
+    kind: 'timeline.index.v1',
+    label: 'Build the timeline',
+    detail: 'Words, voices, pauses and shots in one searchable record',
+  },
+  {
     kind: 'editorial.windows.v1',
     label: 'Cut windows',
     detail: 'The transcript in overlapping pieces an editorial model reads',
