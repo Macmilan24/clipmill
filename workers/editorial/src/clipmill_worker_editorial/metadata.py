@@ -134,12 +134,12 @@ def execute_metadata(context) -> tuple[str, ...]:
         transcript = transcript_from_ir(source.read(MAX_IR_BYTES + 1))
     context.cancellation.raise_if_cancelled()
     model = require_model(context.lease, "editorial")
-    from .runtime import implementation_suffix, open_runtime
+    from .runtime import acquire_runtime, implementation_suffix
 
     runtime = None
     try:
         context.report_progress("metadata", 0, 1)
-        runtime = open_runtime(model, context.cancellation)
+        runtime = acquire_runtime(model, context.cancellation)
         traces = []
         answer, failure = call(
             runtime,

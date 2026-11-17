@@ -88,9 +88,9 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
                 context.lease.job_id,
                 context.cancellation,
             )
-        from .runtime import open_runtime
+        from .runtime import acquire_runtime
 
-        return open_runtime(model, context.cancellation)
+        return acquire_runtime(model, context.cancellation)
 
     route = "-cloud" if cloud else implementation_suffix(model)
     producer = {
@@ -218,7 +218,7 @@ def fail_with_trace(context, answers, trace, *, allow_all_failed=False):
 
 
 def execute_look(context, inputs, model, payload):
-    from .runtime import open_runtime
+    from .runtime import acquire_runtime
 
     def read(kind, name):
         entry = inputs.require(kind)
@@ -254,7 +254,7 @@ def execute_look(context, inputs, model, payload):
     }
     traces = []
     checks = look(
-        lambda: open_runtime(model, context.cancellation),
+        lambda: acquire_runtime(model, context.cancellation),
         candidates,
         judgments,
         frames,
@@ -370,5 +370,10 @@ def run_worker(executor, *, capabilities, description, backend, max_memory_bytes
             capabilities=capabilities,
         )
     )
-    client.run(executor, stop)
+    try:
+        client.run(executor, stop)
+    finally:
+        from .runtime import RESIDENT
+
+        RESIDENT.close()
     return 0
