@@ -28,6 +28,7 @@ export type { EditorialTrace } from './gen/schemas/editorial-trace.js';
 export type { EditorialWindows } from './gen/schemas/editorial-windows.js';
 export type { AudioEvents } from './gen/schemas/audio-events.js';
 export type { IndexTranscript } from './gen/schemas/index-transcript.js';
+export type { MindBrief } from './gen/schemas/mind-brief.js';
 export type { MindClipPlan } from './gen/schemas/mind-clip-plan.js';
 export type { MindMemory } from './gen/schemas/mind-memory.js';
 export type { MindUnitScores } from './gen/schemas/mind-unit-scores.js';

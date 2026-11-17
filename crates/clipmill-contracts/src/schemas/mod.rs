@@ -73,6 +73,10 @@ pub mod index_transcript;
 pub mod media_audio;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_brief.rs"]
+pub mod mind_brief;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/mind_clip_plan.rs"]
 pub mod mind_clip_plan;
 

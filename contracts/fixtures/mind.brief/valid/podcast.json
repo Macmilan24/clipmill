@@ -1,0 +1,60 @@
+{
+  "aspect": "vertical",
+  "content": {
+    "avoid": [
+      "sponsor reads"
+    ],
+    "mood": [
+      "funny",
+      "informative"
+    ],
+    "topics": [
+      "pricing"
+    ]
+  },
+  "count": {
+    "all_worthwhile": true,
+    "target": 10
+  },
+  "forms": [
+    "straight",
+    "tightened",
+    "stitch",
+    "cold_open",
+    "theme_montage"
+  ],
+  "generation": {
+    "images": false,
+    "video": false,
+    "voice": false
+  },
+  "genre": "podcast",
+  "goal": "highlights",
+  "inferred": [
+    "goal",
+    "platforms",
+    "aspect",
+    "length",
+    "production",
+    "generation"
+  ],
+  "language": "en",
+  "length": {
+    "max_ticks": 8100000,
+    "min_ticks": 1800000,
+    "target_ticks": 4050000
+  },
+  "platforms": [
+    "youtube_shorts",
+    "tiktok",
+    "instagram_reels"
+  ],
+  "production": {
+    "broll": "none",
+    "effects": "light",
+    "hook_style": "punch_in",
+    "music": "none"
+  },
+  "prompt": "The funniest moments about pricing",
+  "schema_version": "clipmill.mind.brief.v1"
+}

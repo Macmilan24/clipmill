@@ -10,6 +10,7 @@ authors.workspace = true
 [dependencies]
 clipmill-contracts.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

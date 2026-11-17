@@ -111,3 +111,11 @@ fn unit_scores_mark_every_sentence_and_refuse_unknown_marks() {
         refused::<MindUnitScores>(rel);
     }
 }
+
+#[test]
+fn a_brief_round_trips() {
+    use clipmill_contracts::schemas::mind_brief::{MindBrief, MindBriefGenre};
+    let brief: MindBrief = roundtrip("contracts/fixtures/mind.brief/valid/podcast.json");
+    assert_eq!(brief.genre, MindBriefGenre::Podcast);
+    assert_eq!(brief.forms.len(), 5);
+}
