@@ -239,3 +239,28 @@ fn an_outline_without_topics_groups_by_three_minutes() {
     assert_eq!(sections, 20);
     assert!(script.text.contains("## [0:03:00-0:06:00] s"));
 }
+
+#[test]
+fn windows_cover_every_sentence_once_within_budget() {
+    let source = podcast_hour();
+    let windows = windows(&source, Level::Compact, 3_000);
+    assert!(windows.len() >= 7, "{}", windows.len());
+    let cited: Vec<u64> = windows.iter().flat_map(|w| w.units.clone()).collect();
+    let all: Vec<u64> = source.sentences.iter().map(|s| s.index).collect();
+    assert_eq!(cited, all);
+    for window in &windows {
+        assert!(window.script.tokens <= 3_000, "{}", window.script.tokens);
+        // A window starts where a voice starts, wherever it could.
+        let first = window.units[0];
+        if first > 0 {
+            let before = &source.sentences[usize::try_from(first - 1).unwrap()];
+            let at = &source.sentences[usize::try_from(first).unwrap()];
+            assert_ne!(
+                before.speaker, at.speaker,
+                "window at s{first} splits a turn"
+            );
+        }
+    }
+    assert_eq!(windows[0].range.0, 0);
+    assert_eq!(windows.last().unwrap().range.1, source.duration_ticks);
+}

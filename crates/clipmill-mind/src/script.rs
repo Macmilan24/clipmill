@@ -146,6 +146,77 @@ pub fn fit(source: &Source, budget: u64, range: Option<(u64, u64)>) -> Option<Sc
         .find(|script| script.tokens <= budget)
 }
 
+/// A stretch of the script read in one call, and the sentences it may cite.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Window {
+    /// Ticks from the window's first sentence to the next window's first.
+    pub range: (u64, u64),
+    /// The sentences this window owns. Every sentence belongs to exactly one
+    /// window, so nothing the model reads twice can be cited twice.
+    pub units: Vec<u64>,
+    pub script: Script,
+}
+
+/// Allowance per sentence on top of its words: the unit id, the time, the
+/// voice, and its share of pauses, cues and topic lines.
+const LINE_OVERHEAD_TOKENS: u64 = 12;
+/// Allowance for a window's two header lines.
+const HEADER_TOKENS: u64 = 40;
+
+/// The script cut into windows of about `budget` tokens each, for a model
+/// that cannot or should not read the whole recording at once.
+///
+/// A window ends where a voice changes when there is such a place in its
+/// second half, so a question and its answer are rarely split; a single
+/// sentence longer than the budget is a window of its own.
+pub fn windows(source: &Source, level: Level, budget: u64) -> Vec<Window> {
+    let room = budget.saturating_sub(HEADER_TOKENS).max(1);
+    let cost = |sentence: &Sentence| estimate_tokens(&sentence.text) + LINE_OVERHEAD_TOKENS;
+    let mut groups: Vec<Vec<&Sentence>> = Vec::new();
+    let mut current: Vec<&Sentence> = Vec::new();
+    let mut spent = 0;
+    for sentence in &source.sentences {
+        if !current.is_empty() && spent + cost(sentence) > room {
+            let cut = (current.len().div_ceil(2).max(1)..current.len())
+                .rev()
+                .find(|&k| current[k].speaker != current[k - 1].speaker)
+                .unwrap_or(current.len());
+            let tail = current.split_off(cut);
+            groups.push(current);
+            spent = tail.iter().map(|s| cost(s)).sum();
+            current = tail;
+        }
+        spent += cost(sentence);
+        current.push(sentence);
+    }
+    if !current.is_empty() {
+        groups.push(current);
+    }
+    let starts: Vec<u64> = groups
+        .iter()
+        .enumerate()
+        .map(|(i, group)| if i == 0 { 0 } else { group[0].start_ticks })
+        .collect();
+    groups
+        .iter()
+        .enumerate()
+        .map(|(i, group)| {
+            let range = (
+                starts[i],
+                starts
+                    .get(i + 1)
+                    .copied()
+                    .unwrap_or(source.duration_ticks.max(1)),
+            );
+            Window {
+                range,
+                units: group.iter().map(|s| s.index).collect(),
+                script: render(source, level, Some(range)),
+            }
+        })
+        .collect()
+}
+
 /// The source cut down to one range, with what every line needs to know.
 struct View<'a> {
     sentences: Vec<&'a Sentence>,
