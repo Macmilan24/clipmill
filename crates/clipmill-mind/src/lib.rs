@@ -8,6 +8,8 @@
 //!
 //! Times are integer ticks at 1/90000 s of the source.
 
+pub mod brief;
+
 use std::collections::BTreeSet;
 
 use clipmill_contracts::schemas::mind_clip_plan::{

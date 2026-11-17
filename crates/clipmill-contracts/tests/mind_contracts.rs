@@ -70,3 +70,11 @@ fn malformed_plans_are_refused() {
         ));
     }
 }
+
+#[test]
+fn a_brief_round_trips() {
+    use clipmill_contracts::schemas::mind_brief::{MindBrief, MindBriefGenre};
+    let brief: MindBrief = roundtrip("contracts/fixtures/mind.brief/valid/podcast.json");
+    assert_eq!(brief.genre, MindBriefGenre::Podcast);
+    assert_eq!(brief.forms.len(), 5);
+}

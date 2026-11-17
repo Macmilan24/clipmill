@@ -27,6 +27,7 @@ export type { EditorialProposals } from './gen/schemas/editorial-proposals.js';
 export type { EditorialTrace } from './gen/schemas/editorial-trace.js';
 export type { EditorialWindows } from './gen/schemas/editorial-windows.js';
 export type { IndexTranscript } from './gen/schemas/index-transcript.js';
+export type { MindBrief } from './gen/schemas/mind-brief.js';
 export type { MindClipPlan } from './gen/schemas/mind-clip-plan.js';
 export type { DiscoveryCandidates } from './gen/schemas/discovery-candidates.js';
 export type { RankingSet } from './gen/schemas/ranking-set.js';
