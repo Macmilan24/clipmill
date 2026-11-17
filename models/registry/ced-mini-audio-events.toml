@@ -1,0 +1,45 @@
+# Audio events: laughter, applause, cheering, music, shouting and gasps, the
+# reactions a transcript cannot show. CED-mini is a 10 MB AudioSet tagger that
+# takes the 16 kHz waveform directly and scores 527 classes per window; the
+# worker keeps six kinds of them.
+name = "ced-mini-audio-events"
+capability = "audio-events"
+family = "ced"
+runtime = "onnxruntime"
+backend = "onnx-cpu"
+quantization = "none"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "CED mini"
+summary = "Small and fast. Hears laughter, applause, music and shouting on any computer."
+recommended = true
+
+[source]
+provider = "https://huggingface.co"
+repo = "mispeech/ced-mini"
+revision = "26c3ebcae85d4330f4fc26763f029539a3afcda0"
+
+[license]
+source = "repo-metadata"
+spdx = "Apache-2.0"
+class = "permissive"
+
+[memory]
+# Exact on-disk bytes of both files, and onnxruntime's allowance for a batch
+# of two-second windows on top.
+weights_bytes = 10915127
+runtime_overhead_bytes = 134217728
+
+[[files]]
+path = "model.onnx"
+sha256 = "2a86374dbe1fa03e96b0acf6a02618ac71852d12aa3d72a030b062ff1e5c5434"
+bytes = 10890069
+
+# The class names, by output column. The worker reads the kinds it reports
+# from here rather than from numbers copied into its source.
+[[files]]
+path = "config.json"
+sha256 = "4036cba16f3759f5588e731029327969ff30a475fe23268fa698530cd7fd10ea"
+bytes = 25058

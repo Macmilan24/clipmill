@@ -55,6 +55,14 @@ command = "clipmill-worker-faces"
 module = "clipmill_worker_faces"
 platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
 
+[[part]]
+name = "audio-events"
+title = "Audio events"
+family = "audio-events"
+command = "clipmill-worker-audio-events"
+module = "clipmill_worker_audio_events"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
 # Apple silicon only: MLX runs on Metal.
 
 [[part]]

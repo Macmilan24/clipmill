@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.audio.events.v1.json",
+  "title": "AudioEvents",
+  "description": "What can be heard in a recording besides words: laughter, applause, cheering, music, shouting, gasps. An audio tagger scores overlapping windows of the 16 kHz rendition and each run of windows above its kind's threshold becomes an event. These are the reactions a transcript cannot show, written into the Timeline Index for the editorial mind to read. Every interval is integer ticks at 1/90000; coverage says what was listened to, so no event in a covered span means nothing was heard, not that nobody listened.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "audio_artifact_id",
+    "producer",
+    "detection",
+    "coverage",
+    "events"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.audio.events.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "audio_artifact_id": {
+      "description": "The 16 kHz mono rendition this pass read, verified before use.",
+      "$ref": "#/$defs/sha256"
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation", "model_digest"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "const": "audio-events"
+        },
+        "implementation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "detection": {
+      "type": "object",
+      "required": ["window_ticks", "hop_ticks", "thresholds"],
+      "additionalProperties": false,
+      "properties": {
+        "window_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "hop_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thresholds": {
+          "description": "Per kind, the score an event must reach to start and the score it must stay above to continue.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "on", "off"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "$ref": "#/$defs/kind"
+              },
+              "on": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              },
+              "off": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "analyzed"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "analyzed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "events": {
+      "description": "In time order, then by kind.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "start_ticks", "end_ticks", "peak", "mean"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/$defs/kind"
+          },
+          "start_ticks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end_ticks": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "peak": {
+            "description": "The highest window score in the event; an uncalibrated tagger score, not a probability of anything a person would agree with.",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "mean": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "kind": {
+      "enum": ["laughter", "applause", "cheering", "music", "shout", "gasp"]
+    }
+  }
+}

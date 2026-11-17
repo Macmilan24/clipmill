@@ -777,6 +777,16 @@ class SkippedStageV1(_message.Message):
     reason: str
     def __init__(self, kind: _Optional[str] = ..., reason: _Optional[str] = ...) -> None: ...
 
+class AudioEventsStagePayloadV1(_message.Message):
+    __slots__ = ("key_version", "stage", "source_fingerprint")
+    KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
+    STAGE_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    key_version: str
+    stage: str
+    source_fingerprint: str
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., source_fingerprint: _Optional[str] = ...) -> None: ...
+
 class DeviceProfilePayloadV1(_message.Message):
     __slots__ = ("key_version", "hardware_fingerprint", "measurement_generation")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]

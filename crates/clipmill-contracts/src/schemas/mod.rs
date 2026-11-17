@@ -13,6 +13,10 @@ pub mod archive_index;
 pub mod artifact_manifest;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/audio_events.rs"]
+pub mod audio_events;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/captions_cues.rs"]
 pub mod captions_cues;
 
