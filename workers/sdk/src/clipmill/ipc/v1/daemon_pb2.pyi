@@ -1474,7 +1474,7 @@ class ListClipDecisionsResponse(_message.Message):
     def __init__(self, decisions: _Optional[_Iterable[_Union[ClipDecisionRecordV1, _Mapping]]] = ...) -> None: ...
 
 class DirectClipRequest(_message.Message):
-    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks", "variation", "approve", "job_id", "allow_declined", "manual_span", "highlight_spoken_word", "caption_options_json", "brand_json", "shape")
+    __slots__ = ("project_id", "source_id", "candidate_id", "cut", "style_ref", "start_ticks", "end_ticks", "variation", "approve", "job_id", "allow_declined", "manual_span", "highlight_spoken_word", "caption_options_json", "brand_json", "shape", "plan_json")
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
@@ -1491,6 +1491,7 @@ class DirectClipRequest(_message.Message):
     CAPTION_OPTIONS_JSON_FIELD_NUMBER: _ClassVar[int]
     BRAND_JSON_FIELD_NUMBER: _ClassVar[int]
     SHAPE_FIELD_NUMBER: _ClassVar[int]
+    PLAN_JSON_FIELD_NUMBER: _ClassVar[int]
     project_id: str
     source_id: str
     candidate_id: str
@@ -1507,7 +1508,8 @@ class DirectClipRequest(_message.Message):
     caption_options_json: str
     brand_json: str
     shape: str
-    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., variation: _Optional[bool] = ..., approve: _Optional[bool] = ..., job_id: _Optional[str] = ..., allow_declined: _Optional[bool] = ..., manual_span: _Optional[bool] = ..., highlight_spoken_word: _Optional[bool] = ..., caption_options_json: _Optional[str] = ..., brand_json: _Optional[str] = ..., shape: _Optional[str] = ...) -> None: ...
+    plan_json: str
+    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., cut: _Optional[_Union[ClipCutV1, str]] = ..., style_ref: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., variation: _Optional[bool] = ..., approve: _Optional[bool] = ..., job_id: _Optional[str] = ..., allow_declined: _Optional[bool] = ..., manual_span: _Optional[bool] = ..., highlight_spoken_word: _Optional[bool] = ..., caption_options_json: _Optional[str] = ..., brand_json: _Optional[str] = ..., shape: _Optional[str] = ..., plan_json: _Optional[str] = ...) -> None: ...
 
 class DirectClipResponse(_message.Message):
     __slots__ = ("doc", "start_ticks", "end_ticks", "decisions", "reopened")

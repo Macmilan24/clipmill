@@ -31,6 +31,8 @@ fn cue(id: &str, word_id: &str, text: &str, start: i64, end: i64) -> CaptionCue 
 fn document() -> EditDocument {
     let mut document = EditDocument::default();
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "section".to_owned(),
         source_fingerprint: SOURCE.to_owned(),
         in_ticks: 90_000,

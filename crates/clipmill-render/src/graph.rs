@@ -168,8 +168,9 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         }
         let label = format!("a{index}");
         if span.has_audio {
+            let fades = join_fades(request, index, span);
             chains.push(format!(
-                "{}atrim=start={start}:end={end},asetpts=PTS-STARTPTS,\
+                "{}atrim=start={start}:end={end},asetpts=PTS-STARTPTS,{fades}\
                  aformat=sample_fmts=fltp:sample_rates={rate_hz}:channel_layouts=stereo[{label}]",
                 audio_inputs[index],
                 rate_hz = request.profile.audio_sample_rate,
@@ -426,6 +427,49 @@ fn decoder_inputs(request: &GraphRequest<'_>) -> DecoderInputs {
         }
     }
     inputs
+}
+
+/// The fades a section's audio takes at its joins, as filters ending in a
+/// comma, or nothing.
+///
+/// A join's blend is drawn as a fade out of the section before it and a fade
+/// in of the section after, each half as long, meeting at the cut. Sections
+/// still abut, so the programme keeps its length and every caption its time;
+/// an overlapping crossfade would shorten the programme by the overlap at
+/// every join. The first section has nothing before it to fade from.
+fn join_fades(request: &GraphRequest<'_>, index: usize, span: &DecodeSpan) -> String {
+    let blend = |position: usize| {
+        request
+            .spans
+            .get(position)
+            .and_then(|span| {
+                request
+                    .document
+                    .video
+                    .segments
+                    .iter()
+                    .find(|segment| segment.segment_id == span.segment_id)
+            })
+            .and_then(|segment| segment.join)
+            .map_or(0, |join| join.audio_crossfade_ticks.max(0) / 2)
+    };
+    let length = span.trim_end_ticks - span.trim_start_ticks;
+    let fade_in = if index == 0 { 0 } else { blend(index) }.min(length / 2);
+    let fade_out = blend(index + 1).min(length / 2);
+    let mut filters = String::new();
+    if fade_in > 0 {
+        filters += "afade=t=in:st=0:d=";
+        filters += &ticks_to_seconds(fade_in);
+        filters += ":curve=qsin,";
+    }
+    if fade_out > 0 {
+        filters += "afade=t=out:st=";
+        filters += &ticks_to_seconds(length - fade_out);
+        filters += ":d=";
+        filters += &ticks_to_seconds(fade_out);
+        filters += ":curve=qsin,";
+    }
+    filters
 }
 
 fn concat_chain(labels: &[String], video: bool) -> String {

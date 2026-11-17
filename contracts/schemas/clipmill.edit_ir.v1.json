@@ -313,6 +313,46 @@
         }
       }
     },
+    "plan": {
+      "description": "The plan of parts this clip was built from. Never consumed by any render path.",
+      "type": "object",
+      "required": ["plan_id", "form"],
+      "additionalProperties": false,
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "form": {
+          "enum": ["straight", "tightened", "stitch", "cold_open", "theme_montage"]
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source_fingerprint", "in_ticks", "out_ticks", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "source_fingerprint": {
+                "$ref": "#/$defs/sha256"
+              },
+              "in_ticks": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "out_ticks": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
     "title": {
       "description": "What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.",
       "type": "string",
@@ -674,6 +714,50 @@
                   }
                 }
               }
+            }
+          }
+        },
+        "part": {
+          "description": "The plan part this segment plays, when the clip was planned as parts. Several segments share a part when shots or a removed range split it.",
+          "type": "object",
+          "required": ["part_id", "role"],
+          "additionalProperties": false,
+          "properties": {
+            "part_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "role": {
+              "enum": [
+                "hook",
+                "setup",
+                "question",
+                "answer",
+                "body",
+                "payoff",
+                "proof",
+                "reaction",
+                "item"
+              ]
+            }
+          }
+        },
+        "join": {
+          "description": "How this segment joins the one before it. Absent: the track's transition.",
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": ["adjacent", "removed", "reorder", "distant"]
+            },
+            "audio_crossfade_ticks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 45000
+            },
+            "room_tone": {
+              "type": "boolean"
             }
           }
         }

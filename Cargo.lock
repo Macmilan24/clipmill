@@ -487,6 +487,7 @@ dependencies = [
  "clipmill-captions",
  "clipmill-contracts",
  "clipmill-edit-ir",
+ "clipmill-mind",
  "clipmill-reframe",
  "clipmill-render",
  "serde_json",

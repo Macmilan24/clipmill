@@ -18,6 +18,8 @@ fn document(durations: &[i64]) -> EditDocument {
             let start = at;
             at += duration;
             VideoSegment {
+                part: None,
+                join: None,
                 segment_id: format!("seg_{index}"),
                 source_fingerprint: FINGERPRINT.to_owned(),
                 in_ticks: start,

@@ -1378,6 +1378,13 @@ message DirectClipRequest {
   // The frame the clip is framed for: vertical, portrait, square or
   // landscape. Empty is vertical.
   string shape = 16;
+  // A clip planned as parts (clipmill.mind.clip_plan.v1, decision R76), as
+  // JSON. Given, the clip is directed from the plan rather than from a
+  // candidate: its parts in programme order, with their joins and what was
+  // removed. The plan names its own recording and is checked before anything
+  // is built. It needs an analysis run (job_id) for the evidence and cannot
+  // be combined with manual_span.
+  string plan_json = 17;
 }
 
 message DirectClipResponse {

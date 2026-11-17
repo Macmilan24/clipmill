@@ -11,6 +11,7 @@ authors.workspace = true
 clipmill-captions.workspace = true
 clipmill-contracts.workspace = true
 clipmill-edit-ir.workspace = true
+clipmill-mind.workspace = true
 clipmill-reframe.workspace = true
 clipmill-render.workspace = true
 thiserror.workspace = true
