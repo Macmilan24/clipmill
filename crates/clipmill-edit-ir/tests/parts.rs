@@ -95,7 +95,10 @@ fn a_document_without_parts_is_written_exactly_as_before() {
     document.video.segments = vec![segment("section", 1, 2)];
     let text = String::from_utf8(document.to_canonical_json().expect("serializes")).expect("utf-8");
     for key in ["\"part\"", "\"join\"", "\"plan\""] {
-        assert!(!text.contains(key), "{key} written for a clip that has none");
+        assert!(
+            !text.contains(key),
+            "{key} written for a clip that has none"
+        );
     }
 }
 
@@ -140,7 +143,10 @@ fn a_plan_with_an_empty_removed_range_is_refused() {
     if let Some(plan) = document.plan.as_mut() {
         plan.removed[0].out_ticks = plan.removed[0].in_ticks;
     }
-    assert!(matches!(document.validate(), Err(DocumentError::InvalidPlan)));
+    assert!(matches!(
+        document.validate(),
+        Err(DocumentError::InvalidPlan)
+    ));
 }
 
 #[test]
