@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.mind.clip_plan.v1.json",
+  "title": "MindClipPlan",
+  "description": "One clip as an editor plans it: an ordered list of parts taken from anywhere in one recording, each with the role it plays, the ranges cut out of it, and the joins between them (decision R76). A continuous span is a plan of one part. The plan is a proposal: code checks every time, join and form rule before it becomes an edit document, and a critic checks that no join changes what was meant. Times are integer ticks at 1/90000 s of the source.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "plan_id",
+    "form",
+    "parts",
+    "joins",
+    "duration_ticks",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.mind.clip_plan.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "plan_id": {
+      "description": "Derived from the plan's content, so the same plan always has the same id.",
+      "type": "string",
+      "pattern": "^plan_[0-9a-f]{16,64}$"
+    },
+    "form": {
+      "description": "The shape of the edit. `straight`: one part, nothing removed. `tightened`: one moment with ranges cut out of it, parts in source order. `stitch`: parts from distant places joined by evidence. `cold_open`: a line lifted from later opens the clip. `theme_montage`: several short moments on one topic or feeling.",
+      "enum": ["straight", "tightened", "stitch", "cold_open", "theme_montage"]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "hook_text": {
+      "description": "The opening line or on-screen text the plan is built around, as spoken or written; never invented speech.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "parts": {
+      "description": "In programme order.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "$ref": "#/$defs/part"
+      }
+    },
+    "joins": {
+      "description": "One per pair of consecutive parts, in programme order.",
+      "type": "array",
+      "maxItems": 11,
+      "items": {
+        "$ref": "#/$defs/join"
+      }
+    },
+    "duration_ticks": {
+      "description": "Programme length: the parts' lengths less what was removed from them.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "evidence": {
+      "description": "What justifies the plan: Recording Memory event and link ids, unit ids.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "doubts": {
+      "description": "What the planner is unsure of, in plain words, shown with the clip.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 400
+      }
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "part_id": {
+      "type": "string",
+      "pattern": "^p[0-9]{1,2}$"
+    },
+    "part": {
+      "type": "object",
+      "required": ["part_id", "role", "start_ticks", "end_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "part_id": {
+          "$ref": "#/$defs/part_id"
+        },
+        "role": {
+          "enum": [
+            "hook",
+            "setup",
+            "question",
+            "answer",
+            "body",
+            "payoff",
+            "proof",
+            "reaction",
+            "item"
+          ]
+        },
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "units": {
+          "description": "The Timeline Index units (sentences or shots) the part covers.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "removed": {
+          "description": "Ranges inside this part that the clip leaves out, so a person can see and restore each one.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/removed_range"
+          }
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        }
+      }
+    },
+    "removed_range": {
+      "type": "object",
+      "required": ["start_ticks", "end_ticks", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "enum": ["tangent", "false_start", "repetition", "filler", "slow", "sponsor", "other"]
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "join": {
+      "type": "object",
+      "required": ["after", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "description": "The part this join follows.",
+          "$ref": "#/$defs/part_id"
+        },
+        "kind": {
+          "description": "`adjacent`: the next part continues in the source. `reorder`: the order differs from the source, as in a cold open. `distant`: the next part comes from elsewhere in the recording, which needs a link.",
+          "enum": ["adjacent", "reorder", "distant"]
+        },
+        "link": {
+          "description": "The Recording Memory link that justifies a distant join, such as `question_answer:s0102>s0981`.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "crossfade_ms": {
+          "description": "A short audio blend that hides a click or breath at the join.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 500
+        },
+        "framing": {
+          "description": "Change of framing at the join, which makes a jump cut on one camera look intended.",
+          "enum": ["keep", "punch_in", "punch_out"]
+        },
+        "room_tone": {
+          "description": "Fill a gap at the join with the recording's own background sound.",
+          "type": "boolean"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["by"],
+      "additionalProperties": false,
+      "properties": {
+        "by": {
+          "enum": ["mind", "person", "agent", "recipe"]
+        },
+        "client_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "prompts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      }
+    }
+  }
+}

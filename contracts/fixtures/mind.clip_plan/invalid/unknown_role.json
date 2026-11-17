@@ -1,0 +1,19 @@
+{
+  "duration_ticks": 3420000,
+  "form": "straight",
+  "joins": [],
+  "parts": [
+    {
+      "end_ticks": 14220000,
+      "part_id": "p1",
+      "role": "climax",
+      "start_ticks": 10800000
+    }
+  ],
+  "plan_id": "plan_0b1c2d3e4f506172",
+  "provenance": {
+    "by": "person"
+  },
+  "schema_version": "clipmill.mind.clip_plan.v1",
+  "source_fingerprint": "sha256:c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+}
