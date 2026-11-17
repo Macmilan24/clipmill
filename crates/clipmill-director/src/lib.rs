@@ -11,6 +11,7 @@
 
 pub mod lattice;
 mod placement;
+mod plan;
 mod refresh;
 mod speakers;
 pub mod words;
@@ -33,6 +34,7 @@ use clipmill_render::captions::{Intent, project};
 use thiserror::Error;
 
 pub use lattice::{Boundary, Duration, Lattice, is_legal};
+pub use plan::{JOIN_PUNCH_ZOOM, PlanEvidence, PlanRequest, REMOVED_CROSSFADE_TICKS, direct_plan};
 pub use refresh::captions_for_program;
 pub use words::{Severed, keep_whole_words, severed};
 
@@ -150,6 +152,8 @@ pub enum DirectError {
     EmptyFrame,
     #[error("the requested source span must be nonempty and inside the transcript coverage")]
     InvalidSpan,
+    #[error("this plan cannot be made as written: {0}")]
+    InvalidPlan(String),
     #[error(
         "the {edge} falls inside the word '{word}'. Move {edge} to {seconds} seconds to keep the whole word"
     )]
@@ -342,13 +346,43 @@ fn assemble_span(
     Ok(document)
 }
 
+/// The evidence the camera decisions read, apart from where it came from.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Sources<'a> {
+    pub fingerprint: &'a str,
+    pub index: Option<&'a IndexTranscript>,
+    pub shots: Option<&'a EvidenceShots>,
+    pub faces: Option<&'a VisionFaceTrack>,
+}
+
 fn direct_shots(
     evidence: Evidence<'_>,
     boundary: Boundary,
     request: &Request,
     decisions: &mut Vec<String>,
 ) -> Vec<VideoSegment> {
-    let fingerprint = evidence.candidates.source_fingerprint.as_str();
+    direct_shots_in(
+        Sources {
+            fingerprint: evidence.candidates.source_fingerprint.as_str(),
+            index: evidence.index,
+            shots: evidence.shots,
+            faces: evidence.faces,
+        },
+        boundary,
+        request,
+        decisions,
+    )
+}
+
+/// One span as sections: split at shot cuts and, where faces show who is
+/// talking, at changes of speaker, each with its own framing.
+pub(crate) fn direct_shots_in(
+    evidence: Sources<'_>,
+    boundary: Boundary,
+    request: &Request,
+    decisions: &mut Vec<String>,
+) -> Vec<VideoSegment> {
+    let fingerprint = evidence.fingerprint;
     let mut cuts = vec![boundary.start_ticks, boundary.end_ticks];
     if let Some(shots) = evidence.shots {
         cuts.extend(
