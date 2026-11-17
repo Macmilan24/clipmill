@@ -18,7 +18,7 @@ mod daemon_main {
         #[arg(long)]
         worker_socket: Option<PathBuf>,
         /// Retain unreachable artifacts for this duration before collection.
-        #[arg(long, value_parser = humantime::parse_duration)]
+        #[arg(long, value_parser = clipmilld::parse_duration_text)]
         artifact_gc_grace: Option<Duration>,
         /// Pinned `FFprobe` sidecar executable.
         #[arg(long)]
