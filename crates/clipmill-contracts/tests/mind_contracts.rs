@@ -94,3 +94,20 @@ fn malformed_memories_are_refused() {
         refused::<MindMemory>(rel);
     }
 }
+
+#[test]
+fn unit_scores_mark_every_sentence_and_refuse_unknown_marks() {
+    use clipmill_contracts::schemas::mind_unit_scores::{MindUnitScores, RowTrim};
+
+    let scores: MindUnitScores =
+        roundtrip("contracts/fixtures/mind.unit_scores/valid/tightened_answer.json");
+    assert_eq!(scores.units.len(), 6);
+    assert_eq!(scores.units[2].trim, RowTrim::FalseStart);
+    assert!(scores.units[3].needs.is_some());
+    for rel in [
+        "contracts/fixtures/mind.unit_scores/invalid/unknown_hook_level.json",
+        "contracts/fixtures/mind.unit_scores/invalid/unknown_trim.json",
+    ] {
+        refused::<MindUnitScores>(rel);
+    }
+}

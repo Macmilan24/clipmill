@@ -1,0 +1,56 @@
+{
+  "producer": {
+    "implementation": "clipmill-worker-editorial@0.1.0+mlx",
+    "model": "qwen3-5-4b-editorial-mlx",
+    "prompt_version": "score.v1/sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "stage": "mind-score"
+  },
+  "schema_version": "clipmill.mind.unit_scores.v1",
+  "script": {
+    "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "level": "compact",
+    "windows": 1
+  },
+  "source_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "units": [
+    {
+      "hook": "none",
+      "landing": "none",
+      "trim": "filler",
+      "unit": "s0"
+    },
+    {
+      "hook": "strong",
+      "landing": "none",
+      "trim": "keep",
+      "unit": "s1"
+    },
+    {
+      "hook": "none",
+      "landing": "none",
+      "trim": "false_start",
+      "unit": "s2"
+    },
+    {
+      "hook": "none",
+      "landing": "none",
+      "needs": "s1",
+      "trim": "keep",
+      "unit": "s3"
+    },
+    {
+      "hook": "none",
+      "landing": "none",
+      "trim": "boring",
+      "unit": "s4"
+    },
+    {
+      "hook": "fair",
+      "landing": "strong",
+      "needs": "s3",
+      "trim": "keep",
+      "unit": "s5"
+    }
+  ],
+  "unscored": []
+}

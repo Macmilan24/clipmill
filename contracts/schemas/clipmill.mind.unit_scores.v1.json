@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.mind.unit_scores.v1.json",
+  "title": "MindUnitScores",
+  "description": "An editor's markup of every sentence in a recording: which lines would open a clip well, which lines land a thought, which ranges a tight cut can leave out (a tangent, a retake, a false start, filler, an aside, an ad read) and which sentences cannot stand without an earlier one. The model marks only what stands out, a window of the annotated script at a time, citing sentences it was shown; code writes the row for every sentence, so a sentence with nothing marked is an ordinary line, not a missing one. Windows the model could not mark are listed under `unscored`. This is what lets the cutter tighten a moment and start a clip on its strongest line.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "script", "producer", "units", "unscored"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.mind.unit_scores.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "script": {
+      "type": "object",
+      "required": ["level", "digest", "windows"],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "enum": ["full", "compact", "outline"]
+        },
+        "digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "windows": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation", "model", "prompt_version"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "const": "mind-score"
+        },
+        "implementation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "units": {
+      "description": "One row per sentence, in recording order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    },
+    "unscored": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["first_unit", "last_unit", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "first_unit": {
+            "$ref": "#/$defs/unit"
+          },
+          "last_unit": {
+            "$ref": "#/$defs/unit"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "unit": {
+      "type": "string",
+      "pattern": "^s(0|[1-9][0-9]{0,8})$"
+    },
+    "row": {
+      "type": "object",
+      "required": ["unit", "hook", "landing", "trim"],
+      "additionalProperties": false,
+      "properties": {
+        "unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "hook": {
+          "description": "How well the line would open a clip for someone who has heard nothing before it, from `none` to `strong`: a line people stop scrolling for.",
+          "$ref": "#/$defs/level"
+        },
+        "landing": {
+          "description": "How well the line ends a thought, from `none` (it leaves things hanging) to `strong` (a clean conclusion, punchline or turn).",
+          "$ref": "#/$defs/level"
+        },
+        "trim": {
+          "description": "`keep`, or why a tight cut may leave the line out.",
+          "enum": ["keep", "tangent", "retake", "false_start", "filler", "aside", "ad_read"]
+        },
+        "needs": {
+          "description": "An earlier sentence this one cannot be understood without: the thing a pronoun points at, the question it answers.",
+          "$ref": "#/$defs/unit"
+        }
+      }
+    },
+    "level": {
+      "enum": ["none", "fair", "good", "strong"]
+    }
+  }
+}
