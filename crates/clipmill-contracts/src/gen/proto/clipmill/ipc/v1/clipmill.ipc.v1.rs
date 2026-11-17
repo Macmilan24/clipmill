@@ -848,6 +848,21 @@ pub struct SkippedStageV1 {
     #[prost(string, tag = "2")]
     pub reason: ::prost::alloc::string::String,
 }
+/// What the audio tagger is asked to do: listen to the whole 16 kHz rendition
+/// and publish the laughter, applause, cheering, music, shouting and gasps in
+/// it. The window and the thresholds belong to the implementation, which the
+/// artifact key already names, so this carries only what names the recording.
+/// The rendition itself arrives on the lease.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AudioEventsStagePayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+}
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes
 /// an explicit remeasurement a distinct artifact recipe.
