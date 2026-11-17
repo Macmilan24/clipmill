@@ -5766,6 +5766,8 @@ mod tests {
         };
         let mut document = EditDocument::default();
         document.video.segments = vec![VideoSegment {
+            part: None,
+            join: None,
             segment_id: "seg".to_owned(),
             source_fingerprint: "sha256:aa".to_owned(),
             in_ticks: 0,

@@ -40,6 +40,8 @@ fn segment(id: &str, in_ticks: i64, out_ticks: i64, layout: Layout) -> VideoSegm
         in_ticks,
         out_ticks,
         layout,
+        part: None,
+        join: None,
     }
 }
 

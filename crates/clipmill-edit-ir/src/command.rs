@@ -5,7 +5,7 @@ use crate::{
     document::{
         Asset, Brand, CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing,
         CropKeyframe, CropRect, Cutaway, DocumentError, EditDocument, FitBackground, FrameShape,
-        GainPoint, Inset, LayoutState, MusicBed, Overlay, Presentation, Punch, VideoSegment,
+        GainPoint, Inset, Join, LayoutState, MusicBed, Overlay, Presentation, Punch, VideoSegment,
         VoiceCleanup, crop_along_keyframes, retime_punches, split_punches,
     },
     reflow,
@@ -165,6 +165,14 @@ pub enum EditCommand {
         zoom: Option<u16>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         inset: Option<Inset>,
+    },
+    /// How a section joins the one before it: the kind of cut, an audio
+    /// blend over it, and room tone. `None` returns it to the track's plain
+    /// transition. Inverts to the join it replaced.
+    SetJoin {
+        segment_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        join: Option<Join>,
     },
     /// Make two independently framed sections at a source-time cut.
     SplitSegment {
@@ -551,6 +559,14 @@ impl EditCommand {
                     segment_id: segment_id.clone(),
                 })
             }
+            Self::SetJoin { segment_id, join } => {
+                let index = document.segment_index(segment_id)?;
+                let previous = std::mem::replace(&mut document.video.segments[index].join, *join);
+                Ok(Self::SetJoin {
+                    segment_id: segment_id.clone(),
+                    join: previous,
+                })
+            }
             Self::SplitSegment {
                 segment_id,
                 at_ticks,
@@ -918,6 +934,9 @@ impl EditCommand {
         let mut tail = original;
         new_segment_id.clone_into(&mut tail.segment_id);
         tail.in_ticks = at_ticks;
+        // The tail continues the head's source; the join before the head is
+        // not a join before the tail.
+        tail.join = None;
         tail.layout.crop_path = tail_crop;
         tail.layout.secondary_crop_path = tail_secondary;
         tail.layout.punches = tail_punches;
@@ -1337,6 +1356,7 @@ impl EditCommand {
                 let mut tail = segment.clone();
                 tail.segment_id = EditDocument::derive_id(&existing_ids, &segment.segment_id);
                 tail.in_ticks = tail_in;
+                tail.join = None;
                 Self::retime_layout(&mut tail, segment);
                 kept.push(head);
                 kept.push(tail);

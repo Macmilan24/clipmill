@@ -83,6 +83,8 @@ fn soft_cuts_match_preview_weights_without_shortening_or_retiming_the_clip() {
     let mut document = EditDocument::default();
     document.video.segments = vec![
         VideoSegment {
+            part: None,
+            join: None,
             segment_id: "face".to_owned(),
             source_fingerprint: fingerprint.clone(),
             in_ticks: 0,
@@ -95,6 +97,8 @@ fn soft_cuts_match_preview_weights_without_shortening_or_retiming_the_clip() {
             },
         },
         VideoSegment {
+            part: None,
+            join: None,
             segment_id: "pair".to_owned(),
             source_fingerprint: fingerprint.clone(),
             in_ticks: 90_000,

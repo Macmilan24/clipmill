@@ -52,6 +52,8 @@ fn edit(name: &str, intent: Intent) -> EditDocument {
     let cues = document(name);
     let mut edit = EditDocument::default();
     edit.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "seg_1".to_owned(),
         source_fingerprint: SOURCE.to_owned(),
         in_ticks: 0,

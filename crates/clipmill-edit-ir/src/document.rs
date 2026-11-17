@@ -585,6 +585,104 @@ pub struct VideoSegment {
     pub in_ticks: i64,
     pub out_ticks: i64,
     pub layout: Layout,
+    /// The plan part this segment plays, when the clip was planned as parts
+    /// (decision R76). Several segments share a part when shots or a removed
+    /// range split it. Absent in a clip that was never planned that way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part: Option<PartRef>,
+    /// How this segment joins the one before it. Absent: the track's
+    /// transition, as before parts existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join: Option<Join>,
+}
+
+/// Which part of a plan a segment plays, and the role it has in the story.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PartRef {
+    pub part_id: String,
+    pub role: PartRole,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PartRole {
+    Hook,
+    Setup,
+    Question,
+    Answer,
+    Body,
+    Payoff,
+    Proof,
+    Reaction,
+    Item,
+}
+
+/// What lies between a segment and the one before it.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinKind {
+    /// The source simply continues.
+    Adjacent,
+    /// A range was removed from inside one part.
+    Removed,
+    /// The order differs from the source, as in a cold open.
+    Reorder,
+    /// The segment comes from elsewhere in the recording.
+    Distant,
+}
+
+/// How a segment is joined to the one before it, so a join is a decision
+/// recorded in the document rather than whatever a cut happens to sound like.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Join {
+    pub kind: JoinKind,
+    /// A short audio blend over the cut, which hides a click or a breath.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub audio_crossfade_ticks: i64,
+    /// Fill a dead gap at the cut with the recording's own background sound.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub room_tone: bool,
+}
+
+impl Join {
+    /// The longest audio blend a join may ask for: half a second.
+    pub const MAX_CROSSFADE_TICKS: i64 = 45_000;
+}
+
+/// The plan a clip was built from. Kept out of every render path like the
+/// rationale: it explains the cut and lets a person restore what was removed,
+/// and changing it is not a new picture.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Plan {
+    pub plan_id: String,
+    pub form: PlanForm,
+    /// What the plan cut out of the source between and inside its parts, in
+    /// source order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed: Vec<RemovedRange>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanForm {
+    Straight,
+    Tightened,
+    Stitch,
+    ColdOpen,
+    ThemeMontage,
+}
+
+/// One range of the source the plan left out, and why.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemovedRange {
+    pub source_fingerprint: String,
+    pub in_ticks: i64,
+    pub out_ticks: i64,
+    pub reason: String,
 }
 
 impl VideoSegment {
@@ -1436,6 +1534,9 @@ pub struct EditDocument {
     pub assets: Vec<Asset>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rationale: Option<Rationale>,
+    /// The plan of parts this clip was built from, when it was planned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<Plan>,
     /// What the clip is called, when somebody named it. Kept out of every
     /// render path like the rationale: renaming a clip is not a new picture.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1454,6 +1555,7 @@ impl Default for EditDocument {
             brand: None,
             assets: Vec::new(),
             rationale: None,
+            plan: None,
             title: None,
         }
     }
@@ -1934,6 +2036,16 @@ impl EditDocument {
         if !(0..=22_500).contains(&self.video.transition_ticks) {
             return Err(DocumentError::InvalidTransitionDuration);
         }
+        if let Some(plan) = &self.plan
+            && (plan.plan_id.is_empty()
+                || plan.removed.iter().any(|range| {
+                    range.in_ticks < 0
+                        || range.out_ticks <= range.in_ticks
+                        || !is_fingerprint(&range.source_fingerprint)
+                }))
+        {
+            return Err(DocumentError::InvalidPlan);
+        }
         let mut seen_segments = Vec::with_capacity(self.video.segments.len());
         for segment in &self.video.segments {
             if segment.segment_id.is_empty() {
@@ -1974,6 +2086,18 @@ impl EditDocument {
             }
             if !segment.layout.punches_are_valid(segment.duration_ticks()) {
                 return Err(DocumentError::InvalidPunch(segment.segment_id.clone()));
+            }
+            if segment.join.is_some_and(|join| {
+                !(0..=Join::MAX_CROSSFADE_TICKS).contains(&join.audio_crossfade_ticks)
+            }) {
+                return Err(DocumentError::InvalidJoin(segment.segment_id.clone()));
+            }
+            if segment
+                .part
+                .as_ref()
+                .is_some_and(|part| part.part_id.is_empty())
+            {
+                return Err(DocumentError::EmptyIdentifier);
             }
             for path in [
                 &segment.layout.crop_path,
@@ -2127,6 +2251,12 @@ pub enum DocumentError {
     UnsupportedVersion(String),
     #[error("edit documents must use the 1/90000 edit timebase")]
     UnsupportedTimebase,
+    #[error("segment {0}'s join blends audio for longer than half a second, or less than none")]
+    InvalidJoin(String),
+    #[error(
+        "the clip's plan has no identity, or a removed range that is empty or names no recording"
+    )]
+    InvalidPlan,
     #[error("identifiers cannot be empty")]
     EmptyIdentifier,
     #[error("segment {0} appears more than once")]

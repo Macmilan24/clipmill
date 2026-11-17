@@ -374,6 +374,8 @@ fn direct_shots(
             in_ticks: span.start_ticks,
             out_ticks: span.end_ticks,
             layout,
+            part: None,
+            join: None,
         });
     };
     for pair in cuts.windows(2) {

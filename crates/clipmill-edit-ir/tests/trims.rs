@@ -31,6 +31,8 @@ fn rect(x: i64) -> CropRect {
 fn document(path: Vec<CropKeyframe>) -> EditDocument {
     let mut document = EditDocument::default();
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "seg_1".to_owned(),
         source_fingerprint: SOURCE.to_owned(),
         in_ticks: 10 * SECOND,

@@ -81,6 +81,14 @@ class Rationale(BaseModel):
     decisions: list[str] | None = None
 
 
+class Form(Enum):
+    straight = 'straight'
+    tightened = 'tightened'
+    stitch = 'stitch'
+    cold_open = 'cold_open'
+    theme_montage = 'theme_montage'
+
+
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
     root: constr(pattern=r'^sha256:[0-9a-f]{64}$')
 
@@ -306,6 +314,42 @@ class Layout(BaseModel):
     )
 
 
+class Role1(Enum):
+    hook = 'hook'
+    setup = 'setup'
+    question = 'question'
+    answer = 'answer'
+    body = 'body'
+    payoff = 'payoff'
+    proof = 'proof'
+    reaction = 'reaction'
+    item = 'item'
+
+
+class Part(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    part_id: constr(min_length=1)
+    role: Role1
+
+
+class Kind(Enum):
+    adjacent = 'adjacent'
+    removed = 'removed'
+    reorder = 'reorder'
+    distant = 'distant'
+
+
+class Join(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Kind
+    audio_crossfade_ticks: conint(ge=0, le=45000) | None = None
+    room_tone: bool | None = None
+
+
 class VideoSegment(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -315,6 +359,14 @@ class VideoSegment(BaseModel):
     in_ticks: conint(ge=0)
     out_ticks: conint(ge=1)
     layout: Layout
+    part: Part | None = Field(
+        None,
+        description='The plan part this segment plays, when the clip was planned as parts. Several segments share a part when shots or a removed range split it.',
+    )
+    join: Join | None = Field(
+        None,
+        description="How this segment joins the one before it. Absent: the track's transition.",
+    )
 
 
 class Region(Enum):
@@ -499,6 +551,25 @@ class Asset(BaseModel):
     license: str
 
 
+class RemovedItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    source_fingerprint: Sha256
+    in_ticks: conint(ge=0)
+    out_ticks: conint(ge=1)
+    reason: constr(min_length=1)
+
+
+class Plan(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    plan_id: constr(min_length=1)
+    form: Form
+    removed: list[RemovedItem] | None = None
+
+
 class CaptionCue(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -565,6 +636,10 @@ class EditIr(BaseModel):
     rationale: Rationale | None = Field(
         None,
         description='Why the director cut here. Never consumed by any render path, so explanation can never perturb pixels.',
+    )
+    plan: Plan | None = Field(
+        None,
+        description='The plan of parts this clip was built from. Never consumed by any render path.',
     )
     title: constr(min_length=1, max_length=120) | None = Field(
         None,

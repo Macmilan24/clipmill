@@ -137,6 +137,8 @@ fn document(state: LayoutState) -> EditDocument {
                     ],
                     ..Layout::default()
                 },
+                part: None,
+                join: None,
             }],
         },
         captions: CaptionTrack {

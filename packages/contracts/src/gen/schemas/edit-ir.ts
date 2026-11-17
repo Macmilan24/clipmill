@@ -176,6 +176,19 @@ export interface EditIr {
     decisions?: string[];
   };
   /**
+   * The plan of parts this clip was built from. Never consumed by any render path.
+   */
+  plan?: {
+    plan_id: string;
+    form: "straight" | "tightened" | "stitch" | "cold_open" | "theme_montage";
+    removed?: {
+      source_fingerprint: Sha256;
+      in_ticks: number;
+      out_ticks: number;
+      reason: string;
+    }[];
+  };
+  /**
    * What the clip is called, when somebody named it. Never consumed by any render path, like the rationale.
    */
   title?: string;
@@ -243,6 +256,21 @@ export interface VideoSegment {
        */
       zoom: number;
     }[];
+  };
+  /**
+   * The plan part this segment plays, when the clip was planned as parts. Several segments share a part when shots or a removed range split it.
+   */
+  part?: {
+    part_id: string;
+    role: "hook" | "setup" | "question" | "answer" | "body" | "payoff" | "proof" | "reaction" | "item";
+  };
+  /**
+   * How this segment joins the one before it. Absent: the track's transition.
+   */
+  join?: {
+    kind: "adjacent" | "removed" | "reorder" | "distant";
+    audio_crossfade_ticks?: number;
+    room_tone?: boolean;
   };
 }
 /**

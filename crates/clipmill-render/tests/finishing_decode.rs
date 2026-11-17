@@ -90,6 +90,8 @@ fn two_up_decodes_both_people_and_meets_existing_audio_targets() {
     };
     let mut document = EditDocument::default();
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "two-portraits".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
@@ -237,6 +239,8 @@ fn many_shots_keep_the_tail_caption_and_audio_on_one_program_clock() {
     let mut document = EditDocument::default();
     document.video.segments = (0..20)
         .map(|index| VideoSegment {
+            part: None,
+            join: None,
             segment_id: format!("shot-{index}"),
             source_fingerprint: fingerprint.clone(),
             in_ticks: index * 46_800,
@@ -506,6 +510,8 @@ fn supported_source_rates_and_vfr_keep_source_time_through_shot_cuts() {
             .into_iter()
             .enumerate()
             .map(|(index, (start, end))| VideoSegment {
+                part: None,
+                join: None,
                 segment_id: format!("shot-{index}"),
                 source_fingerprint: fingerprint.clone(),
                 in_ticks: start,
@@ -646,6 +652,8 @@ fn rotation_metadata_is_applied_before_display_space_cropping() {
         let fingerprint = format!("sha256:{}", "4".repeat(64));
         let mut document = EditDocument::default();
         document.video.segments = vec![VideoSegment {
+            part: None,
+            join: None,
             segment_id: "rotated".to_owned(),
             source_fingerprint: fingerprint.clone(),
             in_ticks: 9_000,
@@ -758,6 +766,8 @@ fn a_source_without_audio_encodes_silence_instead_of_invalid_loudness() {
     let fingerprint = format!("sha256:{}", "5".repeat(64));
     let mut document = EditDocument::default();
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "silent".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
@@ -839,6 +849,8 @@ fn a_short_audible_span_keeps_finite_nonzero_audio() {
     let fingerprint = format!("sha256:{}", "6".repeat(64));
     let mut document = EditDocument::default();
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "brief".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
@@ -952,6 +964,8 @@ fn a_split_a_coloured_zoomed_fit_and_an_inset_draw_what_they_say() {
         }]
     };
     let section = |id: &str, second: i64, layout: Layout| VideoSegment {
+        part: None,
+        join: None,
         segment_id: id.to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: second * 90_000,
@@ -1134,6 +1148,8 @@ fn a_landscape_split_and_a_square_fit_render_in_their_own_frames() {
         document.video.shape = shape;
         document.video.transition_ticks = 0;
         document.video.segments = vec![VideoSegment {
+            part: None,
+            join: None,
             segment_id: "seg_1".to_owned(),
             source_fingerprint: fingerprint.clone(),
             in_ticks: 0,
@@ -1289,6 +1305,8 @@ fn a_text_on_its_plate_is_drawn_where_the_document_puts_it() {
     let mut document = EditDocument::default();
     document.video.transition_ticks = 0;
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "seg_1".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
@@ -1416,6 +1434,8 @@ fn a_punch_in_widens_the_picture_for_its_span_only() {
     let mut document = EditDocument::default();
     document.video.transition_ticks = 0;
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "seg_1".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
@@ -1539,6 +1559,8 @@ fn a_progress_bar_fills_along_its_edge_as_the_clip_plays() {
     let mut document = EditDocument::default();
     document.video.transition_ticks = 0;
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "seg_1".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
@@ -1698,6 +1720,8 @@ fn a_logo_sits_in_its_corner_at_its_size_and_opacity() {
     let mut document = EditDocument::default();
     document.video.transition_ticks = 0;
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "seg_1".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
@@ -1836,6 +1860,8 @@ fn an_emoji_is_drawn_from_its_pinned_picture_for_its_span_only() {
     let mut document = EditDocument::default();
     document.video.transition_ticks = 0;
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "seg_1".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
@@ -1992,6 +2018,8 @@ fn b_roll_covers_the_program_for_its_span_and_a_picture_moves_closer() {
     let mut document = EditDocument::default();
     document.video.transition_ticks = 0;
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "seg_1".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
@@ -2182,6 +2210,8 @@ fn music_drops_under_the_words_and_the_cleaned_voice_still_plays() {
     let mut document = EditDocument::default();
     document.video.transition_ticks = 0;
     document.video.segments = vec![VideoSegment {
+        part: None,
+        join: None,
         segment_id: "seg_1".to_owned(),
         source_fingerprint: fingerprint.clone(),
         in_ticks: 0,
