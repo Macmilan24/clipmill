@@ -63,7 +63,7 @@ confidence-threshold = 0.9
 # https://cdla.dev/permissive-2-0/ (section 2.1)
 [[licenses.exceptions]]
 name = "webpki-root-certs"
-version = "=1.0.9"
+version = "=1.0.12"
 allow = ["CDLA-Permissive-2.0"]
 
 [bans]
