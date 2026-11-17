@@ -33,6 +33,7 @@ class Kind(StrEnum):
     evidence_shots_v1 = 'evidence.shots.v1'
     vision_face_track_v1 = 'vision.face_track.v1'
     index_transcript_v1 = 'index.transcript.v1'
+    timeline_index_v1 = 'timeline.index.v1'
     editorial_windows_v1 = 'editorial.windows.v1'
     editorial_proposals_v1 = 'editorial.proposals.v1'
     discovery_candidates_v1 = 'discovery.candidates.v1'

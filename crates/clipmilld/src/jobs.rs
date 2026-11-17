@@ -43,7 +43,7 @@ use crate::{
     ranking,
     render::{self, RenderContext},
     sources::{SourceInspector, SourceProbeError},
-    speech,
+    speech, timeline,
 };
 
 /// Key version every speech stage payload carries, so a worker can refuse a
@@ -1565,6 +1565,7 @@ impl JobPlan {
         ));
 
         // The speech chain, reading the rendition this plan is about to derive.
+        let mut speakers_id: Option<String> = None;
         let transcript = match &handles.audio_16k {
             None => {
                 for kind in [
@@ -1609,6 +1610,7 @@ impl JobPlan {
                         bindings,
                     );
                     stages.push(("speech.speakers.v1".to_owned(), speakers.task_id.clone()));
+                    speakers_id = Some(speakers.task_id.clone());
                     tasks.push(speakers);
                 }
                 Some(chain.transcript_task_id)
@@ -1674,6 +1676,7 @@ impl JobPlan {
             None => {
                 for kind in [
                     "index.transcript.v1",
+                    "timeline.index.v1",
                     "editorial.windows.v1",
                     "discovery.candidates.v1",
                     "ranking.set.v1",
@@ -1707,6 +1710,41 @@ impl JobPlan {
                     },
                 ));
                 stages.push(("index.transcript.v1".to_owned(), index.clone()));
+
+                // The Timeline Index (R74): everything known about the
+                // recording in one searchable file, for the mind and agents.
+                // Nothing in this plan reads it yet.
+                let timeline_id = TaskId::new().to_string();
+                let mut timeline_dependencies = vec![index.clone(), transcript.clone()];
+                let mut timeline_kinds = vec![
+                    "index.transcript.v1".to_owned(),
+                    "speech.transcript.v1".to_owned(),
+                ];
+                if let Some(speakers) = &speakers_id {
+                    timeline_dependencies.push(speakers.clone());
+                    timeline_kinds.push("speech.speakers.v1".to_owned());
+                }
+                if let Some(shots) = &shots {
+                    timeline_dependencies.push(shots.clone());
+                    timeline_kinds.push("evidence.shots.v1".to_owned());
+                }
+                tasks.push(builtin_task(
+                    timeline_id.clone(),
+                    Builtin {
+                        kind: timeline::KIND_TIMELINE,
+                        output_kind: "timeline.index.v1",
+                        implementation: timeline::IMPLEMENTATION,
+                        input_kinds: timeline_kinds,
+                        dependencies: timeline_dependencies,
+                        payload: IndexStagePayloadV1 {
+                            key_version: timeline::TIMELINE_STAGE_KEY_VERSION.to_owned(),
+                            stage: timeline::KIND_TIMELINE.to_owned(),
+                        }
+                        .encode_to_vec(),
+                        ram_mib: 256,
+                    },
+                ));
+                stages.push(("timeline.index.v1".to_owned(), timeline_id));
 
                 // The windows an editorial model reads.
                 // Cut here so the model's stages, when they arrive, read a
@@ -2938,6 +2976,9 @@ impl BuiltinExecutors {
             evidence::KIND_INDEX => {
                 evidence::execute_index_task(&self.artifacts, task, progress).await
             }
+            timeline::KIND_TIMELINE => {
+                timeline::execute_timeline_task(&self.artifacts, task, progress).await
+            }
             editorial::KIND_VALIDATE => {
                 editorial::execute_validate_task(&self.artifacts, task, progress).await
             }
@@ -3441,6 +3482,7 @@ mod builtin_tests {
     use super::builtin_capabilities;
     use crate::{
         analysis, captions, discovery, editorial, evidence, export, media, ranking, render, speech,
+        timeline,
     };
 
     /// Every stage this runner has an executor for is claimed, which is to
@@ -3456,6 +3498,7 @@ mod builtin_tests {
             export::KIND_DELIVER_EXPORT,
             speech::KIND_TRANSCRIPT,
             evidence::KIND_INDEX,
+            timeline::KIND_TIMELINE,
             editorial::KIND_WINDOWS,
             editorial::KIND_VALIDATE,
             discovery::KIND_DISCOVER,
@@ -4378,7 +4421,7 @@ mod analyze_tests {
     fn the_fan_in_depends_on_every_stage_that_published_something() {
         let plan = plan(true, true);
         let manifest = task(&plan, analysis::KIND_MANIFEST);
-        assert_eq!(manifest.dependencies.len(), 13);
+        assert_eq!(manifest.dependencies.len(), 14);
         assert_eq!(manifest.input_kinds.len(), manifest.dependencies.len());
         // Nothing declared: every input is a task in this plan.
         assert!(manifest.input_artifact_ids.is_empty());
@@ -4393,6 +4436,7 @@ mod analyze_tests {
             "evidence.shots.v1",
             "vision.face_track.v1",
             "index.transcript.v1",
+            "timeline.index.v1",
             "editorial.windows.v1",
             "discovery.candidates.v1",
             "ranking.set.v1",
@@ -4501,7 +4545,7 @@ mod analyze_tests {
     }
 
     /// A source with no audio has no transcript and no voices, so the five
-    /// speech stages and the four that read a transcript are all absent — each
+    /// speech stages and the five that read a transcript are all absent — each
     /// with the reason.
     #[test]
     fn a_source_with_no_audio_skips_everything_that_needs_speech() {
@@ -4519,6 +4563,7 @@ mod analyze_tests {
                 "speech.transcript.v1",
                 "speech.speakers.v1",
                 "index.transcript.v1",
+                "timeline.index.v1",
                 "editorial.windows.v1",
                 "discovery.candidates.v1",
                 "ranking.set.v1",

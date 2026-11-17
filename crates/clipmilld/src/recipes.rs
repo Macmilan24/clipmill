@@ -271,6 +271,18 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
+    // Timeline Index (R74). Builtin and modelless: one searchable SQLite file
+    // per recording, rebuilt from the transcript, its index, speaker turns and
+    // shots, for the mind, search and agents to read.
+    Recipe {
+        kind: "index-timeline",
+        output_kind: "timeline.index.v1",
+        semantic_version: "clipmill.timeline.index.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
     // Editorial windows. Builtin and modelless: the
     // cut an editorial model reads, arithmetic over the index and keyed on
     // the budget, so the model's own stages read a published artifact.

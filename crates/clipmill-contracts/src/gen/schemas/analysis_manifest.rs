@@ -431,6 +431,7 @@ impl ::std::convert::TryFrom<::std::string::String> for SkippedStageReason {
 #[doc = "        \"evidence.shots.v1\","]
 #[doc = "        \"vision.face_track.v1\","]
 #[doc = "        \"index.transcript.v1\","]
+#[doc = "        \"timeline.index.v1\","]
 #[doc = "        \"editorial.windows.v1\","]
 #[doc = "        \"editorial.proposals.v1\","]
 #[doc = "        \"discovery.candidates.v1\","]
@@ -473,6 +474,7 @@ impl Stage {
 #[doc = "    \"evidence.shots.v1\","]
 #[doc = "    \"vision.face_track.v1\","]
 #[doc = "    \"index.transcript.v1\","]
+#[doc = "    \"timeline.index.v1\","]
 #[doc = "    \"editorial.windows.v1\","]
 #[doc = "    \"editorial.proposals.v1\","]
 #[doc = "    \"discovery.candidates.v1\","]
@@ -516,6 +518,8 @@ pub enum StageKind {
     VisionFaceTrackV1,
     #[serde(rename = "index.transcript.v1")]
     IndexTranscriptV1,
+    #[serde(rename = "timeline.index.v1")]
+    TimelineIndexV1,
     #[serde(rename = "editorial.windows.v1")]
     EditorialWindowsV1,
     #[serde(rename = "editorial.proposals.v1")]
@@ -542,6 +546,7 @@ impl ::std::fmt::Display for StageKind {
             Self::EvidenceShotsV1 => f.write_str("evidence.shots.v1"),
             Self::VisionFaceTrackV1 => f.write_str("vision.face_track.v1"),
             Self::IndexTranscriptV1 => f.write_str("index.transcript.v1"),
+            Self::TimelineIndexV1 => f.write_str("timeline.index.v1"),
             Self::EditorialWindowsV1 => f.write_str("editorial.windows.v1"),
             Self::EditorialProposalsV1 => f.write_str("editorial.proposals.v1"),
             Self::DiscoveryCandidatesV1 => f.write_str("discovery.candidates.v1"),
@@ -565,6 +570,7 @@ impl ::std::str::FromStr for StageKind {
             "evidence.shots.v1" => Ok(Self::EvidenceShotsV1),
             "vision.face_track.v1" => Ok(Self::VisionFaceTrackV1),
             "index.transcript.v1" => Ok(Self::IndexTranscriptV1),
+            "timeline.index.v1" => Ok(Self::TimelineIndexV1),
             "editorial.windows.v1" => Ok(Self::EditorialWindowsV1),
             "editorial.proposals.v1" => Ok(Self::EditorialProposalsV1),
             "discovery.candidates.v1" => Ok(Self::DiscoveryCandidatesV1),

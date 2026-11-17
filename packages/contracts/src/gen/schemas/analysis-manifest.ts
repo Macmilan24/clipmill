@@ -44,6 +44,7 @@ export interface Stage {
     | "evidence.shots.v1"
     | "vision.face_track.v1"
     | "index.transcript.v1"
+    | "timeline.index.v1"
     | "editorial.windows.v1"
     | "editorial.proposals.v1"
     | "discovery.candidates.v1"

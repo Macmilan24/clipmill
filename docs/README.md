@@ -29,6 +29,7 @@ Start with the [project README](../README.md) to install and run ClipMill, or
 - [Design system](design-system.md): tokens and components.
 - [Daemon](daemon.md): state ownership and job scheduling.
 - [Artifact store](artifact-store.md): content addressing and publication.
+- [Timeline Index](timeline-index.md): the searchable record of what a recording contains.
 - [Evaluation](evaluation.md): fixtures, signed evidence, and quality checks.
 - [Threat model](threat-model.md): security boundaries and known limitations.
 - [Decision record](decisions.md): architectural choices and their rationale.

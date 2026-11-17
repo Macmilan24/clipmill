@@ -656,6 +656,7 @@ dependencies = [
  "clipmill-hub",
  "clipmill-reframe",
  "clipmill-render",
+ "clipmill-timeline",
  "clipmill-youtube",
  "directories",
  "ed25519-dalek",
