@@ -70,3 +70,27 @@ fn malformed_plans_are_refused() {
         ));
     }
 }
+
+#[test]
+fn a_recording_memory_round_trips_with_its_links() {
+    use clipmill_contracts::schemas::mind_memory::{LinkKind, MindMemory};
+
+    let memory: MindMemory = roundtrip("contracts/fixtures/mind.memory/valid/podcast.json");
+    assert_eq!(memory.chapters.len(), 2);
+    let kinds: Vec<_> = memory.links.iter().map(|link| link.kind).collect();
+    assert_eq!(kinds, [LinkKind::QuestionAnswer, LinkKind::PromiseDelivery]);
+    assert_eq!(memory.dropped.len(), 1);
+}
+
+#[test]
+fn malformed_memories_are_refused() {
+    use clipmill_contracts::schemas::mind_memory::MindMemory;
+
+    for rel in [
+        "contracts/fixtures/mind.memory/invalid/unknown_link_kind.json",
+        "contracts/fixtures/mind.memory/invalid/unit_not_cited.json",
+        "contracts/fixtures/mind.memory/invalid/float_ticks.json",
+    ] {
+        refused::<MindMemory>(rel);
+    }
+}

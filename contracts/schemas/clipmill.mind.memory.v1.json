@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.mind.memory.v1.json",
+  "title": "MindMemory",
+  "description": "What a recording is about, read once by the editorial model so every later decision can look it up (architecture §4.3, tier 2): chapters, the events in them (a story, a claim, a joke, a question, its answer), the people and things named, and the links between distant events that make a stitched clip possible (a question and its answer, a setup and its payoff, a callback). The model reads the annotated script a window at a time for events and entities, then reads the list of events for chapters and links; it cites sentences (`s12`) and events (`m3`) only from what it was shown, and code assigns every id and time. Items that fail a check are kept under `dropped` with the reason, so a thin memory can be told from a thin recording. Times are integer ticks at 1/90000 s of the source.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "script",
+    "producer",
+    "chapters",
+    "events",
+    "entities",
+    "links",
+    "dropped"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.mind.memory.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "script": {
+      "description": "The annotated script the model read, by level and digest, so a memory can be traced to the exact text behind it.",
+      "type": "object",
+      "required": ["level", "digest", "windows"],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "enum": ["full", "compact", "outline"]
+        },
+        "digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "windows": {
+          "description": "How many windows the read pass took.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation", "model", "prompt_versions"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "const": "mind-memory"
+        },
+        "implementation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_versions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "chapters": {
+      "description": "In time order, without overlaps.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/chapter"
+      }
+    },
+    "events": {
+      "description": "In time order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "dropped": {
+      "description": "What the model wrote that did not pass a check, and why.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["item", "code", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "description": "The id the item would have had, or the window it came from.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "unit": {
+      "description": "A sentence of the Timeline Index, as the script cites it.",
+      "type": "string",
+      "pattern": "^s(0|[1-9][0-9]{0,8})$"
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^m[1-9][0-9]{0,5}$"
+    },
+    "chapter_id": {
+      "type": "string",
+      "pattern": "^c[1-9][0-9]{0,4}$"
+    },
+    "entity_id": {
+      "type": "string",
+      "pattern": "^e[1-9][0-9]{0,5}$"
+    },
+    "speaker": {
+      "description": "The script's letter for a voice.",
+      "type": "string",
+      "pattern": "^[A-Z][0-9]{0,3}$"
+    },
+    "chapter": {
+      "type": "object",
+      "required": [
+        "chapter_id",
+        "title",
+        "summary",
+        "first_unit",
+        "last_unit",
+        "start_ticks",
+        "end_ticks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "chapter_id": {
+          "$ref": "#/$defs/chapter_id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "first_unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "last_unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "event_id",
+        "kind",
+        "title",
+        "mood",
+        "first_unit",
+        "last_unit",
+        "start_ticks",
+        "end_ticks",
+        "speakers",
+        "entities"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/event_id"
+        },
+        "kind": {
+          "enum": [
+            "story",
+            "claim",
+            "insight",
+            "joke",
+            "question",
+            "answer",
+            "explanation",
+            "demo_step",
+            "reveal",
+            "hot_take",
+            "reaction",
+            "promise",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "mood": {
+          "enum": ["funny", "serious", "tense", "emotional", "inspiring", "surprising", "neutral"]
+        },
+        "first_unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "last_unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "start_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "chapter_id": {
+          "$ref": "#/$defs/chapter_id"
+        },
+        "speakers": {
+          "description": "Who speaks in it, by script letter, from the index rather than the model.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/speaker"
+          }
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entity_id"
+          }
+        }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "required": ["entity_id", "name", "kind", "aliases", "events"],
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "$ref": "#/$defs/entity_id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "kind": {
+          "enum": ["person", "organization", "product", "place", "work", "concept", "other"]
+        },
+        "aliases": {
+          "description": "Other spellings the transcript uses, including recognition errors, so search finds them all.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/event_id"
+          }
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": ["link_id", "kind", "from_event", "to_event", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "link_id": {
+          "type": "string",
+          "pattern": "^l[1-9][0-9]{0,5}$"
+        },
+        "kind": {
+          "description": "`question_answer`, `setup_payoff`, `callback`, `claim_evidence` and `promise_delivery` run forward in time; `contradiction` may run either way.",
+          "enum": [
+            "question_answer",
+            "setup_payoff",
+            "callback",
+            "claim_evidence",
+            "promise_delivery",
+            "contradiction"
+          ]
+        },
+        "from_event": {
+          "$ref": "#/$defs/event_id"
+        },
+        "to_event": {
+          "$ref": "#/$defs/event_id"
+        },
+        "note": {
+          "description": "What connects them, in a sentence.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    }
+  }
+}

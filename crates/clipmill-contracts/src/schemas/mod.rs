@@ -73,6 +73,10 @@ pub mod media_audio;
 pub mod mind_clip_plan;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_memory.rs"]
+pub mod mind_memory;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/media_audio_peaks.rs"]
 pub mod media_audio_peaks;
 
