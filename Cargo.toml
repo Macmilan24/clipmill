@@ -34,6 +34,7 @@ clipmill-discovery = { path = "crates/clipmill-discovery", version = "0.4.0" }
 clipmill-edit-ir = { path = "crates/clipmill-edit-ir", version = "0.4.0" }
 clipmill-editorial = { path = "crates/clipmill-editorial", version = "0.4.0" }
 clipmill-evidence = { path = "crates/clipmill-evidence", version = "0.4.0" }
+clipmill-mind = { path = "crates/clipmill-mind", version = "0.4.0" }
 clipmill-export = { path = "crates/clipmill-export", version = "0.4.0" }
 clipmill-hub = { path = "crates/clipmill-hub", version = "0.4.0" }
 clipmill-reframe = { path = "crates/clipmill-reframe", version = "0.4.0" }
