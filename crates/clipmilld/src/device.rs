@@ -1033,7 +1033,7 @@ fn expected_ffmpeg_build() -> &'static str {
         any(target_os = "linux", target_os = "windows"),
         target_arch = "x86_64"
     )) {
-        "202609271304_8.1.3"
+        "202609301308_8.1.3"
     } else {
         "unsupported-phase0-platform"
     }
