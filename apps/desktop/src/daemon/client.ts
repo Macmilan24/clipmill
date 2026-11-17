@@ -745,6 +745,13 @@ export interface DirectClipInput {
    * chosen from another. Left off, the newest run over the source.
    */
   readonly jobId?: string;
+  /**
+   * A clip planned as parts (`clipmill.mind.clip_plan.v1`) as JSON. Given,
+   * the clip is directed from the plan — its parts in programme order, with
+   * their joins and what was removed — rather than from the candidate, and
+   * `jobId` is required.
+   */
+  readonly planJson?: string;
 }
 
 export interface DirectedClip {

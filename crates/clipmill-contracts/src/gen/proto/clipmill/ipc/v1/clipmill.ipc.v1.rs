@@ -1787,6 +1787,14 @@ pub struct DirectClipRequest {
     /// landscape. Empty is vertical.
     #[prost(string, tag = "16")]
     pub shape: ::prost::alloc::string::String,
+    /// A clip planned as parts (clipmill.mind.clip_plan.v1, decision R76), as
+    /// JSON. Given, the clip is directed from the plan rather than from a
+    /// candidate: its parts in programme order, with their joins and what was
+    /// removed. The plan names its own recording and is checked before anything
+    /// is built. It needs an analysis run (job_id) for the evidence and cannot
+    /// be combined with manual_span.
+    #[prost(string, tag = "17")]
+    pub plan_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectClipResponse {

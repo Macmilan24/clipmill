@@ -539,6 +539,10 @@ pub struct DirectClipInput {
     /// reads is taken from it. Empty takes the newest run over the source.
     #[serde(default)]
     pub job_id: String,
+    /// A clip planned as parts (`clipmill.mind.clip_plan.v1`) as JSON. Given,
+    /// the clip is directed from the plan rather than from a candidate.
+    #[serde(default)]
+    pub plan_json: String,
 }
 
 impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipRequest {
@@ -564,6 +568,7 @@ impl From<DirectClipInput> for clipmill_contracts::proto::ipc::v1::DirectClipReq
             caption_options_json: input.caption_options_json,
             brand_json: input.brand_json,
             shape: input.shape,
+            plan_json: input.plan_json,
         }
     }
 }

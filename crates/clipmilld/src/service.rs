@@ -1744,6 +1744,24 @@ impl Service {
         direct: &DirectClipRequest,
     ) -> Result<CheckedClip, (ErrorCode, String)> {
         let mut normalized = direct.clone();
+        if !direct.plan_json.is_empty() {
+            if direct.manual_span || direct.job_id.is_empty() {
+                return Err((
+                    ErrorCode::InvalidArgument,
+                    "A planned clip needs an analysis run and is not a manual span".to_owned(),
+                ));
+            }
+            // A plan is its own identity: the same plan is the same clip,
+            // and a different plan from the same moments is another.
+            let identity = format!(
+                "plan:{}:{}:{}",
+                direct.source_id, direct.job_id, direct.plan_json
+            );
+            normalized.candidate_id = format!(
+                "cand_{}",
+                &hex::encode(Sha256::digest(identity.as_bytes()))[..16]
+            );
+        }
         if direct.manual_span {
             if direct.job_id.is_empty() || direct.start_ticks >= direct.end_ticks {
                 return Err((
@@ -4425,6 +4443,9 @@ fn assemble(
     evidence: &crate::inspector::Evidence,
     direct: &DirectClipRequest,
 ) -> Result<clipmill_edit_ir::EditDocument, String> {
+    if !direct.plan_json.is_empty() {
+        return assemble_plan(evidence, direct);
+    }
     if evidence
         .ranking
         .declined
@@ -4468,13 +4489,7 @@ fn assemble(
         cut,
         style_ref,
         frame: evidence.frame,
-        shape: match direct.shape.as_str() {
-            "" | "vertical" => clipmill_director::FrameShape::Vertical,
-            "portrait" => clipmill_director::FrameShape::Portrait,
-            "square" => clipmill_director::FrameShape::Square,
-            "landscape" => clipmill_director::FrameShape::Landscape,
-            other => return Err(format!("{other} is not a frame shape")),
-        },
+        shape: frame_shape(&direct.shape)?,
     };
     if direct.manual_span {
         let boundary = clipmill_director::Boundary {
@@ -4488,6 +4503,144 @@ fn assemble(
         clipmill_director::direct(director_evidence, &request)
     }
     .map_err(|error| error.to_string())
+}
+
+/// A clip planned as parts (R76): the plan read, checked against the run's
+/// transcript, and directed part by part.
+fn assemble_plan(
+    evidence: &crate::inspector::Evidence,
+    direct: &DirectClipRequest,
+) -> Result<clipmill_edit_ir::EditDocument, String> {
+    let plan: clipmill_contracts::schemas::mind_clip_plan::MindClipPlan =
+        serde_json::from_str(&direct.plan_json)
+            .map_err(|error| format!("The clip plan could not be read: {error}"))?;
+    let style_ref = if direct.style_ref.is_empty() {
+        clipmill_captions::DEFAULT_STYLE_REF.to_owned()
+    } else {
+        direct.style_ref.clone()
+    };
+    clipmill_director::direct_plan(
+        clipmill_director::PlanEvidence {
+            transcript: &evidence.transcript,
+            index: evidence.index.as_ref(),
+            shots: evidence.shots.as_ref(),
+            faces: evidence.faces.as_ref(),
+        },
+        &clipmill_director::PlanRequest {
+            plan: &plan,
+            style_ref,
+            frame: evidence.frame,
+            shape: frame_shape(&direct.shape)?,
+        },
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod plan_tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use clipmill_contracts::proto::ipc::v1::DirectClipRequest;
+    use serde::de::DeserializeOwned;
+
+    fn fixture<T: DeserializeOwned>(kind: &str) -> T {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../contracts/fixtures")
+            .join(kind)
+            .join("valid/interview.json");
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn evidence() -> crate::inspector::Evidence {
+        crate::inspector::Evidence {
+            candidates: fixture("discovery.candidates"),
+            ranking: fixture("ranking.set"),
+            transcript: fixture("speech.transcript"),
+            index: None,
+            shots: None,
+            faces: None,
+            frame: clipmill_director::Frame {
+                width: 1920,
+                height: 1080,
+            },
+        }
+    }
+
+    fn request(plan: &serde_json::Value) -> DirectClipRequest {
+        DirectClipRequest {
+            plan_json: plan.to_string(),
+            job_id: "job_1".to_owned(),
+            ..DirectClipRequest::default()
+        }
+    }
+
+    /// The interview's first question, then an answer from its middle.
+    fn plan(fingerprint: &str) -> serde_json::Value {
+        let transcript: clipmill_contracts::schemas::speech_transcript::SpeechTranscript =
+            fixture("speech.transcript");
+        let word = |index: usize| &transcript.words[index];
+        let (first_end, second_start, second_end) =
+            (word(4).end_ticks, word(45).start_ticks, word(60).end_ticks);
+        let duration = first_end - word(0).start_ticks + (second_end - second_start);
+        serde_json::json!({
+            "schema_version": "clipmill.mind.clip_plan.v1",
+            "source_fingerprint": fingerprint,
+            "plan_id": "plan_00000000000000d4",
+            "form": "stitch",
+            "parts": [
+                {"part_id": "p1", "role": "question", "start_ticks": word(0).start_ticks, "end_ticks": first_end},
+                {"part_id": "p2", "role": "answer", "start_ticks": second_start, "end_ticks": second_end}
+            ],
+            "joins": [{"after": "p1", "kind": "distant", "link": "question_answer:s0>s5"}],
+            "duration_ticks": duration,
+            "provenance": {"by": "agent", "client_id": "test"}
+        })
+    }
+
+    #[test]
+    fn a_plan_directs_a_clip_of_its_parts() {
+        let evidence = evidence();
+        let fingerprint = evidence.transcript.source_fingerprint.to_string();
+        let document = super::assemble(&evidence, &request(&plan(&fingerprint))).unwrap();
+        assert_eq!(document.video.segments.len(), 2);
+        assert_eq!(
+            document.plan.as_ref().map(|plan| plan.plan_id.as_str()),
+            Some("plan_00000000000000d4")
+        );
+    }
+
+    #[test]
+    fn a_plan_that_cannot_be_read_or_made_says_why() {
+        let evidence = evidence();
+        let unreadable = DirectClipRequest {
+            plan_json: "{\"parts\": 3}".to_owned(),
+            ..request(&serde_json::json!({}))
+        };
+        let error = super::assemble(&evidence, &unreadable).unwrap_err();
+        assert!(
+            error.starts_with("The clip plan could not be read"),
+            "{error}"
+        );
+
+        let fingerprint = evidence.transcript.source_fingerprint.to_string();
+        let mut unjustified = plan(&fingerprint);
+        unjustified["joins"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("link");
+        let error = super::assemble(&evidence, &request(&unjustified)).unwrap_err();
+        assert!(error.contains("without the evidence"), "{error}");
+    }
+}
+
+fn frame_shape(shape: &str) -> Result<clipmill_director::FrameShape, String> {
+    match shape {
+        "" | "vertical" => Ok(clipmill_director::FrameShape::Vertical),
+        "portrait" => Ok(clipmill_director::FrameShape::Portrait),
+        "square" => Ok(clipmill_director::FrameShape::Square),
+        "landscape" => Ok(clipmill_director::FrameShape::Landscape),
+        other => Err(format!("{other} is not a frame shape")),
+    }
 }
 
 /// A hand-set boundary, with any edge that falls inside a word moved out to

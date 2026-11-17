@@ -642,6 +642,7 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     let (candidate_id, chosen_start, chosen_end) = candidate_minutes_in(&client, &older).await;
     let directed = client
         .direct_clip(DirectClipRequest {
+            plan_json: String::new(),
             allow_declined: false,
             manual_span: false,
             project_id: older.project_id.clone(),
@@ -682,6 +683,7 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     // Approving it again reopens it; the newer project has no document.
     let again = client
         .direct_clip(DirectClipRequest {
+            plan_json: String::new(),
             allow_declined: false,
             manual_span: false,
             project_id: older.project_id.clone(),
@@ -1070,6 +1072,7 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     );
     let reopened = client
         .direct_clip(DirectClipRequest {
+            plan_json: String::new(),
             allow_declined: false,
             manual_span: false,
             project_id: older.project_id.clone(),
