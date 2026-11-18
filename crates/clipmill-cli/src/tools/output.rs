@@ -62,10 +62,18 @@ pub(super) fn schema(operation: &str) -> Value {
                 ("state", "string"),
             ],
         ),
-        "get_transcript" => list(
-            "sentences",
-            &[("text", "string"), ("start", "number"), ("end", "number")],
-        ),
+        "get_transcript" => {
+            let mut output = record(&[("source_fingerprint", "string"), ("sentences", "array")]);
+            output["properties"]["sentences"]["items"] = record(&[
+                ("unit", "string"),
+                ("text", "string"),
+                ("start", "number"),
+                ("end", "number"),
+                ("start_ticks", "integer"),
+                ("end_ticks", "integer"),
+            ]);
+            output
+        }
         "find_moments" => list(
             "moments",
             &[("text", "string"), ("start", "number"), ("end", "number")],

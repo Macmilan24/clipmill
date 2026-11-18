@@ -874,6 +874,8 @@ impl Service {
                 let index = s["index"].as_u64().unwrap_or(0);
                 let mut sentence = json!({
                     "unit": format!("s{index}"),
+                    "start_ticks": s["start_ticks"],
+                    "end_ticks": s["end_ticks"],
                     "start": seconds(s["start_ticks"].as_u64().unwrap_or(0)),
                     "end": seconds(s["end_ticks"].as_u64().unwrap_or(0)),
                     "text": s["text"],
@@ -884,9 +886,12 @@ impl Service {
                 sentence
             })
             .collect();
-        Ok(
-            json!({ "job_id": run.job.job_id, "language": index["language"], "sentences": sentences }),
-        )
+        Ok(json!({
+            "job_id": run.job.job_id,
+            "source_fingerprint": index["source_fingerprint"],
+            "language": index["language"],
+            "sentences": sentences
+        }))
     }
 
     async fn decisions(

@@ -213,7 +213,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "clipmill_get_transcript",
         title: "Read the transcript",
-        description: "The words of an analyzed recording as sentences with times, speakers and unit ids (s12). Narrow it with start_seconds and end_seconds for a long recording.",
+        description: "Read sentences, speakers and unit IDs (s12). Use the source_fingerprint and exact start_ticks and end_ticks (90,000 per second) to build a clip plan. Narrow the results with start_seconds and end_seconds.",
         op: "get_transcript",
         read_only: true,
         destructive: false,
