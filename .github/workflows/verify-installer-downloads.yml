@@ -1,0 +1,89 @@
+name: Verify release downloads
+run-name: Verify ClipMill 0.5.0 downloads
+
+on:
+  push:
+    branches: [release/verify-installer-downloads]
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GH_REPO: ${{ github.repository }}
+  RELEASE_TAG: v0.5.0
+  RELEASE_COMMIT: 512cc1faa9d958dec304d03edc42bbd2c0fef6e1
+  RELEASE_RUN: '44328686359'
+
+jobs:
+  checksums:
+    name: Download and verify all four installers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Verify the tag, release build and installer bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag_object=$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq .object.sha)
+          test "$(gh api "repos/$GH_REPO/git/tags/$tag_object" --jq .object.sha)" = "$RELEASE_COMMIT"
+          gh api "repos/$GH_REPO/actions/runs/$RELEASE_RUN" | jq -e --arg tag "$RELEASE_TAG" --arg commit "$RELEASE_COMMIT" \
+            '.event == "push" and .head_branch == $tag and .head_sha == $commit and .conclusion == "success"'
+          gh release view "$RELEASE_TAG" --json assets,tagName > "$RUNNER_TEMP/assets.json"
+          mkdir "$RUNNER_TEMP/downloads"
+          cd "$RUNNER_TEMP/downloads"
+          gh release download "$RELEASE_TAG"
+          python3 - <<'PY'
+          import hashlib, json, os, re
+          from pathlib import Path
+
+          tag = os.environ['RELEASE_TAG']
+          version = tag.removeprefix('v')
+          release = json.loads((Path(os.environ['RUNNER_TEMP']) / 'assets.json').read_text())
+          assert release['tagName'] == tag
+          assets = {asset['name']: asset for asset in release['assets']}
+          installers = {f'ClipMill_{version}_{suffix}' for suffix in ('aarch64.dmg', 'amd64.AppImage', 'amd64.deb', 'x64-setup.exe')}
+          manifest = Path('SHA256SUMS.txt')
+          assert set(assets) == {manifest.name, *installers} == {path.name for path in Path.cwd().iterdir()}
+          checks = {}
+          for line in manifest.read_text().splitlines():
+              checksum, name = line.split(maxsplit=1)
+              assert name in installers and name not in checks and re.fullmatch(r'[a-f0-9]{64}', checksum)
+              checks[name] = checksum
+          assert set(checks) == installers
+          for name, asset in sorted(assets.items()):
+              path = Path(name)
+              assert path.stat().st_size == asset['size'] and asset['state'] == 'uploaded'
+              with path.open('rb') as stream:
+                  actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+              assert asset['digest'] == 'sha256:' + actual
+              if name in installers:
+                  assert checks[name] == actual
+              print(actual, path.stat().st_size, name)
+          PY
+
+  installed-mac:
+    name: Run the downloaded Mac app and client
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_COMMIT }}
+          persist-credentials: false
+      - name: Download the release DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$RELEASE_TAG" --pattern '*.dmg' --dir "$RUNNER_TEMP"
+      - name: Verify the app signature and installed client
+        run: |
+          set -euo pipefail
+          volume="$RUNNER_TEMP/ClipMill Download"
+          mkdir "$volume"
+          hdiutil attach -readonly -nobrowse -mountpoint "$volume" "$RUNNER_TEMP/ClipMill_${RELEASE_TAG#v}_aarch64.dmg"
+          trap 'hdiutil detach "$volume"' EXIT
+          codesign --verify --deep --strict "$volume/ClipMill.app"
+          codesign -dv --verbose=2 "$volume/ClipMill.app"
+          python3 tools/release/verify_cli.py "$volume/ClipMill.app/Contents/MacOS"
