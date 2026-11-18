@@ -54,6 +54,10 @@ pub(crate) struct Part {
     pub requirements_sha256: String,
     /// ClipMill's own packages for it, installed from the app itself.
     pub wheels: Vec<Wheel>,
+    /// The Windows Whisper wheel selects a kernel supported by the host CPU.
+    /// Its previous fixed-ISA installs can only start on a compatible CPU.
+    #[serde(default)]
+    pub x86_cpu_dispatch: bool,
     /// What installing it downloads, per platform, as measured when the app
     /// was built.
     #[serde(default)]

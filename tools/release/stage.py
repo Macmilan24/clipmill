@@ -393,13 +393,24 @@ def uses_sdk(project: dict) -> bool:
     return "clipmill-worker-sdk" in names
 
 
-def build_wheel(project: Path, out: Path) -> Path:
+def build_wheel(project: Path, out: Path, *, python: str | None = None, **options: object) -> Path:
     before = set(out.glob("*.whl"))
-    run(["uv", "build", "--wheel", "--out-dir", str(out), str(project)], cwd=ROOT)
+    args = ["--python", python] if python else []
+    run(["uv", "build", "--wheel", *args, "--out-dir", str(out), str(project)], cwd=ROOT, **options)
     made = sorted(set(out.glob("*.whl")) - before)
     if len(made) != 1:
         raise SystemExit(f"stage: building {project} made {len(made)} wheels")
     return made[0]
+
+
+def build_windows_whisper(python: str, wheels: Path) -> Path:
+    project = ROOT / "integrations" / "whisper-windows"
+    metadata = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
+    pin = metadata["tool"]["clipmill"]["upstream"]
+    source = fetch(pin["url"], pin["sha256"])
+    return build_wheel(
+        project, wheels, python=python, env={**os.environ, "CLIPMILL_WHISPER_SOURCE": str(source)}
+    )
 
 
 def stage_engine(target: Target, bom: dict) -> dict:
@@ -415,6 +426,8 @@ def stage_engine(target: Target, bom: dict) -> dict:
     # llama.cpp carry its server in the editorial component.
     server = build_llama_wheel(target, bom, wheels)
     extra = {"editorial": [server]} if server is not None else {}
+    if target.engine == "windows-x86_64":
+        extra["asr-whispercpp"] = [build_windows_whisper(bom["python"]["version"], wheels)]
     parts = []
     # uv downloads a wheel once and links it into every environment that
     # needs it, so each is counted against the first component that does:
@@ -443,6 +456,9 @@ def stage_engine(target: Target, bom: dict) -> dict:
                 "--no-emit-project",
                 # ClipMill's SDK arrives as a wheel from the app, never an index.
                 *(["--no-emit-package", "clipmill-worker-sdk"] if sdk_needed else []),
+                # The Windows binding is built for the managed Python and shipped
+                # in the app. Other platforms retain the upstream locked wheel.
+                *(["--no-emit-local"] if name == "asr-whispercpp" else []),
                 "--format",
                 "requirements-txt",
                 "--no-header",
@@ -478,6 +494,9 @@ def stage_engine(target: Target, bom: dict) -> dict:
                 "platforms": part["platforms"],
                 "requirements": f"requirements/{name}.txt",
                 "requirements_sha256": sha256(exported),
+                **(
+                    {"x86_cpu_dispatch": True} if name == "asr-whispercpp" and name in extra else {}
+                ),
                 "wheels": [
                     *own,
                     {"file": f"wheels/{wheel.name}", "sha256": sha256(wheel)},
@@ -644,7 +663,7 @@ licence:
   FFmpeg-NOTICE.txt            FFmpeg's ffmpeg and ffprobe, with GPL-3.0.txt
   uv-NOTICE.txt                uv, which installs the components, with
                                Apache-2.0.txt
-{llama}  dm-sans-OFL-1.1.txt          the interface's fonts
+{llama}{whisper}  dm-sans-OFL-1.1.txt          the interface's fonts
   ibm-plex-mono-OFL-1.1.txt
   ../fonts/                    the caption faces, each with its licence
   ../emoji/LICENSE.txt         the colour emoji
@@ -675,10 +694,16 @@ mostly the GNU Lesser General Public License 2.1 or later (LGPL-2.1.txt).
 Ubuntu publishes each one's licence and source at
 https://packages.ubuntu.com/jammy/.
 """
-    return index
+    return index.replace(
+        "{whisper}",
+        "  Whisper-NOTICE.txt            Windows transcription, with the pywhispercpp,\n"
+        "                               whisper.cpp and pybind11 licences\n"
+        if windows
+        else "",
+    )
 
 
-def stage_licenses(bom: dict, target: Target) -> None:
+def stage_licenses(bom: dict, target: Target, manifest: dict) -> None:
     licenses = RESOURCES / "licenses"
     licenses.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / "LICENSE", licenses / "ClipMill-LICENSE.txt")
@@ -691,6 +716,27 @@ def stage_licenses(bom: dict, target: Target) -> None:
         shutil.copy2(LICENSE_TEXTS / name, licenses / name)
     (licenses / "FFmpeg-NOTICE.txt").write_text(ffmpeg_notice(bom, target), encoding="utf-8")
     (licenses / "uv-NOTICE.txt").write_text(uv_notice(bom), encoding="utf-8")
+    if target.engine == "windows-x86_64":
+        part = next(part for part in manifest["parts"] if part["name"] == "asr-whispercpp")
+        wheel = next(
+            wheel for wheel in part["wheels"] if wheel["file"].startswith("wheels/pywhispercpp-")
+        )
+        with zipfile.ZipFile(RESOURCES / "engine" / wheel["file"]) as bundle:
+            build = json.loads(bundle.read("pywhispercpp/_clipmill_build.json"))
+            source = build["source"]
+            for name in ("pywhispercpp", "whisper.cpp", "pybind11"):
+                filename = f"{name}-LICENSE.txt"
+                (licenses / filename).write_bytes(bundle.read(f"pywhispercpp/licenses/{filename}"))
+        (licenses / "Whisper-NOTICE.txt").write_text(
+            "Windows Whisper transcription\n\n"
+            "ClipMill builds pywhispercpp and whisper.cpp/ggml under the MIT licence and\n"
+            "pybind11 under the BSD three-clause licence. The adjacent licence files name\n"
+            "their copyright holders. ClipMill's CPU dispatcher is part of ClipMill.\n\n"
+            f"Upstream source: {source['url']}\nSource SHA-256: {source['sha256']}\n"
+            f"MSVC compiler: {build['msvc']} (v143)\n"
+            f"Bundled wheel SHA-256: {wheel['sha256']}\n",
+            encoding="utf-8",
+        )
     pin = bom["llama_cpp"].get(target.bom)
     if pin is not None:
         shutil.copy2(LICENSE_TEXTS / "llama.cpp-LICENSE.txt", licenses / "llama.cpp-LICENSE.txt")
@@ -730,7 +776,7 @@ def main() -> int:
     stage_emoji(bom)
     stage_registry()
     manifest = stage_engine(target, bom)
-    stage_licenses(bom, target)
+    stage_licenses(bom, target, manifest)
     if options.verify_engine:
         verify_engine(target, manifest)
     here = [part["name"] for part in manifest["parts"] if target.engine in part["platforms"]]

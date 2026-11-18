@@ -163,7 +163,7 @@ export function componentStatus(part: Component): string {
     case 'installed':
       return 'Installed';
     case 'outdated':
-      return 'Update available';
+      return part.detail || 'Update available';
     case 'failed':
       return part.detail || 'Could not be installed';
     default:

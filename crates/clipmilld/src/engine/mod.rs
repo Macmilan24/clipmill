@@ -117,6 +117,14 @@ impl Engine {
     /// Read the app's engine and enrol a key for every part this computer
     /// runs. Nothing starts yet: see [`Engine::start`].
     pub(crate) fn prepare(paths: EnginePaths, policy: Arc<LocalLockPolicy>) -> Arc<Self> {
+        Self::prepare_for_cpu(paths, policy, crate::library::CpuFeatures::here())
+    }
+
+    fn prepare_for_cpu(
+        paths: EnginePaths,
+        policy: Arc<LocalLockPolicy>,
+        cpu: crate::library::CpuFeatures,
+    ) -> Arc<Self> {
         let manifest = Manifest::load(&paths.shipped);
         if let Err(problem) = &manifest {
             tracing::warn!(problem, "the app's processing engine cannot be installed");
@@ -137,7 +145,12 @@ impl Engine {
                     tracing::warn!(part = part.name, problem, "an engine worker has no key");
                     continue;
                 }
-                let current = installer.current(&part.name).map(|(_, dir)| dir);
+                let current = installer
+                    .current(&part.name)
+                    .filter(|(pointer, _)| {
+                        !part.x86_cpu_dispatch || pointer.x86_cpu_dispatch || cpu.runs_whisper_cpp()
+                    })
+                    .map(|(_, dir)| dir);
                 parts.push(Running {
                     part: part.clone(),
                     install: watch::channel(current).0,
@@ -329,6 +342,13 @@ impl Engine {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let detail = match (&watch.state, detail.is_empty()) {
+            _ if state == "outdated"
+                && running.part.x86_cpu_dispatch
+                && running.install.borrow().is_none() =>
+            {
+                "Update Transcription under Models → Components to use Whisper on this processor."
+                    .to_owned()
+            }
             (process::ProcessState::Waiting { reason }, true) => reason.clone(),
             _ if detail.is_empty() && running.part.family == EDITORIAL_FAMILY => {
                 self.lock().proof.clone().unwrap_or_default()
@@ -764,6 +784,58 @@ mod tests {
             .unwrap()
             .count();
         assert_eq!(trusted, 1, "a key for the one part here");
+    }
+
+    #[test]
+    fn old_whisper_env_waits_for_update_only_on_a_cpu_it_cannot_run_on() {
+        let root = tempfile::tempdir().unwrap();
+        let part_name = "asr-whispercpp";
+        ship(root.path(), &[(part_name, manifest::platform())]);
+        let paths = paths(root.path());
+        let manifest_path = paths.shipped.join("engine.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        manifest["parts"][0]["module"] = "clipmill_worker_asr_whispercpp".into();
+        manifest["parts"][0]["x86_cpu_dispatch"] = true.into();
+        fs::write(manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        let envs = paths.engine_dir.join("envs");
+        let previous = "asr-whispercpp-previous";
+        let interpreter = install::command_path(&envs.join(previous), "python");
+        fs::create_dir_all(interpreter.parent().unwrap()).unwrap();
+        fs::write(interpreter, b"").unwrap();
+        // Real 0.4 and 0.5 receipts predate the x86_cpu_dispatch field.
+        let mut receipt = serde_json::json!({
+            "schema_version": "clipmill.engine.install.v1", "digest": "a".repeat(64),
+            "dir": previous, "installed_unix_millis": 1,
+        });
+        let pointer = envs.join(format!("{part_name}.json"));
+        fs::write(&pointer, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let inspect = |avx2, bmi2| {
+            Engine::prepare_for_cpu(
+                paths.clone(),
+                Arc::new(LocalLockPolicy::new()),
+                crate::library::CpuFeatures {
+                    x86_64_v2: true,
+                    avx2,
+                    fma: avx2,
+                    f16c: true,
+                    bmi2,
+                },
+            )
+        };
+        let legacy = inspect(false, false);
+        assert!(legacy.parts[0].install.borrow().is_none());
+        let status = legacy.list().parts.remove(0);
+        assert_eq!(status.state, "outdated");
+        assert!(status.detail.contains("Update Transcription"));
+        assert!(inspect(true, false).parts[0].install.borrow().is_none());
+        assert!(inspect(true, true).parts[0].install.borrow().is_some());
+
+        // A later version may still run an older CPU-dispatched component
+        // while its next routine update is being downloaded.
+        receipt["x86_cpu_dispatch"] = true.into();
+        fs::write(pointer, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        assert!(inspect(false, false).parts[0].install.borrow().is_some());
     }
 
     #[tokio::test]

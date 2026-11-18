@@ -37,7 +37,7 @@ class FakeWhisper:
 
 
 def test_a_window_is_primed_with_fillers_only_when_asked(monkeypatch):
-    monkeypatch.setattr(engine, "Model", FakeWhisper)
+    monkeypatch.setattr(engine, "_runtime", lambda: (FakeWhisper, None))
     recognizer = engine.WhisperCppRecognizer(model(), weights="ggml-base.bin")
     assert "initial_prompt" not in FakeWhisper.params, "unprimed unless asked"
 

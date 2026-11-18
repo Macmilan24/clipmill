@@ -10,6 +10,21 @@
 - Open multi-part plans in Studio. Restore source ranges, adjust a join, and
   preview the room tone and fades that will be used in the render.
 
+## 0.5.1 — Whisper on older Windows PCs and reliable upgrades
+
+- **Speech recognition on older Windows PCs.** Whisper selects a CPU build
+  when it starts. An AVX processor such as the Intel Core i7-3770 can now
+  transcribe the same recordings with Whisper, including languages outside
+  Parakeet's coverage. On a PC with an existing installation, open **Models →
+  Components** and choose **Update** to replace the old transcription worker.
+- **Windows upgrades.** Installing over 0.4 keeps both Studio and the
+  `clipmill` command. Installing over 0.5 also restores the command on PCs
+  where the previous upgrade removed it. Existing Studio shortcuts continue
+  to open the app.
+- **Clip suggestions.** A recording could produce an empty Results panel
+  when most of its lines were marked as retakes or asides. The cutter now
+  considers the original moments as well and limits cuts to 35% of a moment.
+
 ## 0.5.0 — Word timing, recording search and connected clients
 
 - Parakeet TDT v3 recognizes and times words locally with one model for 25

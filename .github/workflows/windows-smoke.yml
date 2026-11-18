@@ -6,16 +6,18 @@ name: windows-smoke
 # component from the network, runs its workers, probes a recording made with
 # the app's own FFmpeg, and stops when asked.
 #
-# It runs after every release run that built its installers, on that run's
-# installer and with the drill from that run's commit; on a pull request that
-# changes the test, against the newest release run that succeeded; and by hand,
-# on the release run named. It reads; it writes nothing. Only people who can
-# push start a release run (a tag or by hand), so the commit it checks out
-# after one is theirs.
+# Release builds call this workflow with their own installer and commit.
+# Pull requests that change the smoke test exercise it on the latest successful
+# release build. It can also be run by hand against a specific build.
 on:
-  workflow_run:
-    workflows: [release]
-    types: [completed]
+  workflow_call:
+    inputs:
+      release-run:
+        type: string
+        required: true
+      compatibility:
+        type: boolean
+        required: true
   pull_request:
     paths:
       - .github/workflows/windows-smoke.yml
@@ -26,13 +28,17 @@ on:
       release-run:
         description: The release run whose Windows installer to test (default, the newest that succeeded)
         required: false
+      compatibility:
+        description: Test upgrades and Windows Whisper CPU compatibility (ClipMill 0.5.1 or later)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: windows-smoke-${{ github.ref }}
+  group: windows-smoke-${{ github.ref }}-${{ inputs.release-run || github.run_id }}
   cancel-in-progress: true
 
 env:
@@ -45,27 +51,32 @@ env:
 jobs:
   smoke:
     name: install and run (windows)
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
-    runs-on: windows-2025
-    timeout-minutes: 75
+    # Build and clean-install on Server 2025. Exercise processor emulation
+    # on an older Windows kernel as well, with the same packaged binaries.
+    runs-on: ${{ inputs.compatibility && 'windows-2022' || 'windows-2025' }}
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # Empty except after a release run: the default commit.
-          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Fetch the release run's Windows installer
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_RUN: ${{ inputs.release-run || github.event.workflow_run.id }}
+          RELEASE_RUN: ${{ inputs.release-run }}
         run: |
           run="${RELEASE_RUN:-$(gh run list --workflow release.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')}"
           echo "testing the Windows installer from release run $run"
           gh run download "$run" --name installers-windows-x86_64 --dir installer
           ls -la installer
+      - name: Verify in-place upgrades from released Windows installers
+        if: inputs.compatibility
+        shell: pwsh
+        run: |
+          $setup = Get-Item 'installer/*-setup.exe'
+          ./tools/drills/windows-upgrade.ps1 -CandidateInstaller $setup.FullName -WorkDir "$env:RUNNER_TEMP/clipmill-upgrade"
       # NSIS: /S installs silently, and /D, which must come last, names the
       # folder.
       - name: Install it silently
@@ -82,6 +93,12 @@ jobs:
         run: >
           uv run --project eval/harness python tools/drills/packaged_smoke.py
           --app-dir "$env:APP_DIR" --work-dir "$env:RUNNER_TEMP/smoke"
+      - name: Transcribe speech on the host, Ivy Bridge and Nehalem CPU profiles
+        if: inputs.compatibility
+        shell: pwsh
+        run: >-
+          ./tools/drills/whisper_windows_compat.ps1 -AppDir "$env:APP_DIR"
+          -DataDir "$env:RUNNER_TEMP/smoke/data" -WorkDir "$env:RUNNER_TEMP/whisper-compat"
       - name: Keep the logs
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -90,5 +107,8 @@ jobs:
           path: |
             ${{ runner.temp }}/smoke/daemon.log
             ${{ runner.temp }}/smoke/data/logs/
+            ${{ runner.temp }}/clipmill-upgrade/daemon-*.log
+            ${{ runner.temp }}/clipmill-upgrade/project.json
+            ${{ runner.temp }}/whisper-compat/whisper-windows-compat.json
           if-no-files-found: ignore
           retention-days: 14

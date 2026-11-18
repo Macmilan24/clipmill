@@ -174,7 +174,7 @@ function PartRow({
       >
         {installed
           ? [
-              part.state === 'outdated' ? 'Update available' : null,
+              part.state === 'outdated' ? componentStatus(part) : null,
               part.installedBytes > 0 ? formatBytes(part.installedBytes) : null,
             ]
               .filter(Boolean)

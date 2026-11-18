@@ -55,6 +55,10 @@ pub const STITCH_MIN_GAP_TICKS: u64 = 45 * SECOND;
 pub const DUPLICATE_SHARE_PERCENT: u64 = 50;
 /// The most candidates the cutter hands on, best first.
 pub const MAX_CANDIDATES: usize = 30;
+/// The most of a moment a tight cut may leave out. Markup that would cut
+/// more is not trusted for that moment: an editor tightens a moment, they do
+/// not hollow it out.
+pub const MAX_CUT_PERCENT: u64 = 35;
 
 /// Everything the cutter reads.
 #[derive(Clone, Copy, Debug)]
@@ -190,6 +194,20 @@ impl Table {
         Self { units, position }
     }
 
+    /// The same recording with every cut mark set aside, so a moment the
+    /// markup over-marked still has its plain version.
+    fn plain(&self) -> Self {
+        Self {
+            units: self
+                .units
+                .iter()
+                .cloned()
+                .map(|unit| Unit { cut: None, ..unit })
+                .collect(),
+            position: self.position.clone(),
+        }
+    }
+
     fn place(&self, unit: &str) -> Option<usize> {
         unit_index(unit).and_then(|i| self.position.get(&i).copied())
     }
@@ -293,6 +311,11 @@ impl Table {
                     break;
                 }
                 if kept < min {
+                    continue;
+                }
+                let span = self.units[end].end.saturating_sub(self.units[start].start);
+                let removed = span.saturating_sub(kept);
+                if u128::from(removed) * 100 > u128::from(span) * u128::from(MAX_CUT_PERCENT) {
                     continue;
                 }
                 // Prefer covering the moment, then strong edges, then length.
@@ -503,16 +526,28 @@ pub fn candidates_for_brief(material: &Material<'_>, prompt: &str) -> Vec<Candid
     if table.units.is_empty() {
         return Vec::new();
     }
+    // Try the original moments alongside the marked ones. With no cut marks
+    // the passes are identical, so scan and score the recording only once.
+    let plain = table
+        .units
+        .iter()
+        .any(|unit| unit.cut.is_some())
+        .then(|| table.plain());
+    let versions = std::iter::once(&table).chain(plain.as_ref());
     let mut found = Vec::new();
     if let Some(memory) = material.memory {
-        events(material, &table, memory, &mut found);
-        links(material, &table, memory, &mut found);
-        themes(material, &table, memory, &mut found);
+        for version in versions.clone() {
+            events(material, version, memory, &mut found);
+            links(material, version, memory, &mut found);
+            themes(material, version, memory, &mut found);
+        }
     }
     reactions(material, &table, &mut found);
     brief_scout(material, &table, prompt, &mut found);
     if found.is_empty() {
-        spans(material, &table, &mut found);
+        for version in versions {
+            spans(material, version, &mut found);
+        }
     }
     cold_opens(material, &table, &mut found);
 

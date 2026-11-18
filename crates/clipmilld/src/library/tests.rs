@@ -806,3 +806,47 @@ async fn a_fresh_install_asks_for_the_editorial_model_this_platform_runs() {
         .expect("an editorial binding");
     assert_eq!(binding.model, expected);
 }
+
+/// An Ivy Bridge CPU can use the dispatched Windows wheel. The upstream
+/// fixed-ISA wheel must still be refused where the host lacks AVX2.
+#[test]
+fn whisper_cpp_support_matches_the_wheel_shipped_for_this_platform() {
+    let manifest = tiny_manifest("whisper-tiny", b"weights");
+    let ivy_bridge = super::CpuFeatures {
+        x86_64_v2: true,
+        avx2: false,
+        fma: false,
+        f16c: true,
+        bmi2: false,
+    };
+    let result = super::supported_on(&manifest, ivy_bridge);
+    if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        assert!(result.is_ok());
+        let core_2 = super::CpuFeatures {
+            x86_64_v2: false,
+            ..ivy_bridge
+        };
+        let reason = super::supported_on(&manifest, core_2).expect_err("NumPy needs x86-64-v2");
+        assert!(
+            reason.contains("SSE4.2") && reason.contains("POPCNT"),
+            "{reason}"
+        );
+    } else {
+        let reason = result.expect_err("the stock wheel needs AVX2");
+        assert!(
+            reason.contains("AVX2") && reason.contains("Parakeet"),
+            "{reason}"
+        );
+    }
+    let haswell = super::CpuFeatures {
+        x86_64_v2: true,
+        avx2: true,
+        fma: true,
+        f16c: true,
+        bmi2: true,
+    };
+    assert!(super::supported_on(&manifest, haswell).is_ok());
+    let mut other = manifest;
+    other.runtime = "onnxruntime".to_owned();
+    assert!(super::supported_on(&other, ivy_bridge).is_ok());
+}

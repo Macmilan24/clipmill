@@ -10,8 +10,10 @@ import os
 from dataclasses import dataclass
 
 import numpy as np
+from clipmill_worker_sdk import DeterministicTaskError
 from clipmill_worker_sdk.weights import VerifiedModel
-from pywhispercpp.model import ContextParams, Model, pw
+
+from .cpu import missing_instructions
 
 IMPLEMENTATION = "whisper.cpp"
 
@@ -40,19 +42,33 @@ class Decoded:
     tokens: tuple[Token, ...]
 
 
+def _runtime():
+    missing = missing_instructions()
+    if missing:
+        raise DeterministicTaskError(
+            f"The installed Whisper build requires {', '.join(missing)} on this processor. "
+            "On Windows, update Transcription under Models → Components. "
+            "Parakeet can also transcribe its supported languages."
+        )
+    from pywhispercpp.model import Model, pw
+
+    return Model, pw
+
+
 class WhisperCppRecognizer:
     """One loaded model, reused across every decode window."""
 
     def __init__(self, model: VerifiedModel, *, weights: str, language: str = ""):
         self.model = model
         self.language = language
-        self._whisper = Model(
+        model_type, self._api = _runtime()
+        self._whisper = model_type(
             str(model.path(weights)),
             # whisper.cpp narrates its model load on stderr. The daemon already
             # captures a worker's output, and thirty lines of tensor shapes per
             # lease buries the diagnostics that matter.
             redirect_whispercpp_logs_to=os.devnull,
-            context_params=ContextParams(use_gpu=False),
+            context_params={"use_gpu": False},
             n_threads=1,
             temperature=0.0,
             # Zero disables the fallback ladder entirely. Without this, the
@@ -99,6 +115,7 @@ class WhisperCppRecognizer:
         # Also past the wrapper: it surfaces a per-segment average, and the
         # per-token probabilities below are the whole reason to look.
         context = self._whisper._ctx
+        pw = self._api
         # Everything at or above the end-of-transcript id is a control token —
         # timestamps, language markers, the segment beginning. They are not
         # things anyone said.

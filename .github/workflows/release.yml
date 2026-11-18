@@ -176,9 +176,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  windows-smoke:
+    name: Test the Windows installer
+    needs: build
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/windows-smoke.yml
+    with:
+      release-run: ${{ format('{0}', github.run_id) }}
+      compatibility: true
+
   publish:
     name: publish (draft release)
-    needs: build
+    needs: windows-smoke
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
