@@ -2645,8 +2645,12 @@ pub struct CheckForUpdateResponse {
 /// started used to show as a stage sitting planned forever with nothing to say.
 /// This is the question a screen asks before submitting, and again while a
 /// stage waits: what would each stage need, and is it here?
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct GetReadinessRequest {}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetReadinessRequest {
+    /// The recording's requested speech language. Empty keeps automatic detection.
+    #[prost(string, tag = "1")]
+    pub language: ::prost::alloc::string::String,
+}
 /// One stage an analysis plans, and whether what it needs is present.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StageReadinessV1 {

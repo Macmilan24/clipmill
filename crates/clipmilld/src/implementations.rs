@@ -30,9 +30,8 @@ pub(crate) struct Implementation {
     /// Empty means any machine will do, which is what makes a candidate the
     /// portable one.
     pub accelerator_class: &'static str,
-    /// Whether this implementation runs on every supported platform. Exactly
-    /// one candidate per capability is portable: it is what an unmeasured
-    /// device falls back to, and what the offline exit gate rests on.
+    /// The default portable fallback for an unmeasured device. Other CPU
+    /// implementations may cover a narrower set of languages or cost more memory.
     pub portable: bool,
     /// Never chosen by measurement; planned only when a person picks its
     /// model. A benchmark ranks speed, and these candidates are here for
@@ -129,6 +128,18 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         portable: false,
         opt_in: true,
         accuracy: 3,
+    },
+    Implementation {
+        name: "clipmill-worker-parakeet@0.1.0",
+        capability: "asr",
+        stage: "speech-asr",
+        model: PARAKEET_MODEL,
+        worker: "parakeet",
+        backend: "onnx-cpu",
+        accelerator_class: "",
+        portable: false,
+        opt_in: false,
+        accuracy: 2,
     },
     Implementation {
         name: "clipmill-worker-speech-mlx@0.1.0/asr",
@@ -705,6 +716,46 @@ pub(crate) fn foreign_to(family: &str, stages: &[String]) -> Vec<&'static str> {
         .collect()
 }
 
+pub(crate) const PARAKEET_MODEL: &str = "parakeet-tdt-v3";
+pub(crate) const TDT_TIMING: &str = "speech-tdt-timing";
+pub(crate) const TDT_IMPLEMENTATION: &str = "clipmill-worker-parakeet@0.1.0/timing";
+
+/// NVIDIA's v3 checkpoint covers these 25 languages, including regional subtags.
+pub(crate) fn parakeet_language(language: &str) -> bool {
+    let primary = language
+        .split('-')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    matches!(
+        primary.as_str(),
+        "bg" | "cs"
+            | "da"
+            | "de"
+            | "el"
+            | "en"
+            | "es"
+            | "et"
+            | "fi"
+            | "fr"
+            | "hr"
+            | "hu"
+            | "it"
+            | "lt"
+            | "lv"
+            | "mt"
+            | "nl"
+            | "pl"
+            | "pt"
+            | "ro"
+            | "ru"
+            | "sk"
+            | "sl"
+            | "sv"
+            | "uk"
+    )
+}
+
 /// What a person calls a worker family, for sentences that say which one to
 /// start.
 pub(crate) fn worker_title(family: &str) -> &'static str {
@@ -713,6 +764,7 @@ pub(crate) fn worker_title(family: &str) -> &'static str {
         "audio-events" => "audio events worker",
         "embed" => "meaning search worker",
         "speech-asr" => "whisper.cpp worker",
+        "parakeet" => "Parakeet speech worker",
         "speech-align" => "word-timing worker",
         "speech-mlx" => "MLX speech worker",
         "editorial" => "editorial worker",
@@ -784,9 +836,8 @@ mod tests {
     #[test]
     fn an_accelerated_candidate_names_the_class_it_needs() {
         for implementation in IMPLEMENTATIONS {
-            // An opt-in candidate is chosen by a person, never by measurement,
-            // and one of them runs on the CPU on purpose.
-            if implementation.portable || implementation.opt_in {
+            // Several CPU implementations may be measured alongside the portable fallback.
+            if matches!(implementation.backend, "cpu" | "onnx-cpu") || implementation.opt_in {
                 continue;
             }
             assert!(
@@ -943,7 +994,7 @@ mod tests {
                 .iter()
                 .filter(|implementation| implementation.stage == "speech-asr")
                 .count(),
-            3
+            4
         );
         assert_eq!(
             IMPLEMENTATIONS
@@ -952,8 +1003,8 @@ mod tests {
                     |implementation| implementation.stage == "speech-asr" && !implementation.opt_in
                 )
                 .count(),
-            2,
-            "a benchmark ranks the base model against the accelerated one"
+            3,
+            "Whisper base, Parakeet and MLX speech can be measured"
         );
         assert_eq!(
             portable_for_stage("speech-asr").expect("a fallback").model,

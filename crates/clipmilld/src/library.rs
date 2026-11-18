@@ -595,10 +595,14 @@ impl ModelLibrary {
     /// one first; else the default anyway, which readiness then reports as not
     /// installed rather than planning something the person never downloaded.
     pub(crate) fn effective_bindings(&self, raw: &Bindings) -> Bindings {
+        self.bindings_for_language(raw, "")
+    }
+
+    pub(crate) fn bindings_for_language(&self, raw: &Bindings, language: &str) -> Bindings {
         let choices = self.lock().choices.clone();
         let mut effective = raw.clone();
         for job in JOBS {
-            let Some((implementation, reason)) = self.decide(job, raw, &choices) else {
+            let Some((implementation, reason)) = self.decide(job, raw, &choices, language) else {
                 continue;
             };
             for stage in job.stages {
@@ -626,9 +630,19 @@ impl ModelLibrary {
         job: &Job,
         raw: &Bindings,
         choices: &BTreeMap<String, String>,
+        language: &str,
     ) -> Option<(&'static Implementation, Reason)> {
         let primary = job.stages[0];
-        let registered = implementations::candidates_for_stage(primary).collect::<Vec<_>>();
+        let covered = implementations::parakeet_language(language);
+        let automatic = language.is_empty() || language.eq_ignore_ascii_case("und");
+        let permits = |model: &str| {
+            model != implementations::PARAKEET_MODEL
+                || covered
+                || (automatic && choices.get("asr").is_some_and(|chosen| chosen == model))
+        };
+        let registered = implementations::candidates_for_stage(primary)
+            .filter(|candidate| permits(candidate.model))
+            .collect::<Vec<_>>();
         // What this device could run: pinned here, on a runtime it can load.
         // The default below comes from the full list, so a job whose model is
         // not even registered is still reported — as missing — not dropped.
@@ -655,8 +669,22 @@ impl ModelLibrary {
         {
             return Some((implementation, Reason::Decided("chosen")));
         }
+        if job.capability == "asr"
+            && covered
+            && let Some(parakeet) = candidates
+                .iter()
+                .copied()
+                .find(|candidate| candidate.model == implementations::PARAKEET_MODEL)
+            && installed(parakeet.model)
+            && raw
+                .for_stage(primary)
+                .is_none_or(|binding| !binding.was_measured())
+        {
+            return Some((parakeet, Reason::Decided("default")));
+        }
         let default = raw
             .for_stage(primary)
+            .filter(|binding| permits(&binding.model))
             .and_then(|binding| {
                 implementations::lookup(&binding.implementation)
                     .map(|implementation| (implementation, Reason::Raw(binding.clone())))

@@ -2146,8 +2146,10 @@ class CheckForUpdateResponse(_message.Message):
     def __init__(self, current_version: _Optional[str] = ..., latest_version: _Optional[str] = ..., newer: _Optional[bool] = ...) -> None: ...
 
 class GetReadinessRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
+    __slots__ = ("language",)
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    language: str
+    def __init__(self, language: _Optional[str] = ...) -> None: ...
 
 class StageReadinessV1(_message.Message):
     __slots__ = ("stage", "capability", "implementation", "model", "backend", "model_present", "missing_files", "worker_present", "ready", "remedy")

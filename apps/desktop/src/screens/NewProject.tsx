@@ -62,6 +62,7 @@ import {
   blockingReason,
   clamp,
   describeRange,
+  languageSubtag,
 } from '../import/model.js';
 import { formatDuration, formatVideoSpec } from '../library/model.js';
 import { SetupCard } from '../setup/SetupCard.js';
@@ -227,7 +228,11 @@ export function NewProject({
   // What the run would need, asked before it is submitted: a model that is
   // not installed blocks the button, and a worker that is not connected is
   // said out loud, since the run would sit on that stage until one is.
-  const { readiness, problem: readinessProblem, refresh } = useReadiness(connected, importer.api);
+  const {
+    readiness,
+    problem: readinessProblem,
+    refresh,
+  } = useReadiness(connected, importer.api, languageSubtag(settings));
   // A packaged app's one-time download of its components and models. The
   // readiness below is asked again as each piece arrives.
   const setup = useSetup(importer.api);

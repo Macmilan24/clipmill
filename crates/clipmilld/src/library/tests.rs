@@ -366,6 +366,31 @@ fn memory_fit_warns_on_every_scale_and_never_hides() {
     assert_eq!(memory_fit(1, 0, 0), "unknown");
 }
 
+#[tokio::test]
+async fn parakeet_follows_recording_language_and_an_explicit_choice() {
+    let fixture = Fixture::new();
+    let library = fixture.library(None);
+    fixture.place("parakeet-tdt-v3");
+    fixture.place("whisper-base");
+    let selected = |language: &str| {
+        library
+            .bindings_for_language(&Bindings::portable(), language)
+            .for_stage("speech-asr")
+            .unwrap()
+            .model
+            .clone()
+    };
+    assert_eq!(selected("en-GB"), "parakeet-tdt-v3");
+    assert_eq!(selected("pt-BR"), "parakeet-tdt-v3");
+    assert_eq!(selected("am"), "whisper-base");
+    assert_eq!(selected(""), "whisper-base");
+    library.set_choice("asr", "whisper-base").unwrap();
+    assert_eq!(selected("en"), "whisper-base");
+    library.set_choice("asr", "parakeet-tdt-v3").unwrap();
+    assert_eq!(selected(""), "parakeet-tdt-v3");
+    assert_eq!(selected("ja"), "whisper-base");
+}
+
 /// Removing the default must not strand the next analysis: a candidate whose
 /// weights are here is planned instead, and says it is a fallback.
 #[tokio::test]

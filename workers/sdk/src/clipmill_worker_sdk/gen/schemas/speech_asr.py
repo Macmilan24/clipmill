@@ -14,6 +14,11 @@ class Strategy(StrEnum):
     beam = 'beam'
 
 
+class TimingAuthority(StrEnum):
+    forced_alignment = 'forced_alignment'
+    transducer = 'transducer'
+
+
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
     root: constr(pattern=r'^sha256:[0-9a-f]{64}$')
 
@@ -91,6 +96,16 @@ class Decoding(BaseModel):
     )
 
 
+class TransducerWord(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    text: constr(min_length=1)
+    start_ticks: conint(ge=0)
+    end_ticks: conint(ge=0)
+    confidence: Confidence
+
+
 class AsrSegment(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -108,6 +123,10 @@ class AsrSegment(BaseModel):
     )
     text: str
     confidence: Confidence
+    transducer_words: list[TransducerWord] | None = Field(
+        None,
+        description='Measured intervals in source ticks from an acoustic duration head, in transcript order. A zero-duration emission has no measured interval.',
+    )
     tokens: list[Token] = Field(
         ...,
         description='Per-token confidences, kept because a segment average hides the one hallucinated proper noun that ranking would otherwise quote.',
@@ -137,9 +156,9 @@ class SpeechAsr(BaseModel):
         ...,
         description='How the text was produced. Greedy decoding at temperature zero is not a quality preference — it is what makes two runs of the same audio agree, which is what lets a cached transcript be trusted.',
     )
-    timing_authority: Literal['forced_alignment'] = Field(
+    timing_authority: TimingAuthority = Field(
         ...,
-        description="Stated once, at the top, so no consumer can reach the hint fields below without having read this: the intervals in this artifact are decoder bookkeeping. Word timing is the forced aligner's output and nothing else.",
+        description='The source of word timing. Only an acoustic duration model may emit transducer_words. Window hints are never word timing.',
     )
     coverage: Coverage
     segments: list[AsrSegment]

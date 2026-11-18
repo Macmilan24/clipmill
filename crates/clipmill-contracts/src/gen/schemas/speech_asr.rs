@@ -73,6 +73,13 @@ pub mod error {
 #[doc = "        \"$ref\": \"#/$defs/token\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"transducer_words\": {"]
+#[doc = "      \"description\": \"Measured intervals in source ticks from an acoustic duration head, in transcript order. A zero-duration emission has no measured interval.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/transducer_word\""]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"vad_segment_index\": {"]
 #[doc = "      \"description\": \"Which speech segment this decode covered.\","]
 #[doc = "      \"type\": \"integer\","]
@@ -95,6 +102,9 @@ pub struct AsrSegment {
     pub text: ::std::string::String,
     #[doc = "Per-token confidences, kept because a segment average hides the one hallucinated proper noun that ranking would otherwise quote."]
     pub tokens: ::std::vec::Vec<Token>,
+    #[doc = "Measured intervals in source ticks from an acoustic duration head, in transcript order. A zero-duration emission has no measured interval."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub transducer_words: ::std::vec::Vec<TransducerWord>,
     #[doc = "Which speech segment this decode covered."]
     pub vad_segment_index: u64,
 }
@@ -790,7 +800,7 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
             })
     }
 }
-#[doc = "What was said, from a recognizer batched over voice activity (book ch. 13). Text and token confidence only: the intervals here are the decoder's own bookkeeping and are named as hints because word timing comes from forced alignment, never from decoder token positions. One contract serves every implementation — whisper.cpp on any CPU, an accelerated primary where one is available — so the daemon can choose between them by measured benchmark rather than by brand."]
+#[doc = "What was said, from a recognizer batched over voice activity (book ch. 13). The utterance intervals are decode-window hints. A recognizer with an acoustic duration head may also supply measured word intervals and declare transducer timing. Other recognizers defer all word placement to forced alignment."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
 #[doc = r""]
@@ -798,7 +808,7 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "{"]
 #[doc = "  \"$id\": \"https://clipmill.dev/schemas/clipmill.speech.asr.v1.json\","]
 #[doc = "  \"title\": \"SpeechAsr\","]
-#[doc = "  \"description\": \"What was said, from a recognizer batched over voice activity (book ch. 13). Text and token confidence only: the intervals here are the decoder's own bookkeeping and are named as hints because word timing comes from forced alignment, never from decoder token positions. One contract serves every implementation — whisper.cpp on any CPU, an accelerated primary where one is available — so the daemon can choose between them by measured benchmark rather than by brand.\","]
+#[doc = "  \"description\": \"What was said, from a recognizer batched over voice activity (book ch. 13). The utterance intervals are decode-window hints. A recognizer with an acoustic duration head may also supply measured word intervals and declare transducer timing. Other recognizers defer all word placement to forced alignment.\","]
 #[doc = "  \"type\": \"object\","]
 #[doc = "  \"required\": ["]
 #[doc = "    \"audio_artifact_id\","]
@@ -892,8 +902,12 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "      \"$ref\": \"#/$defs/sha256\""]
 #[doc = "    },"]
 #[doc = "    \"timing_authority\": {"]
-#[doc = "      \"description\": \"Stated once, at the top, so no consumer can reach the hint fields below without having read this: the intervals in this artifact are decoder bookkeeping. Word timing is the forced aligner's output and nothing else.\","]
-#[doc = "      \"const\": \"forced_alignment\""]
+#[doc = "      \"description\": \"The source of word timing. Only an acoustic duration model may emit transducer_words. Window hints are never word timing.\","]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"forced_alignment\","]
+#[doc = "        \"transducer\""]
+#[doc = "      ]"]
 #[doc = "    },"]
 #[doc = "    \"vad_artifact_id\": {"]
 #[doc = "      \"description\": \"The voice activity that bounded the decode. Recorded because re-running with different speech boundaries is a different observation.\","]
@@ -921,8 +935,8 @@ pub struct SpeechAsr {
     pub schema_version: ::serde_json::Value,
     pub segments: ::std::vec::Vec<AsrSegment>,
     pub source_fingerprint: Sha256,
-    #[doc = "Stated once, at the top, so no consumer can reach the hint fields below without having read this: the intervals in this artifact are decoder bookkeeping. Word timing is the forced aligner's output and nothing else."]
-    pub timing_authority: ::serde_json::Value,
+    #[doc = "The source of word timing. Only an acoustic duration model may emit transducer_words. Window hints are never word timing."]
+    pub timing_authority: SpeechAsrTimingAuthority,
     #[doc = "The voice activity that bounded the decode. Recorded because re-running with different speech boundaries is a different observation."]
     pub vad_artifact_id: Sha256,
 }
@@ -1137,6 +1151,79 @@ impl<'de> ::serde::Deserialize<'de> for SpeechAsrLanguage {
             })
     }
 }
+#[doc = "The source of word timing. Only an acoustic duration model may emit transducer_words. Window hints are never word timing."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The source of word timing. Only an acoustic duration model may emit transducer_words. Window hints are never word timing.\","]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"forced_alignment\","]
+#[doc = "    \"transducer\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum SpeechAsrTimingAuthority {
+    #[serde(rename = "forced_alignment")]
+    ForcedAlignment,
+    #[serde(rename = "transducer")]
+    Transducer,
+}
+impl ::std::fmt::Display for SpeechAsrTimingAuthority {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::ForcedAlignment => f.write_str("forced_alignment"),
+            Self::Transducer => f.write_str("transducer"),
+        }
+    }
+}
+impl ::std::str::FromStr for SpeechAsrTimingAuthority {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "forced_alignment" => Ok(Self::ForcedAlignment),
+            "transducer" => Ok(Self::Transducer),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for SpeechAsrTimingAuthority {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for SpeechAsrTimingAuthority {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for SpeechAsrTimingAuthority {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 #[doc = "`Token`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -1173,6 +1260,121 @@ impl Token {
         Default::default()
     }
 }
+#[doc = "`TransducerWord`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"confidence\","]
+#[doc = "    \"end_ticks\","]
+#[doc = "    \"start_ticks\","]
+#[doc = "    \"text\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"confidence\": {"]
+#[doc = "      \"$ref\": \"#/$defs/confidence\""]
+#[doc = "    },"]
+#[doc = "    \"end_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"start_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"text\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TransducerWord {
+    pub confidence: Confidence,
+    pub end_ticks: u64,
+    pub start_ticks: u64,
+    pub text: TransducerWordText,
+}
+impl TransducerWord {
+    pub fn builder() -> builder::TransducerWord {
+        Default::default()
+    }
+}
+#[doc = "`TransducerWordText`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct TransducerWordText(::std::string::String);
+impl ::std::ops::Deref for TransducerWordText {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<TransducerWordText> for ::std::string::String {
+    fn from(value: TransducerWordText) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for TransducerWordText {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for TransducerWordText {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for TransducerWordText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for TransducerWordText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for TransducerWordText {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 #[doc = r" Types for composing complex structures."]
 pub mod builder {
     #[derive(Clone, Debug)]
@@ -1183,6 +1385,8 @@ pub mod builder {
         index: ::std::result::Result<u64, ::std::string::String>,
         text: ::std::result::Result<::std::string::String, ::std::string::String>,
         tokens: ::std::result::Result<::std::vec::Vec<super::Token>, ::std::string::String>,
+        transducer_words:
+            ::std::result::Result<::std::vec::Vec<super::TransducerWord>, ::std::string::String>,
         vad_segment_index: ::std::result::Result<u64, ::std::string::String>,
     }
     impl ::std::default::Default for AsrSegment {
@@ -1194,6 +1398,7 @@ pub mod builder {
                 index: Err("no value supplied for index".to_string()),
                 text: Err("no value supplied for text".to_string()),
                 tokens: Err("no value supplied for tokens".to_string()),
+                transducer_words: Ok(Default::default()),
                 vad_segment_index: Err("no value supplied for vad_segment_index".to_string()),
             }
         }
@@ -1259,6 +1464,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for tokens: {e}"));
             self
         }
+        pub fn transducer_words<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::TransducerWord>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.transducer_words = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for transducer_words: {e}"));
+            self
+        }
         pub fn vad_segment_index<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<u64>,
@@ -1282,6 +1497,7 @@ pub mod builder {
                 index: value.index?,
                 text: value.text?,
                 tokens: value.tokens?,
+                transducer_words: value.transducer_words?,
                 vad_segment_index: value.vad_segment_index?,
             })
         }
@@ -1295,6 +1511,7 @@ pub mod builder {
                 index: Ok(value.index),
                 text: Ok(value.text),
                 tokens: Ok(value.tokens),
+                transducer_words: Ok(value.transducer_words),
                 vad_segment_index: Ok(value.vad_segment_index),
             }
         }
@@ -1633,7 +1850,8 @@ pub mod builder {
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
         segments: ::std::result::Result<::std::vec::Vec<super::AsrSegment>, ::std::string::String>,
         source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
-        timing_authority: ::std::result::Result<::serde_json::Value, ::std::string::String>,
+        timing_authority:
+            ::std::result::Result<super::SpeechAsrTimingAuthority, ::std::string::String>,
         vad_artifact_id: ::std::result::Result<super::Sha256, ::std::string::String>,
     }
     impl ::std::default::Default for SpeechAsr {
@@ -1757,7 +1975,7 @@ pub mod builder {
         }
         pub fn timing_authority<T>(mut self, value: T) -> Self
         where
-            T: ::std::convert::TryInto<::serde_json::Value>,
+            T: ::std::convert::TryInto<super::SpeechAsrTimingAuthority>,
             T::Error: ::std::fmt::Display,
         {
             self.timing_authority = value
@@ -1962,6 +2180,88 @@ pub mod builder {
         fn from(value: super::Token) -> Self {
             Self {
                 confidence: Ok(value.confidence),
+                text: Ok(value.text),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct TransducerWord {
+        confidence: ::std::result::Result<super::Confidence, ::std::string::String>,
+        end_ticks: ::std::result::Result<u64, ::std::string::String>,
+        start_ticks: ::std::result::Result<u64, ::std::string::String>,
+        text: ::std::result::Result<super::TransducerWordText, ::std::string::String>,
+    }
+    impl ::std::default::Default for TransducerWord {
+        fn default() -> Self {
+            Self {
+                confidence: Err("no value supplied for confidence".to_string()),
+                end_ticks: Err("no value supplied for end_ticks".to_string()),
+                start_ticks: Err("no value supplied for start_ticks".to_string()),
+                text: Err("no value supplied for text".to_string()),
+            }
+        }
+    }
+    impl TransducerWord {
+        pub fn confidence<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::Confidence>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.confidence = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for confidence: {e}"));
+            self
+        }
+        pub fn end_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.end_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for end_ticks: {e}"));
+            self
+        }
+        pub fn start_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.start_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for start_ticks: {e}"));
+            self
+        }
+        pub fn text<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::TransducerWordText>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.text = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for text: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<TransducerWord> for super::TransducerWord {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: TransducerWord,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                confidence: value.confidence?,
+                end_ticks: value.end_ticks?,
+                start_ticks: value.start_ticks?,
+                text: value.text?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::TransducerWord> for TransducerWord {
+        fn from(value: super::TransducerWord) -> Self {
+            Self {
+                confidence: Ok(value.confidence),
+                end_ticks: Ok(value.end_ticks),
+                start_ticks: Ok(value.start_ticks),
                 text: Ok(value.text),
             }
         }

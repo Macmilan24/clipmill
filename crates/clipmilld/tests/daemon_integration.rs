@@ -510,7 +510,7 @@ async fn readiness_names_every_stage_an_analysis_needs_and_what_each_is_missing(
         &socket,
         Request {
             request_id: "readiness".to_owned(),
-            body: Some(request::Body::GetReadiness(GetReadinessRequest {})),
+            body: Some(request::Body::GetReadiness(GetReadinessRequest::default())),
         },
     )
     .await
@@ -704,7 +704,7 @@ async fn the_model_library_lists_chooses_and_removes_over_the_socket() {
 
     let readiness = ask(
         "readiness",
-        request::Body::GetReadiness(GetReadinessRequest {}),
+        request::Body::GetReadiness(GetReadinessRequest::default()),
     )
     .await;
     let Some(response::Body::GetReadiness(readiness)) = readiness.body else {

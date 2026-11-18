@@ -562,7 +562,7 @@ impl Service {
                 self.export_archive(request_id, &archive).await
             }
             request::Body::GetLocalLock(_) => self.get_local_lock(request_id),
-            request::Body::GetReadiness(_) => self.get_readiness(request_id),
+            request::Body::GetReadiness(body) => self.get_readiness(request_id, &body.language),
             request::Body::SubmitExportBatch(batch) => {
                 self.submit_export_batch(request_id, request_hash, batch)
                     .await
@@ -976,7 +976,7 @@ impl Service {
                 // from the last verified device profile — and written into the
                 // plan. A job's stages therefore agree with each other even if
                 // the device is re-measured while they run.
-                let bindings = self.planning_bindings();
+                let bindings = self.planning_bindings_for_language(&payload.language);
                 JobPlan::transcribe_source(
                     &project_id,
                     source_id.to_string(),
@@ -1469,7 +1469,7 @@ impl Service {
                         "this source has not been probed, so nothing knows which streams it has",
                     );
                 }
-                let bindings = self.planning_bindings();
+                let bindings = self.planning_bindings_for_language(&payload.language);
                 match JobPlan::analyze_source(
                     &project_id,
                     crate::jobs::AnalyzeSource {
@@ -5118,6 +5118,13 @@ impl Service {
         )
     }
 
+    fn decoder_readiness(&self) -> (bool, String) {
+        self.decoder.as_deref().map_or_else(
+            || (false, String::new()),
+            |path| (path.is_file(), path.display().to_string()),
+        )
+    }
+
     /// Whether an analysis could run right now, stage by stage.
     ///
     /// Answered from what the planner would bind — the same bindings a job
@@ -5127,11 +5134,11 @@ impl Service {
     /// the roster: another family declaring the stage is never handed it.
     /// The remedy names the command, because a status that says "not ready"
     /// and nothing else is a spinner with a label.
-    fn get_readiness(&self, request_id: String) -> Reply {
+    fn get_readiness(&self, request_id: String, language: &str) -> Reply {
         // The bindings an analysis submitted now would plan: the person's
         // choices and the installed fallbacks included, so readiness judges
         // the models that would actually run rather than the profile's.
-        let bindings = self.planning_bindings();
+        let bindings = self.planning_bindings_for_language(language);
         let roster = self
             .roster
             .lock()
@@ -5142,10 +5149,16 @@ impl Service {
             .scheduler
             .as_ref()
             .map(crate::jobs::SchedulerHandle::machine_capacity);
+        let native_timing = bindings
+            .for_stage("speech-asr")
+            .is_some_and(|asr| asr.model == crate::implementations::PARAKEET_MODEL);
         let mut stages = Vec::new();
         for binding in bindings.iter() {
             // Publishing copy is not part of an analysis; its screen asks.
-            if binding.stage == "youtube-metadata" || binding.capability == "embed" {
+            if binding.stage == "youtube-metadata"
+                || binding.capability == "embed"
+                || (native_timing && binding.stage == "speech-align")
+            {
                 continue;
             }
             let (present, missing) = weights.as_deref().map_or_else(
@@ -5185,6 +5198,9 @@ impl Service {
         for kind in crate::recipes::stages_with_network_policy(NetworkPolicy::NetworkAllowed)
             .chain(crate::recipes::modelless_worker_stages())
         {
+            if kind == crate::implementations::TDT_TIMING && !native_timing {
+                continue;
+            }
             stages.push(stage_readiness(
                 kind,
                 "",
@@ -5202,12 +5218,7 @@ impl Service {
                 engine_remedy(stage, engine);
             }
         }
-        let decoder_path = self
-            .decoder
-            .as_ref()
-            .map(|path| path.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let decoder_present = self.decoder.as_ref().is_some_and(|path| path.is_file());
+        let (decoder_present, decoder_path) = self.decoder_readiness();
         // Optional cloud workers never gate the default local analysis route.
         // A cloud analysis checks its selected stages before submission.
         let ready = decoder_present && local_analysis_stages_ready(&stages);

@@ -421,7 +421,7 @@ export function AnalysisProgress({
   // is waiting on a worker or a model says so — and stops saying so the
   // moment the worker connects. A finished run has nothing to wait for.
   const api = useMemo(() => (loader ?? new AnalysisLoader()).api, [loader]);
-  const { readiness } = useReadiness(running, api);
+  const { readiness } = useReadiness(running, api, job?.analysis?.language ?? '');
   const waiting = useMemo(
     () => (running ? waitingReasons(job, readiness) : new Map<string, string>()),
     [job, readiness, running],

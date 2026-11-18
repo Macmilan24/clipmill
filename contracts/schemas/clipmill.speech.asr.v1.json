@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://clipmill.dev/schemas/clipmill.speech.asr.v1.json",
   "title": "SpeechAsr",
-  "description": "What was said, from a recognizer batched over voice activity (book ch. 13). Text and token confidence only: the intervals here are the decoder's own bookkeeping and are named as hints because word timing comes from forced alignment, never from decoder token positions. One contract serves every implementation — whisper.cpp on any CPU, an accelerated primary where one is available — so the daemon can choose between them by measured benchmark rather than by brand.",
+  "description": "What was said, from a recognizer batched over voice activity (book ch. 13). The utterance intervals are decode-window hints. A recognizer with an acoustic duration head may also supply measured word intervals and declare transducer timing. Other recognizers defer all word placement to forced alignment.",
   "type": "object",
   "required": [
     "schema_version",
@@ -59,8 +59,9 @@
       }
     },
     "timing_authority": {
-      "description": "Stated once, at the top, so no consumer can reach the hint fields below without having read this: the intervals in this artifact are decoder bookkeeping. Word timing is the forced aligner's output and nothing else.",
-      "const": "forced_alignment"
+      "description": "The source of word timing. Only an acoustic duration model may emit transducer_words. Window hints are never word timing.",
+      "type": "string",
+      "enum": ["forced_alignment", "transducer"]
     },
     "coverage": { "$ref": "#/$defs/coverage" },
     "segments": {
@@ -109,11 +110,27 @@
         },
         "text": { "type": "string" },
         "confidence": { "$ref": "#/$defs/confidence" },
+        "transducer_words": {
+          "description": "Measured intervals in source ticks from an acoustic duration head, in transcript order. A zero-duration emission has no measured interval.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/transducer_word" }
+        },
         "tokens": {
           "description": "Per-token confidences, kept because a segment average hides the one hallucinated proper noun that ranking would otherwise quote.",
           "type": "array",
           "items": { "$ref": "#/$defs/token" }
         }
+      }
+    },
+    "transducer_word": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "start_ticks", "end_ticks", "confidence"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "start_ticks": { "type": "integer", "minimum": 0 },
+        "end_ticks": { "type": "integer", "minimum": 0 },
+        "confidence": { "$ref": "#/$defs/confidence" }
       }
     },
     "token": {

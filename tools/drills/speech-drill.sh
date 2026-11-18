@@ -40,6 +40,7 @@ cargo test -p clipmilld --lib recipes:: -- --nocapture
 cargo test -p clipmill-contracts --test speech_contracts
 (cd workers/vad && uv run pytest -q)
 (cd workers/asr-whispercpp && uv run pytest -q)
+(cd workers/asr-parakeet && uv run pytest -q)
 (cd workers/align && uv run pytest -q)
 (cd workers/sdk && uv run pytest -q tests/test_ticks.py tests/test_confidence.py tests/test_weights.py)
 
@@ -65,6 +66,10 @@ for iteration in $(seq 1 "$ITERATIONS"); do
   python3 tools/fixtures/make-speech-fixture.py --ffmpeg "$FFMPEG" "$fixture"
   (cd tools/drills/speech-conformance && uv run python3 ../speech_conformance.py \
     "$fixture" --models "$root/$MODELS" --registry "$root/models/registry")
+  if [ -d "$MODELS/parakeet-tdt-v3" ]; then
+    (cd tools/drills/speech-conformance && uv run python3 ../speech_conformance.py \
+      "$fixture" --implementation parakeet --models "$root/$MODELS" --registry "$root/models/registry")
+  fi
 done
 
 echo "speech-drill: OK ($ITERATIONS iterations; algorithms, chain, assembly)"

@@ -2010,7 +2010,10 @@ message CheckForUpdateResponse {
 // started used to show as a stage sitting planned forever with nothing to say.
 // This is the question a screen asks before submitting, and again while a
 // stage waits: what would each stage need, and is it here?
-message GetReadinessRequest {}
+message GetReadinessRequest {
+  // The recording's requested speech language. Empty keeps automatic detection.
+  string language = 1;
+}
 
 // One stage an analysis plans, and whether what it needs is present.
 message StageReadinessV1 {

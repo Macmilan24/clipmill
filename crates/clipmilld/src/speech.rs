@@ -20,17 +20,15 @@ use crate::{
 use clipmill_evidence::confidence::distribution;
 
 use clipmill_contracts::schemas::{
-    speech_alignment::SpeechAlignment, speech_asr::SpeechAsr, speech_transcript as transcript,
+    speech_alignment::SpeechAlignment,
+    speech_asr::{SpeechAsr, SpeechAsrTimingAuthority},
+    speech_transcript as transcript,
     speech_vad::SpeechVad,
 };
 
-/// What the recognizer's contract fixes, and what a Rust reader has to check
-/// itself: typify carries a JSON Schema `const` without validating it.
-const TIMING_AUTHORITY: &str = "forced_alignment";
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AssemblyError {
-    #[error("the recognition artifact claims {claimed} owns word timing, not forced alignment")]
+    #[error("the recognition timing authority {claimed} does not match its word-timing stage")]
     TimingAuthority { claimed: String },
     #[error("{stage} was never analyzed for this audio, so there is nothing to assemble")]
     NotAnalyzed { stage: &'static str },
@@ -60,17 +58,19 @@ pub(crate) fn assemble(
     inputs: Inputs<'_>,
     assembler: &str,
 ) -> Result<Assembled, AssemblyError> {
-    // The one check the generated type does not make. A recognizer that
-    // declared its own token positions authoritative is the arrangement the
-    // whole three-stage split exists to prevent, and it must not be possible
-    // to assemble one into a transcript.
-    let claimed = recognized
-        .timing_authority
-        .as_str()
-        .unwrap_or_default()
-        .to_owned();
-    if claimed != TIMING_AUTHORITY {
-        return Err(AssemblyError::TimingAuthority { claimed });
+    // A recognizer cannot promote ordinary decode-window hints to measured words.
+    // Native timing is valid only for the paired acoustic-duration observation.
+    let native_timing = recognized.timing_authority == SpeechAsrTimingAuthority::Transducer;
+    let tdt_alignment =
+        alignment.producer.implementation.as_str() == crate::implementations::TDT_IMPLEMENTATION;
+    if native_timing != tdt_alignment
+        || (native_timing
+            && (alignment.asr_artifact_id.as_str() != inputs.asr
+                || alignment.audio_artifact_id.as_str() != recognized.audio_artifact_id.as_str()))
+    {
+        return Err(AssemblyError::TimingAuthority {
+            claimed: recognized.timing_authority.to_string(),
+        });
     }
     if !activity.coverage.analyzed {
         return Err(AssemblyError::NotAnalyzed {

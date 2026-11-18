@@ -782,11 +782,12 @@ async fn export_archive(
 /// about the ones that could not.
 #[tauri::command]
 async fn readiness(
+    language: Option<String>,
     supervisor: State<'_, Arc<DaemonSupervisor>>,
 ) -> Result<views::ReadinessView, String> {
     supervisor
         .client()
-        .readiness()
+        .readiness(language.unwrap_or_default())
         .await
         .map(Into::into)
         .map_err(|error| error.to_string())

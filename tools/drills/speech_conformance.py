@@ -80,7 +80,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--implementation",
-        choices=("portable", "mlx"),
+        choices=("portable", "parakeet", "mlx"),
         default="portable",
         help=(
             "which recognizer and aligner to run. The portable pair is what CI "
@@ -166,6 +166,8 @@ def run_chain(samples: np.ndarray, rate: int, total: int, options) -> dict:
     spans = segment(detector.probabilities(samples), parameters, total)
     windows = decode_windows([(span.start_sample, span.end_sample) for span in spans], rate)
 
+    if options.implementation == "parakeet":
+        return run_parakeet(samples, rate, windows, options)
     if options.implementation == "mlx":
         return run_accelerated(samples, rate, windows, options)
 
@@ -215,6 +217,39 @@ def run_chain(samples: np.ndarray, rate: int, total: int, options) -> dict:
                     ),
                 }
             )
+    return {"utterances": utterances, "words": words}
+
+
+def run_parakeet(samples: np.ndarray, rate: int, windows, options) -> dict:
+    from clipmill_worker_asr_parakeet.recognizer import ParakeetRecognizer, words_from_emissions
+
+    recognizer = ParakeetRecognizer(pinned(options, "parakeet-tdt-v3"))
+    utterances, words = [], []
+    for i, window in enumerate(windows):
+        start = samples_to_ticks(window.start_sample, rate)
+        end = samples_to_ticks(window.end_sample, rate)
+        placed, tokens = words_from_emissions(
+            recognizer.decode(samples[window.start_sample : window.end_sample]), start, end
+        )
+        p50, p10 = distribution([token.confidence for token in tokens])
+        utterances.append(
+            {
+                "start_ticks": start,
+                "end_ticks": end,
+                "text": " ".join(word.text for word in placed),
+                "p50": p50,
+                "p10": p10,
+            }
+        )
+        words.extend(
+            {
+                "utterance": i,
+                "text": word.text,
+                "start_ticks": word.start_ticks,
+                "end_ticks": word.end_ticks,
+            }
+            for word in placed
+        )
     return {"utterances": utterances, "words": words}
 
 

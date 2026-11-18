@@ -1,0 +1,46 @@
+# Int8 ONNX conversion of NVIDIA Parakeet-TDT-0.6B-v3 by Ilya Stupakov.
+name = "parakeet-tdt-v3"
+capability = "asr"
+family = "parakeet-tdt"
+runtime = "onnxruntime"
+backend = "onnx-cpu"
+quantization = "int8"
+
+[catalog]
+title = "Parakeet TDT v3"
+summary = "Recommended for speech in English and 24 other European languages. Recognizes words and their timing together on CPU."
+recommended = true
+
+[source]
+provider = "https://huggingface.co"
+repo = "istupakov/parakeet-tdt-0.6b-v3-onnx"
+revision = "8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce"
+
+[license]
+source = "repo-metadata"
+spdx = "CC-BY-4.0"
+class = "permissive"
+
+[memory]
+weights_bytes = 670619706
+runtime_overhead_bytes = 1073741824
+
+[[files]]
+path = "encoder-model.int8.onnx"
+sha256 = "6139d2fa7e1b086097b277c7149725edbab89cc7c7ae64b23c741be4055aff09"
+bytes = 652183999
+
+[[files]]
+path = "decoder_joint-model.int8.onnx"
+sha256 = "eea7483ee3d1a30375daedc8ed83e3960c91b098812127a0d99d1c8977667a70"
+bytes = 18202004
+
+[[files]]
+path = "nemo128.onnx"
+sha256 = "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f"
+bytes = 139764
+
+[[files]]
+path = "vocab.txt"
+sha256 = "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+bytes = 93939

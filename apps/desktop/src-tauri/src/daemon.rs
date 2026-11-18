@@ -533,9 +533,14 @@ impl DaemonClient {
 
     /// Whether this installation is offline, with the evidence behind it.
     /// Whether an analysis could run right now, and what each stage lacks.
-    pub async fn readiness(&self) -> Result<GetReadinessResponse, DaemonLinkError> {
+    pub async fn readiness(
+        &self,
+        language: String,
+    ) -> Result<GetReadinessResponse, DaemonLinkError> {
         match self
-            .call(request::Body::GetReadiness(GetReadinessRequest {}))
+            .call(request::Body::GetReadiness(GetReadinessRequest {
+                language,
+            }))
             .await?
         {
             response::Body::GetReadiness(reply) => Ok(reply),

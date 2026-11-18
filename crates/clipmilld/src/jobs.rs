@@ -846,6 +846,46 @@ fn speech_chain(
     // Whisper writes fillers out unless it is asked not to, and only the
     // whisper.cpp family has a way to be asked.
     let verbatim = speech_implementation("speech-asr", bindings).worker == "speech-asr";
+    let alignment = if speech_implementation("speech-asr", bindings).model
+        == crate::implementations::PARAKEET_MODEL
+    {
+        TaskSpec {
+            task_id: align.clone(),
+            ordinal: 2,
+            kind: crate::implementations::TDT_TIMING.to_owned(),
+            input_kinds: vec!["speech.asr.v1".to_owned()],
+            dependencies: vec![asr.clone()],
+            input_artifact_ids: Vec::new(),
+            output_kind: "speech.alignment.v1".to_owned(),
+            payload: stage_payload(crate::implementations::TDT_TIMING, &|_| {}),
+            resources: ResourceDeclaration {
+                cpu_threads: 1,
+                ram_bytes: 128 * 1024 * 1024,
+                disk_bytes: 64 * 1024 * 1024,
+                network_policy: "local-lock".to_owned(),
+                thermal_class: "light".to_owned(),
+                determinism_class: "deterministic".to_owned(),
+                preemption_cost: 1,
+                accelerator_class: String::new(),
+                vram_bytes: 0,
+                checkpoint_support: false,
+            },
+            implementation: crate::implementations::TDT_IMPLEMENTATION.to_owned(),
+            max_attempts: 3,
+            is_final: false,
+        }
+    } else {
+        leased(
+            align.clone(),
+            2,
+            "speech-align",
+            Some((asr.as_str(), "speech.asr.v1")),
+            "speech.alignment.v1",
+            stage_payload("speech-align", &|payload| {
+                payload.alignment = Some(SpeechAlignmentV1 { min_score: 0.0 });
+            }),
+        )
+    };
     let tasks = vec![
         leased(
             vad.clone(),
@@ -871,16 +911,7 @@ fn speech_chain(
                 });
             }),
         ),
-        leased(
-            align.clone(),
-            2,
-            "speech-align",
-            Some((asr.as_str(), "speech.asr.v1")),
-            "speech.alignment.v1",
-            stage_payload("speech-align", &|payload| {
-                payload.alignment = Some(SpeechAlignmentV1 { min_score: 0.0 });
-            }),
-        ),
+        alignment,
         TaskSpec {
             task_id: transcript.clone(),
             ordinal: 3,
@@ -4686,6 +4717,43 @@ mod analyze_tests {
                 "the fan-in does not name {kind}"
             );
         }
+    }
+
+    #[test]
+    fn parakeet_uses_its_duration_head_without_loading_a_forced_aligner() {
+        let mut bindings = crate::selection::Bindings::portable();
+        let parakeet =
+            crate::implementations::for_stage_and_model("speech-asr", "parakeet-tdt-v3").unwrap();
+        bindings.set(crate::selection::Binding::decided(parakeet, "chosen"));
+        let plan = JobPlan::analyze_source(
+            &ProjectId::new(),
+            AnalyzeSource {
+                source_id: SOURCE,
+                source_fingerprint: FINGERPRINT,
+                has_video: false,
+                has_audio: true,
+            },
+            &request(),
+            &models(),
+            &bindings,
+            BOM,
+            7,
+        )
+        .unwrap();
+        assert!(!plan.tasks.iter().any(|task| task.kind == "speech-align"));
+        assert_eq!(task(&plan, "speech-asr").implementation, parakeet.name);
+        let timing = task(&plan, crate::implementations::TDT_TIMING);
+        assert_eq!(
+            timing.dependencies,
+            [task(&plan, "speech-asr").task_id.clone()]
+        );
+        assert_eq!(timing.input_kinds, ["speech.asr.v1"]);
+        assert_eq!(timing.output_kind, "speech.alignment.v1");
+        assert!(
+            task(&plan, "speech-transcript")
+                .dependencies
+                .contains(&timing.task_id)
+        );
     }
 
     /// The property the whole declared-input mechanism exists for: a leased stage

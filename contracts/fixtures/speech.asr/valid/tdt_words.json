@@ -1,0 +1,70 @@
+{
+  "audio_artifact_id": "sha256:a0d1000000000000000000000000000000000000000000000000000000000016",
+  "coverage": {
+    "analyzed": true,
+    "decoded_ticks": 36000,
+    "end_ticks": 36000,
+    "sampling_plan": "asr-vad-batched",
+    "start_ticks": 0
+  },
+  "decoding": {
+    "beam_size": 0,
+    "conditioned_on_previous": false,
+    "strategy": "greedy",
+    "temperature": 0.0
+  },
+  "invalid_regions": [],
+  "language": "en",
+  "producer": {
+    "implementation": "clipmill-worker-parakeet@0.1.0",
+    "model_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "stage": "speech-asr"
+  },
+  "schema_version": "clipmill.speech.asr.v1",
+  "segments": [
+    {
+      "confidence": {
+        "p10": 0.95,
+        "p50": 0.95
+      },
+      "hint_end_ticks": 36000,
+      "hint_start_ticks": 0,
+      "index": 0,
+      "text": "That works.",
+      "tokens": [
+        {
+          "confidence": 0.95,
+          "text": " That"
+        },
+        {
+          "confidence": 0.95,
+          "text": " works."
+        }
+      ],
+      "transducer_words": [
+        {
+          "confidence": {
+            "p10": 0.95,
+            "p50": 0.95
+          },
+          "end_ticks": 7200,
+          "start_ticks": 0,
+          "text": "That"
+        },
+        {
+          "confidence": {
+            "p10": 0.95,
+            "p50": 0.95
+          },
+          "end_ticks": 28800,
+          "start_ticks": 14400,
+          "text": "works."
+        }
+      ],
+      "vad_segment_index": 0
+    }
+  ],
+  "source_fingerprint": "sha256:31ab000000000000000000000000000000000000000000000000000000000007",
+  "timing_authority": "transducer",
+  "vad_artifact_id": "sha256:5ead000000000000000000000000000000000000000000000000000000000001"
+}

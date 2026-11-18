@@ -10,6 +10,7 @@ setup:
     cd workers/echo && uv sync
     cd workers/vad && uv sync
     cd workers/asr-whispercpp && uv sync
+    cd workers/asr-parakeet && uv sync
     cd workers/align && uv sync
     cd workers/speakers && uv sync
     cd workers/speech-mlx && uv sync
@@ -51,6 +52,7 @@ test:
     cd workers/echo && uv run pytest
     cd workers/vad && uv run pytest
     cd workers/asr-whispercpp && uv run pytest
+    cd workers/asr-parakeet && uv run pytest
     cd workers/align && uv run pytest
     cd workers/speakers && uv run pytest
     cd workers/speech-mlx && uv run pytest

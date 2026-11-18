@@ -47,9 +47,13 @@ impl Service {
     /// Resolved once per plan, and written into its tasks: a choice made while
     /// an analysis runs changes the next analysis, never the one in flight.
     pub(crate) fn planning_bindings(&self) -> Bindings {
+        self.planning_bindings_for_language("")
+    }
+
+    pub(crate) fn planning_bindings_for_language(&self, language: &str) -> Bindings {
         let raw = self.profile_bindings();
         match &self.library {
-            Some(library) => library.effective_bindings(&raw),
+            Some(library) => library.bindings_for_language(&raw, language),
             None => with_default_editorial(raw),
         }
     }
