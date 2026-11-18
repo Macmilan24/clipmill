@@ -6,27 +6,51 @@ from typing import Literal
 
 from pydantic import Field, create_model
 
-from .planning import Reply, ShortText, Transcript, chapter_of, plan_one, variants
+from .planning import (
+    Reply,
+    ShortText,
+    Transcript,
+    chapter_of,
+    plan_one,
+    unrelated_signoff,
+    variants,
+)
 
 
 class Splice(Reply):
-    verdict: Literal["pass", "reject"]
     note: str = Field(min_length=1, max_length=140)
+    effect: Literal[
+        "preserved",
+        "different_answer",
+        "lost_qualification",
+        "changed_claim",
+        "false_chronology",
+        "concealed_sponsorship",
+        "uncertain",
+    ]
 
 
 class Finding(Reply):
-    aspect: Literal["meaning", "comprehension", "landing", "title_accuracy", "sponsorship", "style"]
+    aspect: Literal["comprehension", "landing", "title_accuracy", "style"]
     detail: ShortText
 
 
 class Review(Reply):
+    summary: ShortText
     comprehension: Literal["pass", "reject"]
     landing: Literal["pass", "reject"]
     title_accuracy: Literal["pass", "reject"]
-    sponsorship: Literal["pass", "reject"]
     hook: Literal["strong", "adequate", "weak"]
     issues: list[Finding] = Field(max_length=4)
-    summary: ShortText
+
+
+class SourceFinding(Reply):
+    aspect: Literal["meaning", "sponsorship"]
+    detail: ShortText
+
+
+class SourceReview(Reply):
+    edge_issues: list[SourceFinding] = Field(max_length=4)
 
 
 def rejected(message):
@@ -56,34 +80,54 @@ def judge(ctx, plan, transcript):
         return rejected(
             "This edit exceeds the number of joins the critic can independently review."
         )
+    # The viewer must not hear the rest of the episode. A separate source audit
+    # can read the omitted context and veto even a convincing-sounding edit.
+    turns = []
+    for line in evidence["playback"]:
+        if turns and turns[-1]["speaker"] == line["speaker"]:
+            turns[-1]["text"] += " " + line["text"]
+        else:
+            turns.append({"speaker": line["speaker"], "text": line["text"]})
+    viewer, failure = ctx.ask("critic", {"public_title": plan["title"], "playback": turns}, Review)
+    if failure:
+        return rejected("The critic could not verify the edit.")
     # A fixed property per boundary also covers the empty set. An open-ended list
     # encouraged small models to invent splices or silently skip a difficult one.
     boundaries = create_model(
         "SpliceJudgments", __base__=Reply, **{key: (Splice, ...) for key in ids}
     )
-    reply = create_model("CutReview", __base__=Review, joins=(boundaries, ...))
-    answer, failure = ctx.ask("critic", {"public_title": plan["title"], **evidence}, reply)
+    reply = create_model("CutSourceReview", __base__=SourceReview, joins=(boundaries, ...))
+    audit, failure = ctx.ask("critic.source", evidence, reply)
     if failure:
         return rejected("The critic could not verify the edit.")
-    findings = answer["issues"]
+    findings = [*viewer["issues"], *audit["edge_issues"]]
     reservations = [finding["detail"] for finding in findings]
     problem_areas = {finding["aspect"] for finding in findings}
     issues = []
-    judgments = [{"after": key, **value} for key, value in answer["joins"].items()]
-    addressed = list(answer["joins"])
+    judgments = [
+        {
+            "after": key,
+            "note": value["note"],
+            "verdict": "pass" if value["effect"] == "preserved" else "reject",
+        }
+        for key, value in audit["joins"].items()
+    ]
+    addressed = list(audit["joins"])
     complete = len(addressed) == len(ids) and set(addressed) == set(ids)
     if not complete:
         issues.append("The critic did not judge each edit boundary exactly once.")
     for area, reason in FAILURES.items():
-        if area in problem_areas or answer.get(area) == "reject":
+        if area in problem_areas or viewer.get(area) == "reject":
             issues.append(reason)
-    if answer["hook"] == "weak":
+    if unrelated_signoff(evidence["playback"], ctx.brief) is not None:
+        issues.append("The clip continues into unrelated promotion after its conclusion.")
+    if viewer["hook"] == "weak":
         reservations.append("The opening may need a stronger hook.")
     issues.extend(join["note"] for join in judgments if join["verdict"] == "reject")
     return {
         "verdict": "reject" if issues else "accept",
-        "hook": answer["hook"],
-        "summary": answer["summary"],
+        "hook": viewer["hook"],
+        "summary": viewer["summary"],
         "joins": judgments,
         "issues": list(dict.fromkeys([*issues, *reservations])),
         "repaired": False,
@@ -102,7 +146,11 @@ def review_batch(ctx, plans, candidates, script, chapters=()):
         if quality["verdict"] == "reject":
             original = originals[row["candidate_id"]]
             choices = variants(
-                original["plan"], transcript, candidates["length"], original.get("alternatives", [])
+                original["plan"],
+                transcript,
+                candidates["length"],
+                original.get("alternatives", []),
+                ctx.brief,
             )
             choices = {k: v for k, v in choices.items() if v["plan_id"] != plan["plan_id"]}
             if (

@@ -42,6 +42,9 @@ pub const MAX_LIFT_TICKS: u64 = 10 * SECOND;
 pub const MIN_MONTAGE_ITEM_TICKS: u64 = 3 * SECOND;
 /// The most moments a montage strings together.
 pub const MAX_MONTAGE_PARTS: usize = 5;
+// The clip-plan contract allows twelve parts. A requested exhaustive montage
+// may need more moments than the five normally scouted for an unsolicited one.
+const MAX_REQUESTED_MONTAGE_PARTS: usize = 12;
 /// Linked moments closer than this are one moment, not a stitch: jumping a
 /// few sentences to reach an answer cuts out what led to it for nothing.
 pub const STITCH_MIN_GAP_TICKS: u64 = 45 * SECOND;
@@ -503,7 +506,40 @@ pub fn candidates_for_brief(material: &Material<'_>, prompt: &str) -> Vec<Candid
     });
     let mut seen = BTreeSet::new();
     found.retain(|candidate| seen.insert(candidate.plan.plan_id.to_string()));
-    distinct(found)
+    if let Some(memory) = material.memory
+        && found.len() > MAX_CANDIDATES
+        && !memory.chapters.is_empty()
+    {
+        // Give every chapter a first nomination before filling the bounded pool
+        // with a second from the same chapter. Earlier scores break round ties.
+        let mut counts = vec![0; memory.chapters.len() + 1];
+        let mut rounds = Vec::with_capacity(found.len());
+        for (position, candidate) in found.into_iter().enumerate() {
+            let anchor = candidate
+                .plan
+                .parts
+                .iter()
+                .max_by_key(|p| p.end_ticks.get() - p.start_ticks)
+                .map_or(0, |p| p.start_ticks);
+            let chapter = memory
+                .chapters
+                .partition_point(|c| c.end_ticks.get() <= anchor);
+            rounds.push((counts[chapter], position, candidate));
+            counts[chapter] += 1;
+        }
+        rounds.sort_unstable_by_key(|(round, position, _)| (*round, *position));
+        found = rounds
+            .into_iter()
+            .map(|(_, _, candidate)| candidate)
+            .collect();
+    }
+    let mut selected = distinct(found);
+    selected.sort_by(|a, b| {
+        b.score
+            .cmp(&a.score)
+            .then(a.plan.plan_id.cmp(&b.plan.plan_id))
+    });
+    selected
 }
 
 /// What a plan plays, as source ranges with its removals taken out.
@@ -915,10 +951,59 @@ fn reactions(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>)
 fn brief_terms(prompt: &str) -> BTreeSet<String> {
     // These common editing directions describe the desired cut rather than its subject.
     const DIRECTIONS: &[&str] = &[
-        "about", "again", "another", "around", "clips", "could", "every", "find", "from", "give",
-        "like", "make", "mention", "mentions", "moment", "moments", "montage", "more", "only",
-        "part", "parts", "please", "short", "shorter", "show", "talk", "talks", "talking", "that",
-        "them", "they", "this", "time", "times", "when", "where", "with", "would",
+        "about",
+        "again",
+        "all",
+        "and",
+        "another",
+        "any",
+        "around",
+        "clip",
+        "clips",
+        "could",
+        "discuss",
+        "discusses",
+        "every",
+        "find",
+        "from",
+        "give",
+        "include",
+        "like",
+        "make",
+        "mention",
+        "mentioned",
+        "mentions",
+        "moment",
+        "moments",
+        "montage",
+        "more",
+        "only",
+        "part",
+        "parts",
+        "please",
+        "says",
+        "short",
+        "shorter",
+        "show",
+        "speaker",
+        "speakers",
+        "talk",
+        "talked",
+        "talks",
+        "talking",
+        "that",
+        "the",
+        "their",
+        "them",
+        "they",
+        "this",
+        "time",
+        "times",
+        "when",
+        "where",
+        "with",
+        "would",
+        "you",
     ];
     prompt
         .split(|c: char| !c.is_alphanumeric())
@@ -944,7 +1029,7 @@ fn brief_scout(material: &Material<'_>, table: &Table, prompt: &str, found: &mut
                 .map(str::to_lowercase)
                 .collect::<BTreeSet<_>>();
             let count = terms.intersection(&words).count();
-            (count != 0 && u.cut.is_none()).then_some((line, count))
+            (count != 0).then_some((line, count))
         })
         .collect::<Vec<_>>();
     let reason = "A sentence in this cut matches the requested topic";
@@ -975,34 +1060,68 @@ fn brief_montage(
     terms: &BTreeSet<String>,
     found: &mut Vec<Candidate>,
 ) {
-    let count = matches.len().min(MAX_MONTAGE_PARTS);
+    let count = matches.len().min(MAX_REQUESTED_MONTAGE_PARTS);
     if count < MIN_MONTAGE_PARTS {
         return;
     }
+    // A global tangent can be the exact passage explicitly requested. Keep
+    // complete source sentences for each mention; the independent critic will
+    // check the resulting joins against their original context.
+    let mut quoted = Table::new(material);
+    for unit in &mut quoted.units {
+        unit.cut = None;
+    }
     let n = u64::try_from(count).unwrap_or(1);
-    let per_item = (
-        material.length.0.div_ceil(n).max(MIN_MONTAGE_ITEM_TICKS),
-        material.length.1 / n,
-    );
+    let target = material.length.0.div_ceil(n).max(MIN_MONTAGE_ITEM_TICKS);
+    let cap = material.length.1 / n;
     let mut pieces: Vec<Piece> = Vec::new();
     let mut evidence = Vec::new();
     for &line in matches {
-        let Some((a, b)) = table.fit(line, line, per_item) else {
-            continue;
-        };
-        if a > line || pieces.last().is_some_and(|last| a <= last.b + 1) {
-            continue;
+        let (mut a, mut b) = spoken_sentence(table, line);
+        let prior = a.checked_sub(1).map(|last| spoken_sentence(table, last).0);
+        // A complete sentence can still have a condition or numeric correction
+        // in the next sentence. An explicit request for every mention needs both.
+        while let Some(next) = table.units.get(b + 1)
+            && continues_claim(&next.text)
+            && next.start.saturating_sub(table.units[b].end) <= ADJACENT_GAP_TICKS
+        {
+            b = spoken_sentence(table, b + 1).1;
         }
-        pieces.push(Piece {
-            a,
-            b,
-            role: "item",
-            why: "This mention matches the requested theme".to_owned(),
-        });
+        let following = (b + 1 < table.units.len()).then(|| spoken_sentence(table, b + 1).1);
+        if let Some(left) = prior
+            && (table.units[a].needs == a.checked_sub(1) || quoted.kept(a, b) < target)
+            && quoted.kept(left, b) <= cap
+        {
+            a = left;
+        }
+        if let Some(right) = following
+            && quoted.kept(a, b) < target
+            && quoted.kept(a, right) <= cap
+        {
+            b = right;
+        }
+        if quoted.kept(a, b) > material.length.1 {
+            return;
+        }
+        if let Some(previous) = pieces.last_mut()
+            && a <= previous.b + 1
+        {
+            // Keep consecutive mentions in their original uninterrupted passage.
+            // A mention already inside it still contributes its own citation.
+            previous.b = previous.b.max(b);
+        } else {
+            if pieces.len() == MAX_REQUESTED_MONTAGE_PARTS {
+                // A partial set of mentions cannot fulfil an exhaustive request.
+                return;
+            }
+            pieces.push(Piece {
+                a,
+                b,
+                role: "item",
+                why: "This passage contains a mention of the requested theme".to_owned(),
+            });
+        }
         evidence.push(format!("s{}", table.units[line].index));
-        if pieces.len() == count {
-            break;
-        }
     }
     if pieces.len() < MIN_MONTAGE_PARTS {
         return;
@@ -1016,7 +1135,63 @@ fn brief_montage(
         title: Some(&theme),
         evidence,
     };
-    found.extend(montage_candidate(material, table, draft, Scout::Brief, 50));
+    found.extend(montage_candidate(
+        material,
+        &quoted,
+        draft,
+        Scout::Brief,
+        50,
+    ));
+}
+
+/// Explicit conditions and consequences can extend a punctuated source claim.
+fn continues_claim(text: &str) -> bool {
+    let lower = text.trim_start().to_lowercase();
+    [
+        "but ",
+        "except ",
+        "only ",
+        "unless ",
+        "provided ",
+        "as long as ",
+        "excluding ",
+        "including ",
+        "that is why ",
+        "that's why ",
+        "in other words",
+        "and not ",
+        "add the ",
+    ]
+    .iter()
+    .any(|prefix| lower.starts_with(prefix))
+}
+
+/// ASR segments may end mid-sentence. Read through the first real punctuation
+/// and keep neighbouring words of the same sentence on both sides of the mention.
+fn spoken_sentence(table: &Table, line: usize) -> (usize, usize) {
+    let ends = |i: usize| {
+        table.units[i]
+            .text
+            .trim_end_matches(['"', '\'', '”', '’', ')'])
+            .ends_with(['.', '!', '?', '。', '！', '？'])
+    };
+    let mut a = line;
+    let mut b = line;
+    while a > 0
+        && line - a < EXTEND_UNITS
+        && !ends(a - 1)
+        && table.units[a].start.saturating_sub(table.units[a - 1].end) <= ADJACENT_GAP_TICKS
+    {
+        a -= 1;
+    }
+    while b + 1 < table.units.len()
+        && b - line < EXTEND_UNITS
+        && !ends(b)
+        && table.units[b + 1].start.saturating_sub(table.units[b].end) <= ADJACENT_GAP_TICKS
+    {
+        b += 1;
+    }
+    (a, b)
 }
 
 /// Let the planner choose which sighting opens a montage. Every offered ordering

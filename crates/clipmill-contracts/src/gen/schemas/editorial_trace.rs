@@ -98,6 +98,7 @@ pub mod error {
 #[doc = "        \"score\","]
 #[doc = "        \"plan\","]
 #[doc = "        \"critic\","]
+#[doc = "        \"critic.source\","]
 #[doc = "        \"compare\""]
 #[doc = "      ]"]
 #[doc = "    },"]
@@ -409,6 +410,7 @@ impl CallFramesItem {
 #[doc = "    \"score\","]
 #[doc = "    \"plan\","]
 #[doc = "    \"critic\","]
+#[doc = "    \"critic.source\","]
 #[doc = "    \"compare\""]
 #[doc = "  ]"]
 #[doc = "}"]
@@ -443,6 +445,8 @@ pub enum CallJob {
     Plan,
     #[serde(rename = "critic")]
     Critic,
+    #[serde(rename = "critic.source")]
+    CriticSource,
     #[serde(rename = "compare")]
     Compare,
 }
@@ -457,6 +461,7 @@ impl ::std::fmt::Display for CallJob {
             Self::Score => f.write_str("score"),
             Self::Plan => f.write_str("plan"),
             Self::Critic => f.write_str("critic"),
+            Self::CriticSource => f.write_str("critic.source"),
             Self::Compare => f.write_str("compare"),
         }
     }
@@ -473,6 +478,7 @@ impl ::std::str::FromStr for CallJob {
             "score" => Ok(Self::Score),
             "plan" => Ok(Self::Plan),
             "critic" => Ok(Self::Critic),
+            "critic.source" => Ok(Self::CriticSource),
             "compare" => Ok(Self::Compare),
             _ => Err("invalid value".into()),
         }

@@ -75,16 +75,23 @@ def plan(parts, form="straight", name="1"):
     }
 
 
-def approval(boundaries=()):
+def approval():
     return {
         "comprehension": "pass",
         "landing": "pass",
-        "sponsorship": "pass",
         "title_accuracy": "pass",
         "hook": "strong",
         "summary": "The speaker gives the price and its condition.",
         "issues": [],
-        "joins": {b["after"]: {"verdict": "pass", "note": "Meaning holds."} for b in boundaries},
+    }
+
+
+def source_approval(boundaries=()):
+    return {
+        "edge_issues": [],
+        "joins": {
+            b["after"]: {"effect": "preserved", "note": "Meaning holds."} for b in boundaries
+        },
     }
 
 
@@ -93,14 +100,19 @@ def test_wrong_question_is_checked_against_original_question_without_planner_rea
     draft["parts"][0]["why"] = "Private planner justification must never reach the critic."
     draft["evidence"] = ["An authoritative but incorrect claim that these lines belong together"]
 
-    def answer(_job, evidence):
+    def answer(job, evidence):
+        if job == "critic":
+            assert set(evidence) == {"public_title", "playback"}
+            assert "profitable" not in str(evidence["playback"])
+            return approval()
+        assert "public_title" not in evidence
         (boundary,) = evidence["splices"]
         assert "profitable" in boundary["right_source"]["before"][-1]["text"]
         assert "five dollars" in boundary["left_source"]["line"]["text"]
         assert "Private planner" not in str(evidence) and "authoritative" not in str(evidence)
-        response = approval([boundary])
+        response = source_approval([boundary])
         response["joins"][boundary["after"]].update(
-            verdict="reject", note="The answer belonged to a different question."
+            effect="different_answer", note="The answer belonged to a different question."
         )
         return response
 
@@ -114,6 +126,8 @@ def test_removed_qualification_can_be_restored_once_and_independently_rechecked(
     draft = plan([piece], "tightened")
 
     def answer(job, data):
+        if job == "critic":
+            return approval()
         if job == "plan":
             assert "qualification" in str(data["repair_findings"])
             return {
@@ -127,13 +141,13 @@ def test_removed_qualification_can_be_restored_once_and_independently_rechecked(
         if data["splices"]:
             (join,) = data["splices"]
             assert join["after"] == "p1.cut1" and "first month" in join["removed"][0]["text"]
-            issue = approval([join])
+            issue = source_approval([join])
             issue["joins"][join["after"]].update(
-                verdict="reject", note="A price qualification was removed."
+                effect="lost_qualification", note="A price qualification was removed."
             )
             return issue
         assert any("first month" in line["text"] for line in data["playback"])
-        return approval()
+        return source_approval()
 
     ctx = Calls(answer)
     rows = review_batch(
@@ -149,7 +163,13 @@ def test_removed_qualification_can_be_restored_once_and_independently_rechecked(
         },
         script(),
     )
-    assert [name for name, _ in ctx.calls] == ["critic", "plan", "critic"]
+    assert [name for name, _ in ctx.calls] == [
+        "critic",
+        "critic.source",
+        "plan",
+        "critic",
+        "critic.source",
+    ]
     assert rows[0]["quality"]["repaired"] and rows[0]["quality"]["verdict"] == "accept"
     assert rows[0]["plan"]["hook_text"] == "It cost five dollars in March."
     assert rows[0]["plan"]["plan_id"] != draft["plan_id"]
@@ -157,17 +177,37 @@ def test_removed_qualification_can_be_restored_once_and_independently_rechecked(
 
 def test_missing_boundary_fails_closed_and_no_rejected_plan_is_ranked():
     draft = plan([part("p1", 0, 1), part("p2", 5, 6)], "stitch")
-    ctx = Calls(lambda *_: approval())
+    ctx = Calls(lambda job, _: source_approval() if job == "critic.source" else approval())
     quality = judge(ctx, draft, Transcript(script()))
     assert quality["verdict"] == "reject"
     result = rank_batch(ctx, {"reviews": [{"plan": draft, "quality": quality}]}, script(), 4)
     assert result["clips"] == [] and result["cutoff_reason"]
 
 
+def test_source_audit_can_veto_an_intelligible_unspliced_cut_missing_its_qualification():
+    draft = plan([part("p1", 0, 2)])
+
+    def answer(job, data):
+        if job == "critic":
+            assert "first month" not in str(data)
+            return approval()
+        assert data["splices"] == []
+        assert "first month" in data["closing_source"]["after"][0]["text"]
+        return {
+            "edge_issues": [{"aspect": "meaning", "detail": "The original price was temporary."}],
+            "joins": {},
+        }
+
+    result = judge(Calls(answer), draft, Transcript(script()))
+    assert result["verdict"] == "reject" and "The original price was temporary." in result["issues"]
+
+
 def test_a_misleading_title_finding_requires_one_retitle_even_if_the_checkbox_passed():
     draft = plan([part("p1", 1, 4)])
 
     def answer(job, data):
+        if job == "critic.source":
+            return source_approval()
         if job == "plan":
             assert any(choice["choice"] == "retitle" for choice in data["choices"])
             return {
@@ -204,7 +244,13 @@ def test_a_misleading_title_finding_requires_one_retitle_even_if_the_checkbox_pa
         {"length": {"min_ticks": TICK, "max_ticks": 60 * TICK}, "candidates": [{"plan": draft}]},
         script(),
     )
-    assert [job for job, _ in ctx.calls] == ["critic", "plan", "critic"]
+    assert [job for job, _ in ctx.calls] == [
+        "critic",
+        "critic.source",
+        "plan",
+        "critic",
+        "critic.source",
+    ]
     assert row["quality"]["verdict"] == "accept" and row["quality"]["repaired"]
     assert row["plan"]["plan_id"] == draft["plan_id"]
 
@@ -241,3 +287,39 @@ def test_planner_cannot_invent_source_ranges_and_declines_unsupplied_choice():
         is None
     )
     assert ctx.calls[0][1]["previous_decisions"] == ctx.taste
+
+
+def test_trailing_subscription_promotion_ends_at_the_preceding_spoken_conclusion():
+    source = script()
+    source["units"][-2]["text"] = "Fix the feedback loop first, then scale the output."
+    source["units"][-1]["text"] = "Subscribe for part two."
+    original = plan([part("p1", 0, 6)])
+    transcript = Transcript(source)
+    length = {"min_ticks": 10 * TICK, "max_ticks": 60 * TICK}
+    choices = variants(original, transcript, length)
+    clean = choices["original_ending"]
+    assert clean["parts"][-1]["end_ticks"] == source["units"][-2]["end_ticks"]
+    assert clean["plan_id"] != original["plan_id"]
+    ctx = Calls(lambda job, _: source_approval() if job == "critic.source" else approval())
+    assert judge(ctx, original, transcript)["verdict"] == "reject"
+    assert judge(ctx, clean, transcript)["verdict"] == "accept"
+    ctx.brief = "End on the subscription call to action"
+    assert "original_ending" not in variants(original, transcript, length, brief=ctx.brief)
+    assert judge(ctx, original, transcript)["verdict"] == "accept"
+    source["units"][0]["text"] = "Here is how listeners can subscribe to the programme."
+    ctx.brief = ""
+    assert judge(ctx, original, Transcript(source))["verdict"] == "accept"
+    source["units"][0]["text"] = "We can monitor the service's uptime."
+    source["units"][-1]["text"] = "Subscribe to the alerts to receive outage notices."
+    assert judge(ctx, original, Transcript(source))["verdict"] == "accept"
+
+
+def test_explicit_montage_brief_cannot_be_fulfilled_by_a_single_span():
+    original = plan([part("p1", 0, 6)])
+    choices = variants(
+        original,
+        Transcript(script()),
+        {"min_ticks": TICK, "max_ticks": 60 * TICK},
+        brief="Make a montage of every time they talk about pricing",
+    )
+    assert not choices

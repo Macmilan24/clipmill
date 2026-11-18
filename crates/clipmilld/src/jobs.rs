@@ -2427,7 +2427,7 @@ fn editorial_recipe(operation: &str) -> Option<(&'static str, &'static str)> {
         "score" => (prompt!("score"), "mind.unit_scores.v1"),
         "plan" => (prompt!("plan"), "mind.plans.v1"),
         "critic" => (
-            concat!(prompt!("critic"), prompt!("plan")),
+            concat!(prompt!("critic"), prompt!("critic.source"), prompt!("plan")),
             "mind.quality_report.v1",
         ),
         "rank" => (prompt!("compare"), "ranking.set.v2"),

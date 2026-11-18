@@ -278,6 +278,69 @@ fn the_brief_scout_builds_a_montage_from_disjoint_requested_mentions() {
 }
 
 #[test]
+fn an_exhaustive_montage_reaches_a_sixth_mention_when_all_fit() {
+    let (mut source, words) = recording();
+    for line in [2, 12, 22, 32, 42, 52] {
+        source.sentences[line].text = "Pricing changed that year.".into();
+    }
+    let matches = super::candidates_for_brief(
+        &Material {
+            source_fingerprint: &format!("sha256:{}", "c".repeat(64)),
+            source: &source,
+            words: &words,
+            scores: None,
+            memory: None,
+            length: (15 * S, 60 * S),
+        },
+        "Every time they discuss pricing",
+    );
+    let montage = find(&matches, MindClipPlanForm::ThemeMontage);
+    assert_eq!(montage.plan.parts.len(), 6);
+    assert_eq!(montage.plan.evidence.len(), 6);
+    assert_eq!(montage.plan.evidence.last().unwrap().as_str(), "s52");
+}
+
+#[test]
+fn a_montage_keeps_qualified_mentions_even_when_the_global_markup_would_trim_them() {
+    let (mut source, words) = recording();
+    // s13 and s14 were marked as tangents to the source overall. Together
+    // they contain one of the requested examples, including its qualifier.
+    source.sentences[13].text = "They cut the pricing".into();
+    source.sentences[14].text = "only for the first month.".into();
+    source.sentences[15].text = "But only if you signed up before launch.".into();
+    for line in [27, 50] {
+        source.sentences[line].text = "The pricing changed after the launch.".into();
+    }
+    let scores = scores();
+    let matches = super::candidates_for_brief(
+        &Material {
+            source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+            source: &source,
+            words: &words,
+            scores: Some(&scores),
+            memory: None,
+            length: (15 * S, 60 * S),
+        },
+        "Make a montage of every time the speaker talks about pricing.",
+    );
+    let montage = find(&matches, MindClipPlanForm::ThemeMontage);
+    assert_eq!(montage.plan.parts.len(), 3);
+    let quoted: Vec<_> = montage.plan.parts[0]
+        .units
+        .iter()
+        .map(|u| u.as_str())
+        .collect();
+    assert!(quoted.windows(3).any(|ids| ids == ["s13", "s14", "s15"]));
+    assert!(
+        montage
+            .plan
+            .parts
+            .iter()
+            .all(|part| part.removed.is_empty())
+    );
+}
+
+#[test]
 fn the_reaction_scout_requires_a_nearby_spoken_line() {
     let (mut source, words) = recording();
     source.cues.push(crate::script::Cue {

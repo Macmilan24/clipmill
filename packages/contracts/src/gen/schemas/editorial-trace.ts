@@ -32,7 +32,17 @@ export interface EditorialTrace {
 }
 export interface Call {
   index: number;
-  job: "propose" | "review" | "look" | "memory.read" | "memory.link" | "score" | "plan" | "critic" | "compare";
+  job:
+    | "propose"
+    | "review"
+    | "look"
+    | "memory.read"
+    | "memory.link"
+    | "score"
+    | "plan"
+    | "critic"
+    | "critic.source"
+    | "compare";
   /**
    * The window a propose call was over.
    */

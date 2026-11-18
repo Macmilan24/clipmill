@@ -129,7 +129,7 @@ def stage_prompt(operation):
     if operation == "memory":
         return prompt_for("memory.read") + prompt_for("memory.link")
     if operation == "critic":
-        return prompt_for("critic") + prompt_for("plan")
+        return prompt_for("critic") + prompt_for("critic.source") + prompt_for("plan")
     if operation == "rank":
         return prompt_for("compare")
     return prompt_for(operation)

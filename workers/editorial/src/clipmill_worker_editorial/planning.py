@@ -5,6 +5,7 @@ from __future__ import annotations
 import bisect
 import copy
 import hashlib
+import re
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
@@ -39,6 +40,7 @@ class Transcript:
     def __init__(self, script):
         self.units = sorted(script["units"], key=lambda u: (u["start_ticks"], u["index"]))
         self.starts = [u["start_ticks"] for u in self.units]
+        self.by_id = {u["index"]: u for u in self.units}
 
     def in_range(self, start, end):
         first = bisect.bisect_left(self.starts, start)
@@ -73,6 +75,13 @@ class Transcript:
                     prev, after = previous
                     join = {
                         "after": after,
+                        "source_order": (
+                            "consecutive"
+                            if first == prev + 1
+                            else "forward"
+                            if first > prev
+                            else "reordered"
+                        ),
                         "left_source": self.neighbours(prev),
                         "right_source": self.neighbours(first),
                     }
@@ -102,7 +111,94 @@ class Transcript:
         }
 
 
-def variants(original, transcript, length, alternatives=()):
+# Match promotional closing sentences only at the beginning of a spoken line.
+# A reporting sentence such as "They asked people to subscribe" is substantive speech.
+SIGNOFF = re.compile(
+    r"^(?:(?:so|and|please|remember to|don't forget to)\s+)*"
+    r"(?:like and subscribe|subscribe(?:[.!?]|$| (?:for (?:part|more|the next|future)|"
+    r"to (?:my|our|this|the) channel|and (?:like|hit|turn on)|below)\b)|"
+    r"follow (?:me|us) (?:for more|on (?:instagram|tiktok|youtube|twitter))\b|"
+    r"(?:hit|tap|ring) (?:the|that) (?:notification )?bell\b|thanks for watching\b)",
+    re.IGNORECASE,
+)
+PROMOTION_TOPIC = re.compile(
+    r"\b(?:subscri(?:be|ber|bers|bing|ption|ptions)|followers?|sign.?up|calls?[ -]to[ -]action|"
+    r"CTA|sign.?off|outro|channel promotion|notification bell)\b",
+    re.IGNORECASE,
+)
+
+
+def unrelated_signoff(playback, brief):
+    """Find stand-alone end promotion after a passage about something else."""
+    split = len(playback)
+    while split and SIGNOFF.match(playback[split - 1]["text"].strip()):
+        split -= 1
+    if split == len(playback) or not split:
+        return None
+    topic = " ".join([brief, *(line["text"] for line in playback[:split])])
+    return None if PROMOTION_TOPIC.search(topic) else split
+
+
+def montage_requested(brief):
+    text = brief.casefold()
+    if re.search(r"\b(?:no|avoid|without|skip|not (?:a |the )?)\s*montage\b", text):
+        return False
+    return bool(
+        re.search(
+            r"\b(?:every time|all (?:the )?(?:times|mentions)|montage of|"
+            r"(?:make|build|create|assemble|as|into|want) (?:a |the )?(?:short |theme )?montage)\b",
+            text,
+        )
+    )
+
+
+def geometry_id(plan):
+    """Use the same edit identity as the cutter, including every omitted interval."""
+    pieces = [plan["source_fingerprint"], plan["form"]]
+    for part in plan["parts"]:
+        pieces.append(f"{part['role']}:{part['start_ticks']}:{part['end_ticks']}")
+        pieces.extend(f"cut:{r['start_ticks']}:{r['end_ticks']}" for r in part.get("removed", []))
+    return "plan_" + hashlib.sha256("|".join(pieces).encode()).hexdigest()[:24]
+
+
+def end_on_point(original, transcript, length, brief):
+    played = transcript.evidence(original)["playback"]
+    split = unrelated_signoff(played, brief)
+    if split is None:
+        return None
+    last_unit = played[split - 1]["unit"]
+    source_id = int(last_unit[1:])
+    end = transcript.by_id[source_id]["end_ticks"]
+    plan = copy.deepcopy(original)
+    last = plan["parts"][-1]
+    if not last["start_ticks"] + 108_000 <= end < last["end_ticks"]:
+        return None
+    last["end_ticks"] = end
+    omitted = [r for r in last.get("removed", []) if r["end_ticks"] < end]
+    if omitted:
+        last["removed"] = omitted
+    else:
+        last.pop("removed", None)
+    discarded = {line["unit"] for line in played[split:]}
+    if "units" in last:
+        last["units"] = [u for u in last["units"] if u not in discarded]
+    if "evidence" in plan:
+        plan["evidence"] = [u for u in plan["evidence"] if u not in discarded]
+    if len(plan["parts"]) == 1 and not omitted and plan["form"] == "tightened":
+        plan["form"] = "straight"
+    duration = sum(
+        p["end_ticks"]
+        - p["start_ticks"]
+        - sum(r["end_ticks"] - r["start_ticks"] for r in p.get("removed", []))
+        for p in plan["parts"]
+    )
+    if not length["min_ticks"] <= duration <= length["max_ticks"]:
+        return None
+    plan.update(plan_id=geometry_id(plan), duration_ticks=duration)
+    return plan
+
+
+def variants(original, transcript, length, alternatives=(), brief=""):
     """Offer only geometries derived from the cutter's validated sentence boundaries."""
     result = {"original": copy.deepcopy(original)}
     for i, alternate in enumerate(alternatives, start=1):
@@ -132,13 +228,13 @@ def variants(original, transcript, length, alternatives=()):
             "duration_ticks": duration,
             "evidence": restored["units"],
         }
-        # Same geometry identity as the Rust cutter for a single uncut body.
-        key = (
-            f"{plan['source_fingerprint']}|straight|body:{part['start_ticks']}:{part['end_ticks']}"
-        )
-        digest = hashlib.sha256(key.encode()).hexdigest()[:24]
-        plan["plan_id"] = f"plan_{digest}"
+        plan["plan_id"] = geometry_id(plan)
         result[f"part_{pos}_uncut"] = plan
+    for name, plan in list(result.items()):
+        if tighter := end_on_point(plan, transcript, length, brief):
+            result[f"{name}_ending"] = tighter
+    if montage_requested(brief):
+        return {key: choice for key, choice in result.items() if choice["form"] == "theme_montage"}
     return result
 
 
@@ -191,7 +287,7 @@ class Calls:
                 "Choose a self-contained moment in any topic or offered form."
             )
         prompt_schema = PlanReply.model_json_schema() if operation == "plan" else None
-        if operation == "critic":
+        if operation == "critic.source":
             prompt_schema = reply.model_json_schema()
             prompt_schema["$defs"]["SpliceJudgments"] = {
                 "type": "object",
@@ -214,14 +310,22 @@ def plan_one(ctx, options, transcript, repair=None):
     presentations = []
     lines = {}
     for name, plan in options.items():
-        spoken = transcript.evidence(plan)["playback"]
-        lines.update((line["unit"], line) for line in spoken)
+        parts = []
+        for part in plan["parts"]:
+            spoken = transcript.evidence({"parts": [part]})["playback"]
+            lines.update((line["unit"], line) for line in spoken)
+            parts.append(
+                {
+                    "part": part["part_id"],
+                    "role": part["role"],
+                    "units": [line["unit"] for line in spoken],
+                }
+            )
         presentations.append(
             {
                 "choice": name,
                 "form": plan["form"],
-                "playback_units": [line["unit"] for line in spoken],
-                "joins_after": [j["after"] for j in plan["joins"]],
+                "parts_in_playback_order": parts,
             }
         )
     if not presentations:
@@ -268,12 +372,21 @@ def plan_one(ctx, options, transcript, repair=None):
 def plan_batch(ctx, candidates, memory, script, count):
     transcript = Transcript(script)
     chapters = memory["chapters"]
-    sources = shortlist(candidates["candidates"], chapters, min(30, count * 2 + 2))
+    pool = candidates["candidates"]
+    if montage_requested(ctx.brief):
+        pool = [row for row in pool if row["plan"]["form"] == "theme_montage"]
+        requested = [row for row in pool if row["scout"] == "brief"]
+        pool = requested or pool
+    sources = shortlist(pool, chapters, min(30, count * 2 + 2))
     rows = []
     for index, source in enumerate(sources):
         ctx.progress("plan_candidates", index, len(sources))
         options = variants(
-            source["plan"], transcript, candidates["length"], source.get("alternatives", [])
+            source["plan"],
+            transcript,
+            candidates["length"],
+            source.get("alternatives", []),
+            ctx.brief,
         )
         result = plan_one(ctx, options, transcript)
         if result:
