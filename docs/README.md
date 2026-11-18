@@ -3,6 +3,9 @@
 Start with the [project README](../README.md) to install and run ClipMill, or
 [Contributing](../CONTRIBUTING.md) to work on the code.
 
+For shell commands, see the [CLI guide](cli.md). To connect a client to the local
+engine, see the [MCP client guide](agents.md) and [engine API](engine-api.md).
+
 ## Using ClipMill
 
 - [Installing ClipMill](install.md): downloads, system requirements, and first run.

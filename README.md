@@ -101,6 +101,7 @@ See [YouTube import](docs/youtube-import.md) for supported URLs and limits.
 
 - [Installing ClipMill](docs/install.md) — the released app, first run, and where it keeps things
 - [Changelog](CHANGELOG.md) — what each release changed
+- [Command-line guide](docs/cli.md) and [MCP clients](docs/agents.md) — analyze, search and export from other tools
 - [Documentation index](docs/README.md) — feature guides and architecture
 - [Releasing](docs/releasing.md) — how a release is built, signed and published
 - [Contributing](CONTRIBUTING.md) — development workflow and checks
