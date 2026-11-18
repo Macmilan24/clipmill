@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run local editorial analysis through a real daemon, workers and MP4 export.
 
-Review the original and ranked cuts side by side with transcripts and local playback.
+Compare the same run's ranking.set.v1 reference and Studio ranking.set.v2 cuts.
 Supplied recordings receive working previews with rights unassessed. The generated
 milestone talk also exercises the export package and sidecars.
 Run under workers/editorial/.venv/bin/python after building clipmilld.
@@ -395,9 +395,9 @@ small {{ display:block; color:#bcbab4 }} h3 {{ font:inherit }}
             "-c:a",
             "copy",
             "-metadata:s:a:0",
-            "handler_name=Original cut",
+            "handler_name=Reference ranking.set.v1",
             "-metadata:s:a:1",
-            "handler_name=Ranked cut",
+            "handler_name=Studio ranking.set.v2",
             "-disposition:a:0",
             "default",
             "-disposition:a:1",
@@ -571,7 +571,7 @@ def main():
             if "ranking.set.v1" in stages
             else {}
         )
-        original = {"empty": "The original ranking selected no cut."}
+        original = {"empty": "The reference ranking.set.v1 selected no cut."}
         if prior.get("selected"):
             candidate = prior["selected"][0]
             direct = ipc.DirectClipRequest(
@@ -580,7 +580,7 @@ def main():
             original = render_cut(client, work, out, "original", run, transcript, direct)
             selected = next(c for c in prior["cohort"] if c["candidate_id"] == candidate)
             original.update(
-                title=selected.get("title") or "Top moment from the original ranking",
+                title=selected.get("title") or "Top moment from ranking.set.v1",
                 candidate_id=candidate,
             )
         ranked = ranked_cut(client, work, out, "ranked", run, ranking, transcript)
@@ -593,8 +593,8 @@ def main():
         assert reranked["editorial_prompt"] == args.reprompt
         changed = ranked_cut(client, work, out, "revised", revised, reranked, transcript)
         cuts = [
-            ("Original ranking", original),
-            ("Editorial ranking", ranked),
+            ("Reference (ranking.set.v1)", original),
+            ("Studio ranking (ranking.set.v2)", ranked),
             ("Revised brief", changed),
         ]
         review_files(out, cuts)
