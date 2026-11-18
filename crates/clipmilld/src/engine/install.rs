@@ -59,6 +59,8 @@ pub(crate) struct Pointer {
     /// The install's directory under `envs/`.
     pub dir: String,
     pub installed_unix_millis: u64,
+    #[serde(default)]
+    pub x86_cpu_dispatch: bool,
 }
 
 impl Installer {
@@ -182,6 +184,7 @@ impl Installer {
             digest,
             dir: dir_name,
             installed_unix_millis: unix_millis(),
+            x86_cpu_dispatch: part.x86_cpu_dispatch,
         };
         let bytes = serde_json::to_vec_pretty(&pointer).map_err(|error| error.to_string())?;
         let path = self.pointer_path(&part.name);
@@ -375,6 +378,7 @@ mod tests {
             digest: "d".repeat(64),
             dir: dir.to_owned(),
             installed_unix_millis: 1,
+            x86_cpu_dispatch: false,
         };
         fs::write(
             installer.envs_dir().join(format!("{part}.json")),
