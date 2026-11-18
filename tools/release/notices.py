@@ -32,8 +32,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TEXTS = Path(__file__).resolve().parent / "licenses"
 WIDTH = 80
-# The two programs a packaged app carries: the daemon and the app itself.
-PROGRAMS = ("clipmilld", "clipmill-shell")
+# The programs a packaged app carries: the daemon, the clipmill command and
+# the app itself.
+PROGRAMS = ("clipmilld", "clipmill-cli", "clipmill-shell")
 # The package whose production dependencies are bundled into the interface.
 INTERFACE = "@clipmill/desktop"
 LICENCE_FILE = re.compile(r"^(licen[cs]e|copying|copyright|notice|unlicense)", re.IGNORECASE)

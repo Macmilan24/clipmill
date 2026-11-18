@@ -207,17 +207,18 @@ def run(command: list[str], **options: object) -> subprocess.CompletedProcess[st
 # ---- executables ----------------------------------------------------------
 
 
-def stage_daemon(target: Target, skip: bool) -> None:
-    built = ROOT / "target" / target.triple / "release" / f"clipmilld{target.exe}"
+def stage_rust_binary(target: Target, skip: bool, package: str, binary: str) -> None:
+    """Build one of the app's own executables for the target and stage it as a sidecar."""
+    built = ROOT / "target" / target.triple / "release" / f"{binary}{target.exe}"
     windows = target.triple.endswith("-windows-msvc")
     if not skip:
-        say("building clipmilld (release)")
+        say(f"building {binary} (release)")
         environment = dict(os.environ)
         if windows:
             # Microsoft's C runtime linked in, so a Windows without the
-            # Visual C++ Redistributable can start the daemon. Tauri does the
-            # same for the app's own executable. With --target, the flag
-            # reaches only what runs on the target, not build scripts.
+            # Visual C++ Redistributable can start it. Tauri does the same for
+            # the app's own executable. With --target, the flag reaches only
+            # what runs on the target, not build scripts.
             flags = environment.get("RUSTFLAGS", "")
             environment["RUSTFLAGS"] = f"{flags} -C target-feature=+crt-static".strip()
         run(
@@ -227,9 +228,9 @@ def stage_daemon(target: Target, skip: bool) -> None:
                 "--release",
                 "--locked",
                 "-p",
-                "clipmilld",
+                package,
                 "--bin",
-                "clipmilld",
+                binary,
                 "--target",
                 target.triple,
             ],
@@ -241,7 +242,14 @@ def stage_daemon(target: Target, skip: bool) -> None:
     # A DLL an executable imports is named in its import table.
     if windows and b"vcruntime140" in built.read_bytes().lower():
         raise SystemExit(f"stage: {built} still needs the Visual C++ runtime")
-    shutil.copy2(built, sidecar(target, "clipmilld"))
+    shutil.copy2(built, sidecar(target, binary))
+
+
+def stage_daemon(target: Target, skip: bool) -> None:
+    stage_rust_binary(target, skip, "clipmilld", "clipmilld")
+    # The clipmill command, for agents (MCP) and scripts: beside the app so
+    # Settings can name it in an agent's configuration.
+    stage_rust_binary(target, skip, "clipmill-cli", "clipmill")
 
 
 def stage_ffmpeg(target: Target, bom: dict) -> None:
@@ -628,7 +636,7 @@ source is at https://github.com/Macmilan24/clipmill.
 The app also carries software and fonts made by others, each under its own
 licence:
 
-  THIRD-PARTY-RUST.txt         crates compiled into the app and clipmilld
+  THIRD-PARTY-RUST.txt         crates compiled into the app, clipmilld and clipmill
   THIRD-PARTY-JAVASCRIPT.txt   packages bundled into the app's interface
   JASSUB-LIBRARIES.txt         the caption player's libraries and font
   jassub-LICENSE.txt           the caption player itself
