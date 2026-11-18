@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — Editorial briefs and multi-part clips
 
 - Plan clips against an editable brief. The local planner can combine distant
   passages, tighten a section or build a montage. A critic checks cuts against
