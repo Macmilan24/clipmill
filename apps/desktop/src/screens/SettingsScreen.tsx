@@ -4,6 +4,8 @@ import type { Theme, WorkspaceTheme } from '@clipmill/tokens';
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import type { LocalLock, StorageStats } from '../daemon/client.js';
 import { Settings } from './Settings.js';
+import { ConnectedAgents } from '../agents/ConnectedAgents.js';
+import type { AgentsApi } from '../daemon/agents.js';
 import { ConnectionCard } from '../youtube/ConnectionCard.js';
 import { UploadHistory } from '../youtube/UploadHistory.js';
 
@@ -18,10 +20,16 @@ export interface SettingsScreenProps {
   readonly onOpenModels?: () => void;
   /** The engine's version, for About; null while it is not connected. */
   readonly engineVersion?: string | null;
+  /** Connected agents; the desktop host's by default. */
+  readonly agentsApi?: AgentsApi;
 }
 
 /** Refresh independently: a failed storage read must not hide the privacy answer. */
-export function SettingsScreen({ api = daemonApi, ...preferences }: SettingsScreenProps) {
+export function SettingsScreen({
+  api = daemonApi,
+  agentsApi,
+  ...preferences
+}: SettingsScreenProps) {
   const [storage, setStorage] = useState<StorageStats | null>(null);
   const [lock, setLock] = useState<LocalLock | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +68,7 @@ export function SettingsScreen({ api = daemonApi, ...preferences }: SettingsScre
       integrations={
         preferences.integrations ?? (
           <div className="space-y-5">
+            <ConnectedAgents {...(agentsApi ? { api: agentsApi } : {})} />
             <ConnectionCard api={api} />
             <UploadHistory api={api} />
           </div>

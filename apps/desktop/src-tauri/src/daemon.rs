@@ -543,6 +543,69 @@ impl DaemonClient {
         }
     }
 
+    /// The agents a person connected, and what each may do.
+    pub async fn agent_clients(
+        &self,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::AgentClientV1>, DaemonLinkError> {
+        match self
+            .call(request::Body::ListAgentClients(
+                clipmill_contracts::proto::ipc::v1::ListAgentClientsRequest {},
+            ))
+            .await?
+        {
+            response::Body::AgentClients(reply) => Ok(reply.clients),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Connect an agent: its client and its token, shown this once.
+    pub async fn create_agent_client(
+        &self,
+        name: String,
+        scopes: Vec<String>,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::AgentClientCreated, DaemonLinkError> {
+        match self
+            .call(request::Body::CreateAgentClient(
+                clipmill_contracts::proto::ipc::v1::CreateAgentClientRequest { name, scopes },
+            ))
+            .await?
+        {
+            response::Body::AgentClientCreated(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    pub async fn revoke_agent_client(
+        &self,
+        client_id: String,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::AgentClientV1>, DaemonLinkError> {
+        match self
+            .call(request::Body::RevokeAgentClient(
+                clipmill_contracts::proto::ipc::v1::RevokeAgentClientRequest { client_id },
+            ))
+            .await?
+        {
+            response::Body::AgentClients(reply) => Ok(reply.clients),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// What agents asked the engine to do, newest first.
+    pub async fn engine_audit(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<clipmill_contracts::proto::ipc::v1::EngineAuditEntryV1>, DaemonLinkError> {
+        match self
+            .call(request::Body::ListEngineAudit(
+                clipmill_contracts::proto::ipc::v1::ListEngineAuditRequest { limit },
+            ))
+            .await?
+        {
+            response::Body::EngineAudit(reply) => Ok(reply.entries),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
     pub async fn local_lock(&self) -> Result<GetLocalLockResponse, DaemonLinkError> {
         match self
             .call(request::Body::GetLocalLock(GetLocalLockRequest {}))

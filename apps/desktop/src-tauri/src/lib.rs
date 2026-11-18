@@ -792,6 +792,82 @@ async fn readiness(
         .map_err(|error| error.to_string())
 }
 
+/// The `clipmill` command beside this app, for an agent's configuration.
+fn cli_path() -> Option<String> {
+    if let Some(explicit) = std::env::var_os("CLIPMILL_CLI_BIN") {
+        return Some(std::path::PathBuf::from(explicit).display().to_string());
+    }
+    let directory = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let sibling = directory.join(format!("clipmill{}", std::env::consts::EXE_SUFFIX));
+    sibling.is_file().then(|| sibling.display().to_string())
+}
+
+/// The agents a person connected.
+#[tauri::command]
+async fn list_agents(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+) -> Result<views::AgentsView, String> {
+    let clients = supervisor
+        .client()
+        .agent_clients()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(views::AgentsView {
+        clients: clients.into_iter().map(Into::into).collect(),
+        cli_path: cli_path(),
+    })
+}
+
+/// Connect an agent with the scopes the person chose.
+#[tauri::command]
+async fn create_agent(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    name: String,
+    scopes: Vec<String>,
+) -> Result<views::AgentCreatedView, String> {
+    let created = supervisor
+        .client()
+        .create_agent_client(name, scopes)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(views::AgentCreatedView {
+        client: created.client.map(Into::into),
+        token: created.token,
+        cli_path: cli_path(),
+    })
+}
+
+/// Disconnect an agent: its token stops working at once.
+#[tauri::command]
+async fn revoke_agent(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    client_id: String,
+) -> Result<views::AgentsView, String> {
+    let clients = supervisor
+        .client()
+        .revoke_agent_client(client_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(views::AgentsView {
+        clients: clients.into_iter().map(Into::into).collect(),
+        cli_path: cli_path(),
+    })
+}
+
+/// What agents and the `clipmill` command asked the engine to do.
+#[tauri::command]
+async fn engine_audit(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    limit: u32,
+) -> Result<Vec<views::EngineAuditView>, String> {
+    supervisor
+        .client()
+        .engine_audit(limit)
+        .await
+        .map(|entries| entries.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
 /// Whether this installation is offline, and the evidence for it.
 #[tauri::command]
 async fn local_lock(
@@ -1072,6 +1148,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             export_archive,
             local_lock,
             readiness,
+            list_agents,
+            create_agent,
+            revoke_agent,
+            engine_audit,
             choose_export_folder,
             reveal_path,
             solve_crop_path,
