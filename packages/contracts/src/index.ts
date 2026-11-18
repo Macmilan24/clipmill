@@ -33,6 +33,8 @@ export type { MindClipPlan } from './gen/schemas/mind-clip-plan.js';
 export type { MindMemory } from './gen/schemas/mind-memory.js';
 export type { MindScript } from './gen/schemas/mind-script.js';
 export type { MindCandidates } from './gen/schemas/mind-candidates.js';
+export type { TextEmbeddings } from './gen/schemas/text-embeddings.js';
+export type { TextQueryVector } from './gen/schemas/text-query-vector.js';
 export type { MindUnitScores } from './gen/schemas/mind-unit-scores.js';
 export type { DiscoveryCandidates } from './gen/schemas/discovery-candidates.js';
 export type { RankingSet } from './gen/schemas/ranking-set.js';

@@ -883,6 +883,22 @@ pub struct AudioEventsStagePayloadV1 {
     #[prost(string, tag = "3")]
     pub source_fingerprint: ::prost::alloc::string::String,
 }
+/// What the embedding model is asked to do. For a recording's speech and
+/// memory (`text-embed`) the inputs arrive on the lease and the payload names
+/// the recording; for a search (`text-embed-query`) the payload carries the
+/// words to search for.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TextEmbedPayloadV1 {
+    #[prost(string, tag = "1")]
+    pub key_version: ::prost::alloc::string::String,
+    /// The registered task kind this payload belongs to.
+    #[prost(string, tag = "2")]
+    pub stage: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub source_fingerprint: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub query: ::prost::alloc::string::String,
+}
 /// Versioned payload for the daemon-owned device profiler. The stable
 /// hardware/runtime fingerprint selects the cache lineage; generation makes
 /// an explicit remeasurement a distinct artifact recipe.

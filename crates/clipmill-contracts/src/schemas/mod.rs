@@ -159,3 +159,11 @@ pub mod source_map;
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/vision_face_track.rs"]
 pub mod vision_face_track;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/text_embeddings.rs"]
+pub mod text_embeddings;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/text_query_vector.rs"]
+pub mod text_query_vector;

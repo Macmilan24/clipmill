@@ -1,0 +1,28 @@
+[project]
+name = "clipmill-worker-embed"
+version = "0.1.0"
+description = "Text embeddings (multilingual-e5-small on onnxruntime): sentences and remembered events as vectors, for meaning search"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = [
+  "clipmill-worker-sdk",
+  "numpy>=2",
+  "onnxruntime>=1.20",
+  "tokenizers>=0.21",
+]
+
+[project.scripts]
+clipmill-worker-embed = "clipmill_worker_embed:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv.sources]
+clipmill-worker-sdk = { path = "../sdk", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clipmill_worker_embed"]

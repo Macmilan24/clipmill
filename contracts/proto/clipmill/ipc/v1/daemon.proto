@@ -636,6 +636,18 @@ message AudioEventsStagePayloadV1 {
   string source_fingerprint = 3;
 }
 
+// What the embedding model is asked to do. For a recording's speech and
+// memory (`text-embed`) the inputs arrive on the lease and the payload names
+// the recording; for a search (`text-embed-query`) the payload carries the
+// words to search for.
+message TextEmbedPayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  string source_fingerprint = 3;
+  string query = 4;
+}
+
 // Versioned payload for the daemon-owned device profiler. The stable
 // hardware/runtime fingerprint selects the cache lineage; generation makes
 // an explicit remeasurement a distinct artifact recipe.

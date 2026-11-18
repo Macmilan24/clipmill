@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.text.embeddings.v1.json",
+  "title": "TextEmbeddings",
+  "description": "A recording's speech and remembered events as vectors, for search by meaning. Each passage is a run of consecutive sentences long enough to mean something on its own (a single recognised fragment is not), named by the sentences it spans; each event is a Recording Memory event's title. The vectors themselves are in `vectors_file`, little-endian float16, one row of `dims` values per unit in the order listed, each normalized to length one so a dot product is the cosine.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "producer",
+    "model",
+    "dtype",
+    "vectors_file",
+    "units"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.text.embeddings.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "producer": {
+      "type": "object",
+      "required": ["stage", "implementation", "model_digest"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "const": "text-embed"
+        },
+        "implementation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["name", "dims", "pooling"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dims": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "pooling": {
+          "enum": ["mean", "cls", "last"]
+        }
+      }
+    },
+    "dtype": {
+      "const": "float16"
+    },
+    "vectors_file": {
+      "const": "vectors.f16"
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id", "first_unit", "last_unit"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": ["passage", "event"]
+          },
+          "id": {
+            "description": "`s12-s15` for a passage, the event id (`m3`) for an event.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "first_unit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_unit": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

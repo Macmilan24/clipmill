@@ -58,6 +58,7 @@ CAPABILITIES = {
     "detect-shots",
     "editorial",
     "audio-events",
+    "embed",
 }
 
 

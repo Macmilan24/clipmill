@@ -63,6 +63,14 @@ command = "clipmill-worker-audio-events"
 module = "clipmill_worker_audio_events"
 platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
 
+[[part]]
+name = "embed"
+title = "Meaning search"
+family = "embed"
+command = "clipmill-worker-embed"
+module = "clipmill_worker_embed"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
 # Apple silicon only: MLX runs on Metal.
 
 [[part]]

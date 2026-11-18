@@ -16,6 +16,7 @@ setup:
     cd workers/shots && uv sync
     cd workers/faces && uv sync
     cd workers/audio-events && uv sync
+    cd workers/embed && uv sync
     cd workers/editorial && uv sync
     cd integrations/youtube-import && uv sync --frozen
     cd eval/harness && uv sync
@@ -56,6 +57,7 @@ test:
     cd workers/shots && uv run pytest
     cd workers/faces && uv run pytest
     cd workers/audio-events && uv run pytest
+    cd workers/embed && uv run pytest
     cd workers/editorial && uv run pytest
     cd integrations/youtube-import && uv run --frozen pytest
     cd eval/harness && uv run pytest
