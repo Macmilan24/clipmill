@@ -81,6 +81,26 @@ pub(super) fn schema(operation: &str) -> Value {
             "artifacts",
             &[("kind", "string"), ("artifact_id", "string")],
         ),
+        "audit_log" => list(
+            "entries",
+            &[
+                ("client", "string"),
+                ("op", "string"),
+                ("outcome", "string"),
+            ],
+        ),
+        "job_events" => record(&[
+            ("job_id", "string"),
+            ("events", "array"),
+            ("cursor", "integer"),
+        ]),
+        "list_models" => list("models", &[("name", "string")]),
+        _ => edit_schema(operation),
+    }
+}
+
+fn edit_schema(operation: &str) -> Value {
+    match operation {
         "list_clips" => list(
             "clips",
             &[
@@ -118,22 +138,8 @@ pub(super) fn schema(operation: &str) -> Value {
                 ("inverse", "object"),
             ],
         ),
-        "audit_log" => list(
-            "entries",
-            &[
-                ("client", "string"),
-                ("op", "string"),
-                ("outcome", "string"),
-            ],
-        ),
-        "job_events" => record(&[
-            ("job_id", "string"),
-            ("events", "array"),
-            ("cursor", "integer"),
-        ]),
         "render_preview" => record(&[("job_id", "string"), ("revision", "integer")]),
         "export_clip" => record(&[("job_id", "string"), ("destination_dir", "string")]),
-        "list_models" => list("models", &[("name", "string")]),
         _ => json!({"type":"object"}),
     }
 }
