@@ -145,6 +145,12 @@ def _opening(text: str) -> str:
     return " ".join(words[:OPENING_WORDS]) + ("…" if len(words) > OPENING_WORDS else "")
 
 
+def _key(name: str) -> str:
+    """A name as entities are matched: case, spaces and punctuation ignored,
+    so "KV cache" and "KVCache" are one thing."""
+    return "".join(character for character in name.casefold() if character.isalnum())
+
+
 def _stamp(ticks: int) -> str:
     seconds = ticks // 90_000
     hours, minutes, seconds = seconds // 3600, seconds // 60 % 60, seconds % 60
@@ -183,7 +189,8 @@ class Builder:
             self._merge_entity(entity)
 
     def _merge_entity(self, entity: dict) -> None:
-        spellings = {entity["name"].casefold(), *(a.casefold() for a in entity["aliases"])}
+        spellings = {_key(entity["name"]), *(_key(a) for a in entity["aliases"])}
+        spellings.discard("")
         for known in self.entities:
             if spellings & known["keys"]:
                 known["keys"] |= spellings
@@ -230,7 +237,7 @@ class Builder:
                     speakers.append(speaker)
             named = []
             for name in event["names"]:
-                entity = entity_ids.get(name.casefold())
+                entity = entity_ids.get(_key(name))
                 if entity and entity["entity_id"] not in named:
                     named.append(entity["entity_id"])
                     entity["events"].append(event_id)

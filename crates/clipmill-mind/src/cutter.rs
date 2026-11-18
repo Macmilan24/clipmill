@@ -41,6 +41,14 @@ pub const MAX_LIFT_TICKS: u64 = 10 * SECOND;
 pub const MIN_MONTAGE_ITEM_TICKS: u64 = 3 * SECOND;
 /// The most moments a montage strings together.
 pub const MAX_MONTAGE_PARTS: usize = 5;
+/// Linked moments closer than this are one moment, not a stitch: jumping a
+/// few sentences to reach an answer cuts out what led to it for nothing.
+pub const STITCH_MIN_GAP_TICKS: u64 = 45 * SECOND;
+/// Two candidates sharing this much of what they play are one candidate;
+/// the better-scored stays.
+pub const DUPLICATE_SHARE_PERCENT: u64 = 50;
+/// The most candidates the cutter hands on, best first.
+pub const MAX_CANDIDATES: usize = 30;
 
 /// Everything the cutter reads.
 #[derive(Clone, Copy, Debug)]
@@ -468,7 +476,55 @@ pub fn candidates(material: &Material<'_>) -> Vec<Candidate> {
             .cmp(&x.score)
             .then_with(|| x.plan.plan_id.as_str().cmp(y.plan.plan_id.as_str()))
     });
-    found
+    distinct(found)
+}
+
+/// What a plan plays, as source ranges with its removals taken out.
+fn played(plan: &MindClipPlan) -> Vec<(u64, u64)> {
+    let mut ranges = Vec::new();
+    for part in &plan.parts {
+        let mut at = part.start_ticks;
+        for removed in &part.removed {
+            if removed.start_ticks > at {
+                ranges.push((at, removed.start_ticks));
+            }
+            at = at.max(removed.end_ticks.get());
+        }
+        if part.end_ticks.get() > at {
+            ranges.push((at, part.end_ticks.get()));
+        }
+    }
+    ranges
+}
+
+fn shared(a: &[(u64, u64)], b: &[(u64, u64)]) -> u64 {
+    a.iter()
+        .flat_map(|x| b.iter().map(move |y| (x, y)))
+        .map(|(x, y)| x.1.min(y.1).saturating_sub(x.0.max(y.0)))
+        .sum()
+}
+
+/// The best candidates that are not the same clip again, at most
+/// [`MAX_CANDIDATES`]: one that shares half of what it plays with a better
+/// one is left out.
+fn distinct(found: Vec<Candidate>) -> Vec<Candidate> {
+    let mut kept: Vec<(Candidate, Vec<(u64, u64)>)> = Vec::new();
+    for candidate in found {
+        if kept.len() == MAX_CANDIDATES {
+            break;
+        }
+        let ranges = played(&candidate.plan);
+        let length: u64 = ranges.iter().map(|(a, b)| b - a).sum();
+        let repeats = kept.iter().any(|(_, other)| {
+            let other_length: u64 = other.iter().map(|(a, b)| b - a).sum();
+            shared(&ranges, other) * 100
+                >= DUPLICATE_SHARE_PERCENT * length.min(other_length).max(1)
+        });
+        if !repeats {
+            kept.push((candidate, ranges));
+        }
+    }
+    kept.into_iter().map(|(candidate, _)| candidate).collect()
 }
 
 /// Each clip-worthy event as one moment, tightened where it can be.
@@ -541,8 +597,8 @@ fn links(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &mu
             link.to_event.to_string(),
         ];
         let gap = table.units[ta].start.saturating_sub(table.units[fb].end);
-        let candidate = if gap <= ADJACENT_GAP_TICKS || ta - fb <= 2 {
-            joined(material, table, (fa, tb), &link.note, evidence)
+        let candidate = if gap < STITCH_MIN_GAP_TICKS {
+            joined(material, table, (fa, tb), from_title, evidence)
         } else {
             stitched(
                 material,
@@ -555,7 +611,6 @@ fn links(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &mu
                     "{} {}: {}>{}",
                     *link.link_id, link.kind, *link.from_event, *link.to_event
                 ),
-                &link.note,
                 evidence,
             )
         };
@@ -567,7 +622,7 @@ fn joined(
     material: &Material<'_>,
     table: &Table,
     (a, b): (usize, usize),
-    note: &str,
+    title: &str,
     evidence: Vec<String>,
 ) -> Option<Candidate> {
     let (a, b) = table.fit(a, b, material.length)?;
@@ -581,10 +636,10 @@ fn joined(
                 a,
                 b,
                 role: "body",
-                why: note.to_owned(),
+                why: title.to_owned(),
             }],
             links: Vec::new(),
-            title: None,
+            title: Some(title),
             evidence,
         },
     )?;
@@ -600,7 +655,6 @@ fn stitched(
     table: &Table,
     ends: [(usize, usize, &'static str, &str); 2],
     link: &str,
-    note: &str,
     evidence: Vec<String>,
 ) -> Option<Candidate> {
     let (min, max) = material.length;
@@ -609,12 +663,19 @@ fn stitched(
         (ta, tb, second_role, to_title),
     ] = ends;
     // The first half sets up: keep it short so the payoff has the time.
-    let (fa, fb) = table.fit(fa, fb, (MIN_PART_TICKS, max / 2))?;
+    let (fa, fb) = table.fit(fa, fb, (MIN_PART_TICKS, max * 2 / 5))?;
     let first = table.kept(fa, fb);
+    // The payoff is the reason for the clip: all of it, or as much as fits,
+    // never a lone line cut from it.
+    let room = max.saturating_sub(first);
+    let whole = table.kept(ta, tb).min(room);
     let (ta, tb) = table.fit(
         ta,
         tb,
-        (min.saturating_sub(first).max(MIN_PART_TICKS), max - first),
+        (
+            min.saturating_sub(first).max(whole).max(MIN_PART_TICKS),
+            room,
+        ),
     )?;
     let plan = assemble(
         material,
@@ -636,7 +697,7 @@ fn stitched(
                 },
             ],
             links: vec![Some(link.to_owned())],
-            title: Some(note),
+            title: Some(from_title),
             evidence,
         },
     )?;
@@ -647,51 +708,75 @@ fn stitched(
     })
 }
 
+/// Whether a line names any of `names` (already lower-cased).
+fn mentions(text: &str, names: &[String]) -> bool {
+    let text = text.to_lowercase();
+    names.iter().any(|name| text.contains(name.as_str()))
+}
+
 /// Three or more moments about one named thing, in the order they were said.
+///
+/// Each moment is cut around a line that names the thing, and the moments come
+/// from more than one chapter: a montage is a thread through the recording,
+/// not one passage chopped up.
 fn themes(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &mut Vec<Candidate>) {
-    let events: BTreeMap<&str, (usize, usize)> = memory
+    let events: BTreeMap<&str, (usize, usize, Option<&str>)> = memory
         .events
         .iter()
         .filter(|e| clip_worthy(e.kind))
         .filter_map(|e| {
             Some((
                 e.event_id.as_str(),
-                (table.place(&e.first_unit)?, table.place(&e.last_unit)?),
+                (
+                    table.place(&e.first_unit)?,
+                    table.place(&e.last_unit)?,
+                    e.chapter_id.as_ref().map(|c| c.as_str()),
+                ),
             ))
         })
         .collect();
     let (min, max) = material.length;
     for entity in &memory.entities {
-        let mut spans: Vec<(usize, usize, &str)> = entity
+        let names: Vec<String> = std::iter::once(entity.name.as_str())
+            .chain(entity.aliases.iter().map(|alias| alias.as_str()))
+            .map(str::to_lowercase)
+            .filter(|name| name.chars().count() >= 3)
+            .collect();
+        // The line in each event that names it.
+        let mut sightings: Vec<(usize, &str, Option<&str>)> = entity
             .events
             .iter()
-            .filter_map(|id| events.get(id.as_str()).map(|&(a, b)| (a, b, id.as_str())))
+            .filter_map(|id| {
+                let &(a, b, chapter) = events.get(id.as_str())?;
+                let line = (a..=b).find(|&place| mentions(&table.units[place].text, &names))?;
+                Some((line, id.as_str(), chapter))
+            })
             .collect();
-        spans.sort_unstable();
-        // Moments, not one moment told in pieces: each starts after the last ends.
-        let mut apart: Vec<(usize, usize, &str)> = Vec::new();
-        for span in spans {
-            if apart.last().is_none_or(|last| span.0 > last.1 + 1) {
-                apart.push(span);
-            }
-        }
-        if apart.len() < MIN_MONTAGE_PARTS {
+        sightings.sort_unstable();
+        sightings.dedup_by_key(|line| line.0);
+        let chapters: BTreeSet<&str> = sightings.iter().filter_map(|line| line.2).collect();
+        if sightings.len() < MIN_MONTAGE_PARTS || chapters.len() < 2 {
             continue;
         }
-        apart.truncate(MAX_MONTAGE_PARTS);
-        let cap = max / u64::try_from(apart.len()).unwrap_or(1);
-        let mut pieces = Vec::new();
+        sightings.truncate(MAX_MONTAGE_PARTS);
+        let cap = max / u64::try_from(sightings.len()).unwrap_or(1);
+        let mut pieces: Vec<Piece> = Vec::new();
         let mut evidence = vec![entity.entity_id.to_string()];
-        for (a, b, id) in &apart {
-            if let Some((a, b)) = table.excerpt(*a, *b, cap) {
-                pieces.push(Piece {
-                    a,
-                    b,
-                    role: "item",
-                    why: format!("{} on {}", *entity.name, id),
-                });
-                evidence.push((*id).to_owned());
+        for &(line, id, _) in &sightings {
+            let Some((a, b)) = table.excerpt(line, line, cap) else {
+                continue;
+            };
+            // Moments, not one passage in pieces: each after the last ends.
+            if pieces.last().is_some_and(|last| a <= last.b + 1) {
+                continue;
             }
+            pieces.push(Piece {
+                a,
+                b,
+                role: "item",
+                why: format!("{} on {}", *entity.name, id),
+            });
+            evidence.push(id.to_owned());
         }
         if pieces.len() < MIN_MONTAGE_PARTS {
             continue;

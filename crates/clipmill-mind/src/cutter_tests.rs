@@ -16,7 +16,11 @@ fn recording() -> (Source, Vec<(u64, u64)>) {
             start_ticks: i * 6 * S,
             end_ticks: i * 6 * S + 5 * S,
             speaker: Some(if i < 20 { "host" } else { "guest" }.to_owned()),
-            text: format!("Line {i} of the conversation."),
+            text: if matches!(i, 12 | 25 | 49) {
+                format!("Line {i}: back when we were at Northwind.")
+            } else {
+                format!("Line {i} of the conversation.")
+            },
         })
         .collect();
     let words = sentences
@@ -64,7 +68,9 @@ fn scores() -> MindUnitScores {
 }
 
 fn event(id: &str, kind: &str, first: u64, last: u64, entities: &[&str]) -> serde_json::Value {
+    let chapter = if first < 30 { "c1" } else { "c2" };
     json!({
+        "chapter_id": chapter,
         "event_id": id, "kind": kind, "title": format!("Event {id}"), "mood": "neutral",
         "first_unit": format!("s{first}"), "last_unit": format!("s{last}"),
         "start_ticks": first * 6 * S, "end_ticks": last * 6 * S + 5 * S,
