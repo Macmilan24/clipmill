@@ -456,7 +456,6 @@ impl Service {
         match op {
             "whoami" => Ok(json!({"client_id": caller.client_id, "scopes": caller.scopes})),
             "mcp_export_consent" => super::mcp_consent::export_consent(&caller.client_id, args),
-            "read_edit_resource" => self.get_api_edit(args).await,
             "status" => {
                 let health = self
                     .v1(request::Body::Health(HealthRequest {}), None)
@@ -565,7 +564,7 @@ impl Service {
             "get_source" => self.get_api_source(args).await,
             "get_timeline" => self.timeline(args).await,
             "job_events" => self.job_events(args).await,
-            "get_edit" => self.get_api_edit(args).await,
+            "get_edit" | "read_edit_resource" => self.get_api_edit(args).await,
             "apply_edits" | "undo_edit" => self.change_edit(args, id, op == "undo_edit").await,
             "edit_log" => self.api_edit_log(args).await,
             "render_preview" => self.preview_render(args, id).await,
@@ -1365,11 +1364,10 @@ mod tests {
         ] {
             assert!(requested_duration(&args).is_err());
         }
-        let span = requested_duration(&json!({"min_seconds":12.25,"max_seconds":30}))
-            .ok()
-            .flatten()
-            .expect("valid duration range");
-        assert_eq!((span.min_ticks, span.max_ticks), (1_102_500, 2_700_000));
+        assert!(matches!(
+            requested_duration(&json!({"min_seconds":12.25,"max_seconds":30})),
+            Ok(Some(span)) if (span.min_ticks, span.max_ticks) == (1_102_500, 2_700_000)
+        ));
     }
 
     #[test]
