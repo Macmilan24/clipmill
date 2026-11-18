@@ -616,7 +616,8 @@ pub(super) fn recover_jobs(
 
 /// Jobs a person is waiting on, as a comma-delimited list for SQL: they are
 /// leased before background work (resource governor, plan step 1.6).
-pub(crate) const INTERACTIVE_JOBS: &str = ",render-clip,export-clip,probe-source,youtube-metadata,";
+pub(crate) const INTERACTIVE_JOBS: &str =
+    ",render-clip,export-clip,probe-source,youtube-metadata,embed-query,";
 
 #[allow(clippy::too_many_lines)]
 pub(super) fn lease_next_task_for_worker(

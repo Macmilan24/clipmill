@@ -36,7 +36,7 @@ const TOKEN_PREFIX: &str = "cmt_";
 const READ_CHUNK: u64 = 4 * 1024 * 1024;
 
 /// Every operation and the scope it needs.
-pub(crate) const OPERATIONS: [(&str, &str); 16] = [
+pub(crate) const OPERATIONS: [(&str, &str); 18] = [
     ("status", "read"),
     ("list_projects", "read"),
     ("create_project", "edit"),
@@ -49,6 +49,8 @@ pub(crate) const OPERATIONS: [(&str, &str); 16] = [
     ("get_transcript", "read"),
     ("list_clips", "read"),
     ("describe_clip", "read"),
+    ("find_moments", "read"),
+    ("memory_overview", "read"),
     ("set_decision", "edit"),
     ("create_clip", "edit"),
     ("export_clip", "render"),
@@ -67,7 +69,7 @@ struct Call {
 }
 
 /// A refusal or failure, as the API states it.
-struct ApiError {
+pub(super) struct ApiError {
     code: &'static str,
     message: String,
     retryable: bool,
@@ -82,7 +84,7 @@ impl ApiError {
         }
     }
 
-    fn invalid(message: impl Into<String>) -> Self {
+    pub(super) fn invalid(message: impl Into<String>) -> Self {
         Self::new("invalid_argument", message)
     }
 
@@ -91,7 +93,7 @@ impl ApiError {
     }
 }
 
-type ApiResult = Result<Value, ApiError>;
+pub(super) type ApiResult = Result<Value, ApiError>;
 
 /// Who is calling, and what they may do.
 struct Caller {
@@ -99,11 +101,20 @@ struct Caller {
     scopes: Vec<String>,
 }
 
+fn request_key(client: &str, operation: &str, key: &str) -> String {
+    let mut digest = Sha256::new();
+    for value in [client, operation, key] {
+        digest.update(value.len().to_le_bytes());
+        digest.update(value.as_bytes());
+    }
+    format!("v2_{}", hex::encode(digest.finalize()))
+}
+
 fn hash_token(token: &str) -> [u8; 32] {
     Sha256::digest(token.as_bytes()).into()
 }
 
-fn seconds(ticks: u64) -> f64 {
+pub(super) fn seconds(ticks: u64) -> f64 {
     // Rounded to the millisecond: an agent reading "12.3456789" learns nothing
     // the tick count did not already say better.
     #[allow(clippy::cast_precision_loss)]
@@ -119,7 +130,7 @@ fn ticks(seconds: f64) -> Result<u64, ApiError> {
     Ok((seconds * TICKS).round() as u64)
 }
 
-fn arg_str<'a>(args: &'a Value, name: &str) -> Result<&'a str, ApiError> {
+pub(super) fn arg_str<'a>(args: &'a Value, name: &str) -> Result<&'a str, ApiError> {
     args.get(name)
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
@@ -202,14 +213,14 @@ fn plan_candidate_id(source_id: &str, job_id: &str, plan_json: &str) -> String {
 
 /// The analysis an answer is read from: the run named, or the newest
 /// finished analysis of the source.
-struct Run {
-    job: Job,
-    project_id: String,
-    source_id: String,
+pub(super) struct Run {
+    pub(super) job: Job,
+    pub(super) project_id: String,
+    pub(super) source_id: String,
 }
 
 impl Run {
-    fn artifact(&self, kind: &str) -> Option<&str> {
+    pub(super) fn artifact(&self, kind: &str) -> Option<&str> {
         self.job
             .tasks
             .iter()
@@ -264,8 +275,15 @@ impl Service {
                 ))
             }
             Some(_) => {
-                self.dispatch(&parsed.op, &parsed.args, parsed.request_id.as_deref())
-                    .await
+                self.dispatch(
+                    &parsed.op,
+                    &parsed.args,
+                    parsed
+                        .request_id
+                        .as_deref()
+                        .map(|key| request_key(&caller.client_id, &parsed.op, key)),
+                )
+                .await
             }
         };
         let (status, detail) = match &outcome {
@@ -324,7 +342,7 @@ impl Service {
     }
 
     /// Send one v1 request through the Studio's own handler.
-    async fn v1(
+    pub(super) async fn v1(
         &self,
         body: request::Body,
         request_id: Option<String>,
@@ -358,9 +376,7 @@ impl Service {
         clippy::too_many_lines,
         reason = "one arm per operation, each a translation onto a v1 request"
     )]
-    async fn dispatch(&self, op: &str, args: &Value, request_id: Option<&str>) -> ApiResult {
-        let id =
-            request_id.map(|id| format!("v2:{op}:{}", id.chars().take(96).collect::<String>()));
+    async fn dispatch(&self, op: &str, args: &Value, id: Option<String>) -> ApiResult {
         match op {
             "status" => {
                 let health = self
@@ -485,6 +501,18 @@ impl Service {
             "get_transcript" => self.transcript(args).await,
             "list_clips" => self.list_clips(args).await,
             "describe_clip" => self.describe_clip(args).await,
+            "memory_overview" => {
+                let run = self.run(args).await?;
+                let memory = self
+                    .optional_document(&run, "mind.memory.v1")
+                    .await?
+                    .ok_or_else(|| ApiError::not_found("this run has no recording memory"))?;
+                Ok(
+                    json!({"job_id":run.job.job_id,"chapters":memory["chapters"],"events":memory["events"],
+                    "links":memory["links"], "entities":memory["entities"]}),
+                )
+            }
+            "find_moments" => self.find_moments(args).await,
             "set_decision" => self.set_decision(args, id).await,
             "create_clip" => self.create_clip(args, id).await,
             "export_clip" => self.export(args, id).await,
@@ -505,7 +533,7 @@ impl Service {
         }
     }
 
-    async fn job(&self, job_id: &str) -> Result<Job, ApiError> {
+    pub(super) async fn job(&self, job_id: &str) -> Result<Job, ApiError> {
         let body = self
             .v1(
                 request::Body::GetJob(GetJobRequest {
@@ -568,7 +596,7 @@ impl Service {
     }
 
     /// The run named in `args`, or the newest finished analysis of the source.
-    async fn run(&self, args: &Value) -> Result<Run, ApiError> {
+    pub(super) async fn run(&self, args: &Value) -> Result<Run, ApiError> {
         let project_id = arg_str(args, "project_id")?.to_owned();
         let source_id = arg_str(args, "source_id")?.to_owned();
         let job = if let Some(job_id) = opt_str(args, "job_id") {
@@ -601,6 +629,17 @@ impl Service {
                 })?;
             self.job(&newest.job_id).await?
         };
+        if job.project_id != project_id
+            || job.source_id != source_id
+            || job.kind != "analyze-source"
+        {
+            return Err(ApiError::not_found(
+                "this run does not belong to the requested recording",
+            ));
+        }
+        if job.state != JobState::Succeeded as i32 {
+            return Err(ApiError::new("conflict", "this analysis has not finished"));
+        }
         Ok(Run {
             job,
             project_id,
@@ -608,7 +647,7 @@ impl Service {
         })
     }
 
-    async fn document(&self, project_id: &str, artifact_id: &str) -> ApiResult {
+    pub(super) async fn document(&self, project_id: &str, artifact_id: &str) -> ApiResult {
         let mut collected = Vec::new();
         loop {
             let body = self
@@ -634,7 +673,11 @@ impl Service {
             .map_err(|error| ApiError::new("internal", format!("a document did not read: {error}")))
     }
 
-    async fn optional_document(&self, run: &Run, kind: &str) -> Result<Option<Value>, ApiError> {
+    pub(super) async fn optional_document(
+        &self,
+        run: &Run,
+        kind: &str,
+    ) -> Result<Option<Value>, ApiError> {
         match run.artifact(kind) {
             None => Ok(None),
             Some(id) => self.document(&run.project_id, id).await.map(Some),

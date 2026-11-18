@@ -93,6 +93,24 @@ enum Command {
         #[arg(long)]
         run: Option<String>,
     },
+    /// Search a recording by its words, memory and meaning.
+    Find {
+        project: String,
+        source: String,
+        query: String,
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        speaker: Option<String>,
+        #[arg(long)]
+        mood: Option<String>,
+        #[arg(long)]
+        chapter: Option<String>,
+        #[arg(long)]
+        modality: Option<String>,
+        #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u32).range(1..=30))]
+        limit: u32,
+    },
     /// The clips an analysis found.
     Clips {
         project: String,
@@ -242,6 +260,14 @@ fn human(op: &str, value: &Value) -> String {
                     .map(|v| format!("{v}: "))
                     .unwrap_or_default(),
                 s["text"].as_str().unwrap_or("")
+            )
+        }),
+        "find_moments" => list(&value["moments"], |m| {
+            format!(
+                "{}–{}  {}",
+                clock(m["start"].as_f64().unwrap_or_default()),
+                clock(m["end"].as_f64().unwrap_or_default()),
+                m["text"].as_str().unwrap_or_default()
             )
         }),
         "list_clips" => list(&value["clips"], clip_line),
@@ -407,6 +433,24 @@ fn request(command: &Command) -> Result<(&str, Value, bool), String> {
             run_args(project, source, run.as_ref()),
             false,
         ),
+        Command::Find {
+            project,
+            source,
+            query,
+            run,
+            speaker,
+            mood,
+            chapter,
+            modality,
+            limit,
+        } => {
+            let mut args = run_args(project, source, run.as_ref());
+            args["query"] = json!(query);
+            args["limit"] = json!(limit);
+            args["filters"] =
+                json!({"speaker": speaker,"mood":mood,"chapter":chapter,"modality":modality});
+            ("find_moments", args, false)
+        }
         Command::Clips {
             project,
             source,

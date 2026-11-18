@@ -108,6 +108,11 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'Stitched, tightened and cold-opened clips built from the memory',
   },
   {
+    kind: 'text.embeddings.v1',
+    label: 'Index meaning',
+    detail: 'Local search vectors for passages and remembered events',
+  },
+  {
     kind: 'editorial.windows.v1',
     label: 'Cut windows',
     detail: 'The transcript in overlapping pieces an editorial model reads',

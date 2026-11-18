@@ -202,6 +202,38 @@ pub const TOOLS: &[Tool] = &[
         },
     },
     Tool {
+        name: "clipmill_find_moments",
+        title: "Search a recording",
+        description: "Find timecoded passages by transcript, recording memory, and meaning when embeddings are available.",
+        op: "find_moments",
+        read_only: true,
+        destructive: false,
+        input: || {
+            object(
+                &with(
+                    run_args(),
+                    &json!({
+                        "query": {"type":"string","minLength":1,"maxLength":500},
+                        "limit": {"type":"integer","minimum":1,"maximum":30},
+                        "filters": object(&json!({"speaker":string("Script speaker, e.g. A."),
+                            "chapter":string("Chapter ID or title."), "mood":string("Memory event mood."),
+                            "modality":string("speech, audio, or an audio event such as laughter.")}), &[])
+                    }),
+                ),
+                &["project_id", "source_id", "query"],
+            )
+        },
+    },
+    Tool {
+        name: "clipmill_memory_overview",
+        title: "Read recording memory",
+        description: "Read a recording's chapters, events, named entities and links between moments.",
+        op: "memory_overview",
+        read_only: true,
+        destructive: false,
+        input: || object(&run_args(), &["project_id", "source_id"]),
+    },
+    Tool {
         name: "clipmill_list_clips",
         title: "List clips",
         description: "The clips an analysis found, best first: plans built by ClipMill's editorial mind (kind \"plan\": a question stitched to its answer, a story with its tangents cut, a strong line moved to the front, a montage) and ranked continuous moments (kind \"moment\"), each with any decision already made.",
@@ -304,6 +336,7 @@ pub fn listing(tool: &Tool) -> Value {
         "title": tool.title,
         "description": tool.description,
         "inputSchema": (tool.input)(),
+        "outputSchema": {"type":"object"},
         "annotations": {
             "title": tool.title,
             "readOnlyHint": tool.read_only,

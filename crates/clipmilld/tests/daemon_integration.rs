@@ -635,7 +635,8 @@ async fn the_model_library_lists_chooses_and_removes_over_the_socket() {
             .iter()
             .all(|model| model.install_state == "missing")
     );
-    assert_eq!(library.jobs.len(), 7);
+    assert_eq!(library.jobs.len(), 8);
+    assert!(library.jobs.iter().any(|job| job.capability == "embed"));
     assert!(library.recommended_missing_bytes > 0);
     assert!(
         library.models.iter().all(|model| !model.worker.is_empty()),

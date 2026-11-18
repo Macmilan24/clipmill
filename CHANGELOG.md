@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Search an analyzed recording from the CLI, local API, or MCP. Results include
+  timestamps, transcript text, and matches from chapters, people and memory
+  links. Installed local embeddings also find related wording.
+- Connect local clients in Settings, inspect their audit history, and revoke
+  their access. The `clipmill` command can analyze, review and export a clip.
+
 - **Editorial AI loads its model once per analysis.** Proposal, review and
   the visual check used to load the model again for each stage; on Windows and
   Linux each one started a new llama.cpp server. The editorial worker now keeps

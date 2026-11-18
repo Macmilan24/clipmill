@@ -3,6 +3,7 @@ mod assets;
 mod batch;
 mod engine;
 mod models;
+mod search;
 mod storage;
 mod updates;
 mod youtube;
@@ -1476,6 +1477,7 @@ impl Service {
                         source_fingerprint: &source.source_fingerprint,
                         has_video,
                         has_audio,
+                        embed_transcript: self.embedding_available("text-embed"),
                     },
                     &payload,
                     &self.models,
@@ -1488,6 +1490,36 @@ impl Service {
                         return error_reply(request_id, ErrorCode::InvalidArgument, message);
                     }
                 }
+            }
+            "embed-query" => {
+                let Ok(payload) = clipmill_contracts::proto::ipc::v1::TextEmbedPayloadV1::decode(
+                    submit.payload.as_slice(),
+                ) else {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "a search payload is not a valid TextEmbedPayloadV1",
+                    );
+                };
+                let length = payload.query.trim().chars().count();
+                if payload.key_version != crate::jobs::TEXT_EMBED_KEY_VERSION
+                    || payload.stage != "text-embed-query"
+                    || !(1..=500).contains(&length)
+                {
+                    return error_reply(
+                        request_id,
+                        ErrorCode::InvalidArgument,
+                        "a search is between 1 and 500 characters",
+                    );
+                }
+                let bindings = self.planning_bindings();
+                JobPlan::embed_query(
+                    &project_id,
+                    submit.payload.clone(),
+                    &self.models,
+                    &bindings,
+                    now,
+                )
             }
             "render-clip" => {
                 let Ok(payload) = RenderClipPayloadV1::decode(submit.payload.as_slice()) else {
@@ -5113,7 +5145,7 @@ impl Service {
         let mut stages = Vec::new();
         for binding in bindings.iter() {
             // Publishing copy is not part of an analysis; its screen asks.
-            if binding.stage == "youtube-metadata" {
+            if binding.stage == "youtube-metadata" || binding.capability == "embed" {
                 continue;
             }
             let (present, missing) = weights.as_deref().map_or_else(
@@ -5198,6 +5230,22 @@ impl Service {
                 ready,
             }),
         )
+    }
+
+    /// Meaning search is optional. Machines without its model or worker
+    /// can still finish an analysis and search the words it contains.
+    fn embedding_available(&self, stage: &str) -> bool {
+        let Some(implementation) = crate::implementations::portable_for_stage(stage) else {
+            return false;
+        };
+        self.storage.as_ref().is_some_and(|storage| {
+            self.model_files_present(implementation.model, &storage.weights)
+                .0
+        }) && self.roster.lock().is_ok_and(|workers| {
+            workers
+                .values()
+                .any(|worker| worker.runs(stage, implementation.name))
+        })
     }
 
     /// Whether every pinned file of a model is where the worker will look,

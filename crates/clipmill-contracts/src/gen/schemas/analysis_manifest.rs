@@ -437,6 +437,7 @@ impl ::std::convert::TryFrom<::std::string::String> for SkippedStageReason {
 #[doc = "        \"mind.memory.v1\","]
 #[doc = "        \"mind.unit_scores.v1\","]
 #[doc = "        \"mind.candidates.v1\","]
+#[doc = "        \"text.embeddings.v1\","]
 #[doc = "        \"editorial.windows.v1\","]
 #[doc = "        \"editorial.proposals.v1\","]
 #[doc = "        \"discovery.candidates.v1\","]
@@ -485,6 +486,7 @@ impl Stage {
 #[doc = "    \"mind.memory.v1\","]
 #[doc = "    \"mind.unit_scores.v1\","]
 #[doc = "    \"mind.candidates.v1\","]
+#[doc = "    \"text.embeddings.v1\","]
 #[doc = "    \"editorial.windows.v1\","]
 #[doc = "    \"editorial.proposals.v1\","]
 #[doc = "    \"discovery.candidates.v1\","]
@@ -540,6 +542,8 @@ pub enum StageKind {
     MindUnitScoresV1,
     #[serde(rename = "mind.candidates.v1")]
     MindCandidatesV1,
+    #[serde(rename = "text.embeddings.v1")]
+    TextEmbeddingsV1,
     #[serde(rename = "editorial.windows.v1")]
     EditorialWindowsV1,
     #[serde(rename = "editorial.proposals.v1")]
@@ -572,6 +576,7 @@ impl ::std::fmt::Display for StageKind {
             Self::MindMemoryV1 => f.write_str("mind.memory.v1"),
             Self::MindUnitScoresV1 => f.write_str("mind.unit_scores.v1"),
             Self::MindCandidatesV1 => f.write_str("mind.candidates.v1"),
+            Self::TextEmbeddingsV1 => f.write_str("text.embeddings.v1"),
             Self::EditorialWindowsV1 => f.write_str("editorial.windows.v1"),
             Self::EditorialProposalsV1 => f.write_str("editorial.proposals.v1"),
             Self::DiscoveryCandidatesV1 => f.write_str("discovery.candidates.v1"),
@@ -601,6 +606,7 @@ impl ::std::str::FromStr for StageKind {
             "mind.memory.v1" => Ok(Self::MindMemoryV1),
             "mind.unit_scores.v1" => Ok(Self::MindUnitScoresV1),
             "mind.candidates.v1" => Ok(Self::MindCandidatesV1),
+            "text.embeddings.v1" => Ok(Self::TextEmbeddingsV1),
             "editorial.windows.v1" => Ok(Self::EditorialWindowsV1),
             "editorial.proposals.v1" => Ok(Self::EditorialProposalsV1),
             "discovery.candidates.v1" => Ok(Self::DiscoveryCandidatesV1),

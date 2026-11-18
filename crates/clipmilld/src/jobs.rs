@@ -18,7 +18,7 @@ use clipmill_contracts::proto::{
         IndexTranscriptPayloadV1, IngestSourcePayloadV1, JobState, ProbeSourcePayloadV1,
         RankCandidatesPayloadV1, RankStagePayloadV1, ShotsStagePayloadV1, SkippedStageV1,
         SpeechAlignmentV1, SpeechDetectionV1, SpeechRecognitionV1, SpeechStagePayloadV1,
-        TranscribeSourcePayloadV1, YoutubeMetadataTaskPayloadV1,
+        TextEmbedPayloadV1, TranscribeSourcePayloadV1, YoutubeMetadataTaskPayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -49,6 +49,9 @@ use crate::{
 /// Key version every speech stage payload carries, so a worker can refuse a
 /// payload the daemon never meant for it.
 pub(crate) const SPEECH_STAGE_KEY_VERSION: &str = "clipmill.speech-stage.v1";
+
+/// Key version both embedding stages' payload carries.
+pub(crate) const TEXT_EMBED_KEY_VERSION: &str = "clipmill.text-embed-stage.v1";
 
 /// Key version the audio events stage payload carries.
 pub(crate) const AUDIO_EVENTS_STAGE_KEY_VERSION: &str = "clipmill.audio-events-stage.v1";
@@ -526,6 +529,7 @@ pub(crate) struct AnalyzeSource<'a> {
     pub source_fingerprint: &'a str,
     pub has_video: bool,
     pub has_audio: bool,
+    pub embed_transcript: bool,
 }
 
 /// One shot-detection task, shared by the standalone job and the analyze DAG so
@@ -1024,6 +1028,39 @@ fn ingest_fan_out(
 }
 
 impl JobPlan {
+    /// A search's words as a vector, for meaning search over a recording.
+    pub(crate) fn embed_query(
+        project_id: &ProjectId,
+        payload: Vec<u8>,
+        models: &crate::models::ModelRegistry,
+        bindings: &crate::selection::Bindings,
+        now: u64,
+    ) -> Self {
+        let implementation = speech_implementation("text-embed-query", bindings);
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "embed-query".to_owned(),
+            source_id: None,
+            payload: payload.clone(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: "text-embed-query".to_owned(),
+                input_kinds: Vec::new(),
+                output_kind: "text.query_vector.v1".to_owned(),
+                payload,
+                dependencies: Vec::new(),
+                input_artifact_ids: Vec::new(),
+                resources: speech_resources(implementation, models, 1),
+                implementation: implementation.name.to_owned(),
+                max_attempts: 2,
+                is_final: true,
+            }],
+        }
+    }
+
     /// Render as one FFmpeg graph. Splitting the encode would require a joiner
     /// that preserves timestamps, colour, and audio continuity.
     ///
@@ -1805,10 +1842,24 @@ impl JobPlan {
                     tasks.extend(mind_tasks(
                         &timeline_id,
                         request,
-                        models,
-                        bindings,
+                        (models, bindings),
                         &mut stages,
                     )?);
+                }
+
+                if source.embed_transcript {
+                    let embed = embedding_task(
+                        &index,
+                        stages
+                            .iter()
+                            .find(|(kind, _)| kind == "mind.memory.v1")
+                            .map(|(_, id)| id.as_str()),
+                        source.source_fingerprint,
+                        models,
+                        bindings,
+                    );
+                    stages.push((embed.output_kind.clone(), embed.task_id.clone()));
+                    tasks.push(embed);
                 }
 
                 // The windows an editorial model reads.
@@ -2229,13 +2280,49 @@ fn editorial_duration(request: &AnalyzeSourcePayloadV1) -> ClipDurationV1 {
     }
 }
 
+fn embedding_task(
+    index_id: &str,
+    memory_id: Option<&str>,
+    source_fingerprint: &str,
+    models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
+) -> TaskSpec {
+    // Meaning search over the speech and what the memory remembered.
+    let implementation = speech_implementation("text-embed", bindings);
+    let mut dependencies = vec![index_id.to_owned()];
+    let mut input_kinds = vec!["index.transcript.v1".to_owned()];
+    if let Some(memory) = memory_id {
+        dependencies.push(memory.to_owned());
+        input_kinds.push("mind.memory.v1".to_owned());
+    }
+    TaskSpec {
+        task_id: TaskId::new().to_string(),
+        ordinal: 0,
+        kind: "text-embed".to_owned(),
+        input_kinds,
+        output_kind: "text.embeddings.v1".to_owned(),
+        payload: TextEmbedPayloadV1 {
+            key_version: TEXT_EMBED_KEY_VERSION.to_owned(),
+            stage: "text-embed".to_owned(),
+            source_fingerprint: source_fingerprint.to_owned(),
+            query: String::new(),
+        }
+        .encode_to_vec(),
+        dependencies,
+        input_artifact_ids: Vec::new(),
+        resources: speech_resources(implementation, models, 1),
+        implementation: implementation.name.to_owned(),
+        max_attempts: 3,
+        is_final: false,
+    }
+}
+
 /// The mind's stages over one Timeline Index: script, memory and markup in
 /// parallel on the editorial model, then the cutter.
 fn mind_tasks(
     timeline_id: &str,
     request: &AnalyzeSourcePayloadV1,
-    models: &crate::models::ModelRegistry,
-    bindings: &crate::selection::Bindings,
+    (models, bindings): (&crate::models::ModelRegistry, &crate::selection::Bindings),
     stages: &mut Vec<(String, String)>,
 ) -> Result<Vec<TaskSpec>, &'static str> {
     let payload = |stage: &str| {
@@ -4413,6 +4500,7 @@ mod analyze_tests {
                 source_fingerprint: FINGERPRINT,
                 has_video,
                 has_audio,
+                embed_transcript: false,
             },
             &request(),
             &models(),
@@ -4438,6 +4526,7 @@ mod analyze_tests {
                 source_fingerprint: FINGERPRINT,
                 has_video: true,
                 has_audio: true,
+                embed_transcript: true,
             },
             request,
             &models(),
@@ -4752,6 +4841,7 @@ mod analyze_tests {
                 source_fingerprint: FINGERPRINT,
                 has_video: false,
                 has_audio: false,
+                embed_transcript: false,
             },
             &request(),
             &models(),

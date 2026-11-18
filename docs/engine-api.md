@@ -39,6 +39,8 @@ Every call is written to the audit log with the client, the operation, the ids i
 | `list_jobs` | read | `project_id` | `jobs` |
 | `cancel_job` | edit | `job_id` | the job |
 | `get_transcript` | read | `project_id`, `source_id`, optional `job_id`, `start_seconds`, `end_seconds` | `sentences` with unit ids, times, speakers and text |
+| `memory_overview` | read | `project_id`, `source_id`, optional `job_id` | Chapters, events, entities and links from the recording memory |
+| `find_moments` | read | same recording identifiers, `query`, optional `limit` (1–30) and `filters` | Timecoded transcript and memory matches, with the search methods that found each one |
 | `list_clips` | read | `project_id`, `source_id`, optional `job_id` | `clips`: the mind's plans (`kind: "plan"`, with form and parts) and the ranked moments (`kind: "moment"`) |
 | `describe_clip` | read | as `list_clips`, plus `clip_id` | the clip with the words of each part |
 | `set_decision` | edit | as `describe_clip`, plus `decision`: `approved`, `kept`, `rejected`, `undecided` | the decision |
@@ -64,3 +66,17 @@ Without a `job_id`, clip and transcript operations read the newest finished anal
 | `unavailable`, `busy` | Try again shortly (`retryable` is true) |
 | `policy_denied` | The Local Lock or a setting forbids it |
 | `internal` | A fault in ClipMill |
+
+
+## Search a recording
+
+Run `clipmill find PROJECT SOURCE "where do they talk about pricing"`. Pass
+`--speaker A`, `--mood funny`, `--chapter c2` or `--modality laughter` to
+narrow the results. The HTTP operation and the MCP tool accept the same
+filters in a `filters` object. Obtain chapter identifiers with
+`clipmill call memory_overview`.
+
+With the meaning-search worker and model installed, analysis indexes passages
+and remembered events locally. Search also works with an existing transcript
+index. The response's `meaning` field says whether this search used vectors.
+Times are in seconds; unit identifiers refer to the source transcript.

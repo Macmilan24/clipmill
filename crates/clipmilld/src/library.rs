@@ -110,6 +110,12 @@ pub(crate) const JOBS: &[Job] = &[
         stages: &["speech-speakers"],
     },
     Job {
+        capability: "embed",
+        title: "Meaning search",
+        summary: "Finds moments by what they mean, not only the words used.",
+        stages: &["text-embed", "text-embed-query"],
+    },
+    Job {
         capability: "audio-events",
         title: "Audio events",
         summary: "Hears laughter, applause, music and shouting, so clips can find where the room reacted.",
