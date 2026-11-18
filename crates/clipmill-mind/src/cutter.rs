@@ -274,7 +274,8 @@ impl Table {
                     continue;
                 }
                 let span = self.units[end].end.saturating_sub(self.units[start].start);
-                if (span - kept.min(span)) * 100 > span * MAX_CUT_PERCENT {
+                let removed = span.saturating_sub(kept);
+                if u128::from(removed) * 100 > u128::from(span) * u128::from(MAX_CUT_PERCENT) {
                     continue;
                 }
                 // Prefer covering the moment, then strong edges, then length.
@@ -480,22 +481,26 @@ pub fn candidates(material: &Material<'_>) -> Vec<Candidate> {
     if table.units.is_empty() {
         return Vec::new();
     }
-    // Every scout also runs with the cut marks set aside: markup is advice,
-    // and a recording it over-marked must still yield its moments (a short
-    // talk once yielded none). Where both versions exist the tightened one
-    // scores higher and the duplicate goes.
-    let plain = table.plain();
+    // Try the original moments alongside the marked ones. With no cut marks
+    // the passes are identical, so scan and score the recording only once.
+    let plain = table
+        .units
+        .iter()
+        .any(|unit| unit.cut.is_some())
+        .then(|| table.plain());
+    let versions = std::iter::once(&table).chain(plain.as_ref());
     let mut found = Vec::new();
     if let Some(memory) = material.memory {
-        for version in [&table, &plain] {
+        for version in versions.clone() {
             events(material, version, memory, &mut found);
             links(material, version, memory, &mut found);
             themes(material, version, memory, &mut found);
         }
     }
     if found.is_empty() {
-        spans(material, &table, &mut found);
-        spans(material, &plain, &mut found);
+        for version in versions {
+            spans(material, version, &mut found);
+        }
     }
     cold_opens(material, &table, &mut found);
 
