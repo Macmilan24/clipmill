@@ -38,7 +38,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: windows-smoke-${{ inputs.release-run || github.run_id }}
+  group: windows-smoke-${{ github.ref }}-${{ inputs.release-run || github.run_id }}
   cancel-in-progress: true
 
 env:
@@ -51,7 +51,9 @@ env:
 jobs:
   smoke:
     name: install and run (windows)
-    runs-on: windows-2025
+    # Build and clean-install on Server 2025. Exercise processor emulation
+    # on an older Windows kernel as well, with the same packaged binaries.
+    runs-on: ${{ inputs.compatibility && 'windows-2022' || 'windows-2025' }}
     timeout-minutes: 100
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
