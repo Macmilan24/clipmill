@@ -18,6 +18,28 @@
 !define CLIPMILL_VC_MINOR 51
 !define CLIPMILL_VC_SETUP "$TEMP\clipmill_vc_redist.x64.exe"
 
+; Before 0.5, clipmill.exe was Studio. Test only that installation's file:
+; another directory may contain a running CLI with the same name.
+!macro NSIS_HOOK_PREINSTALL
+  Push $0
+  ReadRegStr $0 SHCTX "${UNINSTKEY}" "MainBinaryName"
+  ${If} $0 == "clipmill.exe"
+  ${AndIf} ${FileExists} "$INSTDIR\clipmill.exe"
+    clipmill_wait_for_old_studio:
+    ; GENERIC_WRITE, share read/write/delete, OPEN_EXISTING. A running image
+    ; cannot be opened for writing. This check does not modify the executable.
+    System::Call 'kernel32::CreateFileW(w "$INSTDIR\clipmill.exe", i 0x40000000, i 7, p 0, i 3, i 0x80, p 0) p.r0'
+    ${If} $0 P= -1
+      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Close ClipMill before upgrading, then choose Retry." /SD IDCANCEL IDRETRY clipmill_wait_for_old_studio
+      Pop $0
+      SetErrorLevel 2
+      Abort "The previous ClipMill executable is still in use or cannot be replaced."
+    ${EndIf}
+    System::Call 'kernel32::CloseHandle(p r0)'
+  ${EndIf}
+  Pop $0
+!macroend
+
 ; Sets $R0 to 1 when this registry view records a new enough runtime.
 !macro CLIPMILL_VC_RUNTIME_IN VIEW
   SetRegView ${VIEW}
@@ -35,6 +57,27 @@
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
+  ; Tauri copies the sidecars, removes the old registered main binary and
+  ; retargets its shortcuts. Here the removed name belongs to the new CLI.
+  ${If} $OldMainBinaryName == "clipmill.exe"
+    File /a "/oname=$INSTDIR\clipmill.exe" "${CLIPMILL_HOOKS_DIR}\..\binaries\clipmill-x86_64-pc-windows-msvc.exe"
+    ; The interactive finish page can skip the desktop shortcut. Retarget an
+    ; existing legacy link even then, honoring the absence of a shortcut.
+    Push $0
+    Push $1
+    Push $2
+    Push $3
+    !insertmacro IsShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\$OldMainBinaryName"
+    Pop $0
+    ${If} $0 = 1
+      !insertmacro SetShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    ${EndIf}
+    Pop $3
+    Pop $2
+    Pop $1
+    Pop $0
+  ${EndIf}
+
   Push $R0
   Push $R1
   Push $R2
