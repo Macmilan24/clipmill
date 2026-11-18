@@ -50,6 +50,17 @@ fn with(mut base: Value, extra: &Value) -> Value {
     base
 }
 
+fn edit_args() -> Value {
+    json!({"doc_id":string("The edit document from clipmill_create_clip.")})
+}
+
+fn revision_args() -> Value {
+    with(
+        edit_args(),
+        &json!({"expected_revision":{"type":"integer","minimum":0,"description":"The revision returned by clipmill_get_edit."}}),
+    )
+}
+
 pub const TOOLS: &[Tool] = &[
     Tool {
         name: "clipmill_status",
@@ -320,6 +331,103 @@ pub const TOOLS: &[Tool] = &[
                 &["doc_id", "destination_dir", "rights"],
             )
         },
+    },
+    Tool {
+        name: "clipmill_audit_log",
+        title: "Read the call log",
+        description: "Read this client's recent engine operations and outcomes.",
+        op: "audit_log",
+        read_only: true,
+        destructive: false,
+        input: || {
+            object(
+                &json!({"limit":{"type":"integer","minimum":1,"maximum":2000}}),
+                &[],
+            )
+        },
+    },
+    Tool {
+        name: "clipmill_get_source",
+        title: "Get recording details",
+        description: "Return the registered recording and its measured streams, duration and source map.",
+        op: "get_source",
+        read_only: true,
+        destructive: false,
+        input: || {
+            object(
+                &json!({"source_id":string("The recording."),"project_id":string("Optional project containing the recording.")}),
+                &["source_id"],
+            )
+        },
+    },
+    Tool {
+        name: "clipmill_get_timeline",
+        title: "Inspect timeline layers",
+        description: "List the source-aligned transcript, memory and index artifacts in a finished analysis.",
+        op: "get_timeline",
+        read_only: true,
+        destructive: false,
+        input: || object(&run_args(), &["project_id", "source_id"]),
+    },
+    Tool {
+        name: "clipmill_job_events",
+        title: "Read job progress events",
+        description: "Read an ordered page of durable task transitions. Pass the resulting cursor as after for the next page.",
+        op: "job_events",
+        read_only: true,
+        destructive: false,
+        input: || {
+            object(
+                &json!({"job_id":string("The job."),"after":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":500}}),
+                &["job_id"],
+            )
+        },
+    },
+    Tool {
+        name: "clipmill_get_edit",
+        title: "Read an edit",
+        description: "Read an editable clip, its source analysis and current revision.",
+        op: "get_edit",
+        read_only: true,
+        destructive: false,
+        input: || object(&edit_args(), &["doc_id"]),
+    },
+    Tool {
+        name: "clipmill_apply_edits",
+        title: "Apply edit commands",
+        description: "Apply a batch of ClipMill edit commands together at an observed revision. A stale revision produces a conflict.",
+        op: "apply_edits",
+        read_only: false,
+        destructive: false,
+        input: || {
+            object(
+                &with(
+                    revision_args(),
+                    &json!({
+                        "commands":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","required":["op"],"properties":{"op":{"type":"string"}}}}
+                    }),
+                ),
+                &["doc_id", "expected_revision", "commands"],
+            )
+        },
+    },
+    Tool {
+        name: "clipmill_undo_edit",
+        title: "Undo the latest edit",
+        description: "Apply the durable inverse of the latest command to the revision you just viewed.",
+        op: "undo_edit",
+        read_only: false,
+        destructive: false,
+        input: || object(&revision_args(), &["doc_id", "expected_revision"]),
+    },
+    Tool {
+        name: "clipmill_edit_log",
+        title: "Read edit history",
+        description: "Read the sequence of editing commands, inverse commands and document revisions.",
+        op: "edit_log",
+        read_only: true,
+        destructive: false,
+        input: || object(&edit_args(), &["doc_id"]),
     },
     Tool {
         name: "clipmill_list_models",
