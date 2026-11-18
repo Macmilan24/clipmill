@@ -95,6 +95,8 @@
             "critic",
             "critic.edge",
             "critic.source",
+            "critic.copy",
+            "critic.omission",
             "compare"
           ]
         },

@@ -45,6 +45,8 @@ class Job(StrEnum):
     critic = 'critic'
     critic_edge = 'critic.edge'
     critic_source = 'critic.source'
+    critic_copy = 'critic.copy'
+    critic_omission = 'critic.omission'
     compare = 'compare'
 
 

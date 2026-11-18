@@ -43,6 +43,8 @@ export interface Call {
     | "critic"
     | "critic.edge"
     | "critic.source"
+    | "critic.copy"
+    | "critic.omission"
     | "compare";
   /**
    * The window a propose call was over.

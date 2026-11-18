@@ -100,6 +100,8 @@ pub mod error {
 #[doc = "        \"critic\","]
 #[doc = "        \"critic.edge\","]
 #[doc = "        \"critic.source\","]
+#[doc = "        \"critic.copy\","]
+#[doc = "        \"critic.omission\","]
 #[doc = "        \"compare\""]
 #[doc = "      ]"]
 #[doc = "    },"]
@@ -413,6 +415,8 @@ impl CallFramesItem {
 #[doc = "    \"critic\","]
 #[doc = "    \"critic.edge\","]
 #[doc = "    \"critic.source\","]
+#[doc = "    \"critic.copy\","]
+#[doc = "    \"critic.omission\","]
 #[doc = "    \"compare\""]
 #[doc = "  ]"]
 #[doc = "}"]
@@ -451,6 +455,10 @@ pub enum CallJob {
     CriticEdge,
     #[serde(rename = "critic.source")]
     CriticSource,
+    #[serde(rename = "critic.copy")]
+    CriticCopy,
+    #[serde(rename = "critic.omission")]
+    CriticOmission,
     #[serde(rename = "compare")]
     Compare,
 }
@@ -467,6 +475,8 @@ impl ::std::fmt::Display for CallJob {
             Self::Critic => f.write_str("critic"),
             Self::CriticEdge => f.write_str("critic.edge"),
             Self::CriticSource => f.write_str("critic.source"),
+            Self::CriticCopy => f.write_str("critic.copy"),
+            Self::CriticOmission => f.write_str("critic.omission"),
             Self::Compare => f.write_str("compare"),
         }
     }
@@ -485,6 +495,8 @@ impl ::std::str::FromStr for CallJob {
             "critic" => Ok(Self::Critic),
             "critic.edge" => Ok(Self::CriticEdge),
             "critic.source" => Ok(Self::CriticSource),
+            "critic.copy" => Ok(Self::CriticCopy),
+            "critic.omission" => Ok(Self::CriticOmission),
             "compare" => Ok(Self::Compare),
             _ => Err("invalid value".into()),
         }

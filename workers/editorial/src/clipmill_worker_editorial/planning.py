@@ -12,6 +12,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
 from .comparison import missing_comparison
+from .grounding import check_copy
 from .inference import call
 
 ShortText = Annotated[str, Field(min_length=1, max_length=240)]
@@ -484,6 +485,30 @@ def plan_one(ctx, options, transcript, repair=None):
     if answer["choice"] == "retitle":
         # The cut, its transitions and its opening already passed their checks.
         return plan, answer["reasons"]
+    reasons = answer["reasons"]
+    doubts = answer["doubts"]
+    if repair:
+        # The one geometry repair can draw a title from a different offered
+        # option. Verify that specific source attribution before independent
+        # review and use a spoken title from this choice if it was borrowed.
+        notes = {
+            **{f"r{i}": note for i, note in enumerate(reasons)},
+            **{f"d{i}": note for i, note in enumerate(doubts)},
+        }
+        witness, replacement, invalid = check_copy(
+            ctx,
+            plan["title"],
+            transcript,
+            transcript.evidence(plan)["playback"],
+            transcript.grounded_titles(plan),
+            notes,
+        )
+        if witness:
+            if not replacement:
+                return None
+            plan["title"] = replacement
+            reasons = [r for i, r in enumerate(reasons) if f"r{i}" not in invalid]
+            doubts = [d for i, d in enumerate(doubts) if f"d{i}" not in invalid]
     # Generated titles can be new. A quote cannot be new or moved from later on.
     first = transcript.opening_quote(plan)
     hook = answer["hook_text"].strip()
@@ -492,7 +517,7 @@ def plan_one(ctx, options, transcript, repair=None):
     else:
         plan.pop("hook_text", None)
     seconds = plan["duration_ticks"] / 90_000
-    plan["doubts"] = [note for note in answer["doubts"] if matches_runtime(note, seconds)]
+    plan["doubts"] = [note for note in doubts if matches_runtime(note, seconds)]
     plan["provenance"] = {
         "by": "mind",
         "models": [ctx.identity["model"]["name"]],
@@ -502,7 +527,7 @@ def plan_one(ctx, options, transcript, repair=None):
     for join in plan["joins"]:
         if technique := techniques.get(join["after"]):
             join.update(framing=technique["framing"], crossfade_ms=technique["crossfade_ms"])
-    return plan, answer["reasons"]
+    return plan, reasons
 
 
 def covers_named_entity(plan, entities, brief):

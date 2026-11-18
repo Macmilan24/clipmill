@@ -133,6 +133,8 @@ def stage_prompt(operation):
             prompt_for("critic")
             + prompt_for("critic.edge")
             + prompt_for("critic.source")
+            + prompt_for("critic.copy")
+            + prompt_for("critic.omission")
             + prompt_for("plan")
         )
     if operation == "rank":

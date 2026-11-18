@@ -2430,6 +2430,8 @@ fn editorial_recipe(operation: &str) -> Option<(&'static str, &'static str)> {
                 prompt!("critic"),
                 prompt!("critic.edge"),
                 prompt!("critic.source"),
+                prompt!("critic.copy"),
+                prompt!("critic.omission"),
                 prompt!("plan")
             ),
             "mind.quality_report.v1",

@@ -1,6 +1,7 @@
 """Behavior at the edit boundaries a span-based reviewer would never see."""
 
 from clipmill_worker_editorial.critique import join_note, judge, review_batch, unsupported_absolute
+from clipmill_worker_editorial.grounding import contradicted_omission
 from clipmill_worker_editorial.planning import Transcript, covers_named_entity, plan_one, variants
 from clipmill_worker_editorial.rank_plans import rank_batch, strengths
 
@@ -426,6 +427,118 @@ def test_a_misleading_title_finding_requires_one_retitle_even_if_the_checkbox_pa
     ]
     assert row["quality"]["verdict"] == "accept" and row["quality"]["repaired"]
     assert row["plan"]["plan_id"] == draft["plan_id"]
+
+
+def test_copy_from_an_unplayed_line_is_checked_without_requiring_a_verbatim_title():
+    source = script()
+    for u, words in zip(
+        source["units"],
+        (
+            "Raise the boom before turning the crane.",
+            "The operator can see the gauge.",
+            "Slow down if the pressure falls.",
+            "Seal the top hatch, then restart the motor.",
+            "Lift the jib, then rotate.",
+        ),
+        strict=False,
+    ):
+        u.update(text=words, speaker="B")
+    transcript = Transcript(source)
+    draft = plan([part("p1", 0, 3)])
+    accurate = "Shows how the operator can see the gauge."
+    borrowed_reason = "Includes the specific instruction about sealing the top hatch."
+
+    def answer(job, data):
+        if job == "critic":
+            return approval()
+        if job == "critic.edge":
+            return source_approval()
+        assert job == "critic.copy"
+        if data["public_wording"] == "Lift the Jib, Then Rotate":
+            assert data["unplayed_line"]["unit"] == "s4"
+            return {"finding": "same_claim_plays", "played_quote": source["units"][0]["text"]}
+        assert data["unplayed_line"]["unit"] == "s3"
+        # An invented quotation cannot establish support.
+        return {"finding": "same_claim_plays", "played_quote": "Seal the top hatch."}
+
+    ctx = Calls(answer)
+    draft["title"] = "Seal the Hatch, Restart the Motor"
+    rejected = judge(ctx, draft, transcript)
+    assert rejected["verdict"] == "reject" and any("s3" in n for n in rejected["issues"])
+    draft["title"] = "Lift the Jib, Then Rotate"
+    (row,) = review_batch(
+        ctx,
+        {
+            "plans": [
+                {
+                    "candidate_id": draft["plan_id"],
+                    "plan": draft,
+                    "chapter": "Cranes",
+                    "reasons": [accurate, borrowed_reason],
+                }
+            ]
+        },
+        {"length": {"min_ticks": TICK, "max_ticks": 60 * TICK}, "candidates": [{"plan": draft}]},
+        source,
+    )
+    assert row["quality"]["verdict"] == "accept" and not row["quality"]["repaired"]
+    ranked = rank_batch(ctx, {"reviews": [row]}, source, 1)["clips"][0]
+    assert accurate in ranked["reasons"] and borrowed_reason not in ranked["reasons"]
+    assert ranked["plan"]["title"] == "Lift the Jib, Then Rotate"
+
+
+def test_one_geometry_repair_keeps_its_chosen_cut_and_discards_copy_from_another_choice():
+    source = script()
+    for u, words in zip(
+        source["units"],
+        (
+            "The operator must inspect the pressure gauge.",
+            "Small cracks are visible there.",
+            "Vent the boiler before replacing the pump.",
+            "Seal the cable and close the cover.",
+        ),
+        strict=False,
+    ):
+        u.update(text=words, speaker="B")
+    draft = plan([part("p1", 0, 2)])
+    fresh_title = "The operator must inspect the pressure gauge"
+    accurate = "The pressure check is audible."
+    wrong = "Includes the instruction about sealing the cable."
+    public_doubt = "Excludes the initial pressure gauge argument."
+    real_omission = "Omits the valve calibration."
+
+    def answer(job, data):
+        if job == "plan":
+            return {
+                "choice": "safe",
+                "title": "Seal the Cable and Close the Cover",
+                "hook_text": "",
+                "reasons": [accurate, wrong],
+                "doubts": [public_doubt, real_omission],
+                "joins": [],
+            }
+        if data.get("check") == "omission_note":
+            assert job == "critic.omission" and data["public_note"] == public_doubt
+            return {"finding": "named_statement_plays", "played_quote": source["units"][0]["text"]}
+        assert job == "critic.copy" and fresh_title in data["source_titles"]
+        return {
+            "finding": "claim_only_in_unplayed_line",
+            "played_quote": "",
+            "source_title": fresh_title,
+            "unsupported_note_ids": ["r1"],
+        }
+
+    ctx = Calls(answer)
+    transcript = Transcript(source)
+    chosen, reasons = plan_one(
+        ctx, {"safe": draft}, transcript, repair=["The previous join failed."]
+    )
+    assert chosen["parts"] == draft["parts"] and chosen["plan_id"] == draft["plan_id"]
+    assert chosen["title"] == fresh_title and reasons == [accurate]
+    playback = transcript.evidence(chosen)["playback"]
+    assert contradicted_omission(ctx, public_doubt, playback)
+    assert not contradicted_omission(ctx, real_omission, playback)
+    assert [job for job, _ in ctx.calls] == ["plan", "critic.copy", "critic.omission"]
 
 
 def test_an_unspoken_only_claim_is_repaired_with_a_source_title_on_the_exact_same_cut():

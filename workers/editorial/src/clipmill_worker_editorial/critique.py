@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import Field
 
 from .comparison import missing_comparison
+from .grounding import check_copy, contradicted_omission
 from .planning import (
     Reply,
     ShortText,
@@ -224,6 +225,14 @@ def judge(ctx, plan, transcript):
                 f"The title adds “{absolute}” without equivalent support in the spoken clip.",
             ]
         )
+    witness, _, _ = check_copy(ctx, plan["title"], transcript, evidence["playback"])
+    if witness:
+        issues.extend(
+            [
+                FAILURES["title_accuracy"],
+                f"The title draws its claim from unplayed line {witness['unit']}.",
+            ]
+        )
     if unrelated_signoff(evidence["playback"], ctx.brief) is not None:
         issues.append(UNRELATED_ENDING)
     if viewer["hook"] == "weak":
@@ -274,6 +283,20 @@ def review_batch(ctx, plans, candidates, script, chapters=()):
                 plan, reasons = repaired
                 quality = judge(ctx, plan, transcript)
                 quality["repaired"] = True
+        if quality["verdict"] == "accept":
+            playback = transcript.evidence(plan)["playback"]
+            reasons = [r for r in reasons if check_copy(ctx, r, transcript, playback)[0] is None]
+            if not reasons:
+                reasons = [quality["summary"]]
+            if quality["repaired"] and plan.get("doubts"):
+                plan = {
+                    **plan,
+                    "doubts": [
+                        note
+                        for note in plan["doubts"]
+                        if not contradicted_omission(ctx, note, playback)
+                    ],
+                }
         chapter = chapter_of(plan, chapters) if chapters else row["chapter"]
         reviewed.append(
             {**row, "chapter": chapter, "plan": plan, "reasons": reasons, "quality": quality}
