@@ -6,6 +6,8 @@
 //! under the token the person gave it, and every call is in the audit log.
 //! Nothing is written to stdout except protocol messages.
 
+mod exports;
+mod resources;
 mod tasks;
 pub(crate) mod wire;
 
@@ -113,7 +115,7 @@ async fn wait_for_job(engine: &Engine, args: &Value) -> Result<Value, String> {
 
 async fn call_tool(engine: &Engine, params: &Value, modern: bool) -> Result<Value, String> {
     let name = params["name"].as_str().unwrap_or_default();
-    let arguments = params
+    let mut arguments = params
         .get("arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
@@ -135,12 +137,28 @@ async fn call_tool(engine: &Engine, params: &Value, modern: bool) -> Result<Valu
                 })?,
         ),
     };
+    let mut confirmation_key = None;
+    if modern && tool.op == "export_clip" && exports::form(params) {
+        match exports::confirm(engine, &arguments, params).await? {
+            exports::Confirmation::Reply(result) => return Ok(result),
+            exports::Confirmation::Accepted { rights, retry_key } => {
+                arguments["rights"] = json!(rights);
+                confirmation_key = Some(retry_key);
+            }
+        }
+    } else if params.get("inputResponses").is_some() || params.get("requestState").is_some() {
+        return Err("Unexpected continuation for this tool request".to_owned());
+    }
+    let key = key.or(confirmation_key.as_deref());
     let result = if tool.op.is_empty() {
         wait_for_job(engine, &arguments).await
     } else {
         keyed_engine_result(engine, tool.op, arguments, key).await
     };
-    let ordinary = tool_result(result);
+    let mut ordinary = tool_result(result);
+    if modern {
+        resources::link(&mut ordinary);
+    }
     if modern && wire::offers_tasks(params) && tasks::creates_job(tool.op) {
         Ok(tasks::after_submit(engine, ordinary).await)
     } else {
@@ -171,8 +189,24 @@ pub async fn handle(engine: &Engine, message: &Value) -> Option<Value> {
             "instructions": INSTRUCTIONS,
         }),
         "ping" => json!({}),
+        "resources/list" if modern => json!({"resources":[],"ttlMs":60_000,"cacheScope":"private"}),
+        "resources/templates/list" if modern => resources::templates(),
+        "resources/read" if modern => match resources::read(engine, params).await {
+            Ok(result) => result,
+            Err(reason) => return Some(error(id, -32002, &reason)),
+        },
         "tools/list" => {
-            let mut page = json!({ "tools": TOOLS.iter().map(listing).collect::<Vec<_>>() });
+            let mut tools: Vec<_> = TOOLS.iter().map(listing).collect();
+            if modern
+                && exports::form(params)
+                && let Some(export) = tools
+                    .iter_mut()
+                    .find(|tool| tool["name"] == "clipmill_export_clip")
+                && let Some(fields) = export["inputSchema"]["required"].as_array_mut()
+            {
+                fields.retain(|field| field != "rights");
+            }
+            let mut page = json!({ "tools": tools });
             if modern {
                 page["ttlMs"] = json!(60_000);
                 page["cacheScope"] = json!("private");

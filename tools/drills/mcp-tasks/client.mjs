@@ -117,6 +117,36 @@ if (phase === 'start') {
         await modern.close();
         await legacy.close();
     }
+} else if (phase === 'export-forms') {
+    for (const action of ['decline', 'accept']) {
+        const client = await connect('auto', http(), { elicitation: { form: {} } });
+        let presented = 0;
+        client.setRequestHandler('elicitation/create', async () => {
+            presented++;
+            return action === 'accept'
+                ? { action, content: { rights: 'I own this synthetic recording.' } }
+                : { action };
+        });
+        try {
+            const uri = 'clipmill://edits/' + fixture.docId;
+            const resource = await client.readResource({ uri });
+            assert.equal(JSON.parse(resource.contents[0].text).doc_id, fixture.docId);
+            const result = await client.callTool({
+                name: 'clipmill_export_clip',
+                arguments: { doc_id: fixture.docId, destination_dir: fixture.destination },
+            });
+            assert.equal(presented, 1);
+            if (action === 'decline') {
+                assert.equal(result.isError, true);
+                assert.match(result.content[0].text, /cancelled/);
+            } else {
+                assert.equal(result.isError, false, JSON.stringify(result.content));
+                assert(result.structuredContent.job_id);
+            }
+        } finally {
+            await client.close();
+        }
+    }
 } else if (phase === 'revoked') {
     await assert.rejects(connect('auto', http()), /401|unauthorized|revoked/i);
 } else {
