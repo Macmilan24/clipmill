@@ -246,6 +246,13 @@ def child(argv: list[str]) -> None:
         print("WHISPER_RESULT " + json.dumps(result), flush=True)
 
 
+def write_report(path: Path, report: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending = path.with_suffix(".partial.json")
+    pending.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    pending.replace(path)
+
+
 def run(options: argparse.Namespace, report: dict) -> None:
     require(sys.platform == "win32" and struct.calcsize("P") == 8, "requires x64 Windows")
     # Preserve the venv launcher path if this installation used a symlink to Python.
@@ -275,6 +282,7 @@ def run(options: argparse.Namespace, report: dict) -> None:
         emulated_profiles={name: row[0] for name, row in EMULATED.items()},
         profiles={},
         rejected_instructions={},
+        failures={},
     )
 
     # A Windows venv launcher can spawn a base Python process outside instrumentation.
@@ -307,8 +315,8 @@ def run(options: argparse.Namespace, report: dict) -> None:
                 timeout=options.timeout,
             )
 
-        for name, instruction in CONTROLS.items():
-            profile = "nehalem" if name == "avx" else "ivybridge"
+        def negative_control(profile: str, name: str) -> None:
+            instruction = CONTROLS[name]
             check = launch(profile, ["_control", str(dll), name])
             output = check.stdout.lower()
             require(
@@ -320,7 +328,7 @@ def run(options: argparse.Namespace, report: dict) -> None:
             )
             report["rejected_instructions"].setdefault(profile, {})[name] = instruction
 
-        for profile in ("native", *EMULATED):
+        def transcribe(profile: str) -> None:
             print(f"Transcribing the pinned recording on {profile}", flush=True)
             check = launch(profile, ["_infer", profile, str(dll), str(model), str(audio)])
             require(
@@ -345,6 +353,30 @@ def run(options: argparse.Namespace, report: dict) -> None:
             result.update(extension=extension, extension_sha256=members[extension])
             report["profiles"][profile] = result
 
+        def checked(profile: str, control: str | None = None) -> None:
+            label = f"{profile}/{control or 'transcription'}"
+            try:
+                if control:
+                    negative_control(profile, control)
+                else:
+                    transcribe(profile)
+                print(f"{label} passed", flush=True)
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                report["failures"][label] = str(error)
+                print(f"{label} failed: {error}", flush=True)
+            write_report(options.report, report)
+
+        # A failed control on one CPU must not hide another profile's actual decode.
+        for profile, controls in (
+            ("native", ()),
+            ("ivybridge", ("avx2", "fma", "bmi2")),
+            ("nehalem", ("avx",)),
+        ):
+            checked(profile)
+            for control in controls:
+                checked(profile, control)
+        require(not report["failures"], "Failed checks: " + ", ".join(report["failures"]))
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -360,10 +392,8 @@ def main() -> int:
         report["ok"] = True
     except (OSError, ValueError, subprocess.SubprocessError, zipfile.BadZipFile) as error:
         report["error"] = str(error)
-    options.report.parent.mkdir(parents=True, exist_ok=True)
-    output = json.dumps(report, indent=2)
-    options.report.write_text(output + "\n", encoding="utf-8")
-    print(output)
+    write_report(options.report, report)
+    print(json.dumps(report, indent=2))
     return 0 if report["ok"] else 1
 
 
