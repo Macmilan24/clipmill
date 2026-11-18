@@ -154,7 +154,8 @@ impl ResourceCapacity {
         }
     }
 
-    /// Apply headroom to a memory budget and bound built-in parallelism.
+    /// Size the shared budget for all leases. The built-in executor bounds its
+    /// task count separately; workers can use the rest of a wider host.
     ///
     /// Disk is a parameter rather than a constant because it used to be one:
     /// a flat 512 MiB, on every machine, whatever it had free. Delivery
@@ -168,9 +169,8 @@ impl ResourceCapacity {
         available_memory_bytes: u64,
         available_disk_bytes: u64,
     ) -> Self {
-        let maximum_threads = u32::try_from(MAX_BUILTIN_TASKS).unwrap_or(u32::MAX);
         Self {
-            cpu_threads: logical_cores.clamp(1, maximum_threads),
+            cpu_threads: logical_cores.max(1),
             ram_bytes: available_memory_bytes
                 .saturating_mul(3)
                 .checked_div(4)
@@ -3988,6 +3988,14 @@ mod resource_tests {
             assert_eq!(measured.ram_bytes, (free_gib << 30) * 3 / 4);
             assert_eq!(measured.cpu_threads, 4);
             assert_eq!(measured.disk_bytes, 10 << 30);
+        }
+    }
+
+    #[test]
+    fn machine_threads_are_independent_of_the_builtin_task_pool() {
+        for (reported, expected) in [(0, 1), (2, 2), (4, 4), (10, 10)] {
+            let capacity = ResourceCapacity::measured(reported, 16 << 30, 10 << 30);
+            assert_eq!(capacity.cpu_threads, expected);
         }
     }
 
