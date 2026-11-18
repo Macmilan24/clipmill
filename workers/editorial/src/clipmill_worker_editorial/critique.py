@@ -16,6 +16,8 @@ from .planning import (
     variants,
 )
 
+MAX_SPLICE_NOTE = 140
+
 
 class Splice(Reply):
     original_claim: str = Field(min_length=1, max_length=160)
@@ -31,7 +33,7 @@ class Splice(Reply):
         "concealed_sponsorship",
         "uncertain",
     ]
-    note: str = Field(min_length=1, max_length=140)
+    note: str = Field(min_length=1, max_length=MAX_SPLICE_NOTE)
 
 
 class Finding(Reply):
@@ -78,6 +80,26 @@ FAILURES = {
 UNRELATED_ENDING = "The clip continues into unrelated promotion after its conclusion."
 
 
+def join_note(value):
+    note = value["note"].strip()
+    if len(note) < MAX_SPLICE_NOTE - 2 or note.endswith((".", "!", "?")):
+        return note
+    # Constrained local decoders can reach a JSON character limit mid-word.
+    # The raw wording and the separate factual claims remain in the private trace.
+    if value["effect"] == "lost_qualification" and value.get("omitted_condition"):
+        condition = value["omitted_condition"]
+        ending = "" if condition.endswith((".", "!", "?")) else "."
+        return f"The cut omits the condition “{condition}”{ending}"
+    return {
+        "preserved": "Both statements keep their original meaning.",
+        "omitted_independent_material": "The omitted passage makes a separate point.",
+        "different_answer": "The reply answers a different question in the recording.",
+        "changed_claim": "The joined statements change the speaker's original claim.",
+        "false_chronology": "The join changes the sequence of events.",
+        "concealed_sponsorship": "The join removes a sponsorship disclosure.",
+    }.get(value["effect"], "The source audit could not establish that the meaning survived.")
+
+
 def spoken_turns(lines):
     turns = []
     for line in lines:
@@ -106,7 +128,7 @@ def judge(ctx, plan, transcript):
         "recorded_before_opening": spoken_turns(evidence["opening_source"]["before"]),
         "recorded_after_ending": spoken_turns(evidence["closing_source"]["after"]),
     }
-    audit, failure = ctx.ask("critic.source", edges, SourceReview)
+    audit, failure = ctx.ask("critic.edge", edges, SourceReview)
     if failure:
         return rejected("The critic could not verify the edit.")
     findings = [*viewer["issues"], *audit["edge_issues"]]
@@ -163,7 +185,7 @@ def judge(ctx, plan, transcript):
         judgments.append(
             {
                 "after": join["after"],
-                "note": value["note"],
+                "note": join_note(value),
                 "verdict": "pass"
                 if value["effect"] in ("preserved", "omitted_independent_material")
                 else "reject",

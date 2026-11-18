@@ -1,6 +1,6 @@
 """Behavior at the edit boundaries a span-based reviewer would never see."""
 
-from clipmill_worker_editorial.critique import judge, review_batch
+from clipmill_worker_editorial.critique import join_note, judge, review_batch
 from clipmill_worker_editorial.planning import Transcript, covers_named_entity, plan_one, variants
 from clipmill_worker_editorial.rank_plans import rank_batch, strengths
 
@@ -162,11 +162,11 @@ def test_removed_qualification_can_be_restored_once_and_independently_rechecked(
     )
     assert [name for name, _ in ctx.calls] == [
         "critic",
-        "critic.source",
+        "critic.edge",
         "critic.source",
         "plan",
         "critic",
-        "critic.source",
+        "critic.edge",
     ]
     assert rows[0]["quality"]["repaired"] and rows[0]["quality"]["verdict"] == "accept"
     assert rows[0]["plan"]["hook_text"] == "It cost five dollars in March."
@@ -175,7 +175,7 @@ def test_removed_qualification_can_be_restored_once_and_independently_rechecked(
 
 def test_missing_boundary_fails_closed_and_no_rejected_plan_is_ranked():
     draft = plan([part("p1", 0, 1), part("p2", 5, 6)], "stitch")
-    ctx = Calls(lambda job, _: source_approval() if job == "critic.source" else approval())
+    ctx = Calls(lambda job, _: source_approval() if job.startswith("critic.") else approval())
     quality = judge(ctx, draft, Transcript(script()))
     assert quality["verdict"] == "reject"
     result = rank_batch(ctx, {"reviews": [{"plan": draft, "quality": quality}]}, script(), 4)
@@ -247,11 +247,20 @@ def test_source_audit_can_veto_an_intelligible_unspliced_cut_missing_its_qualifi
     assert result["verdict"] == "reject" and "The original price was temporary." in result["issues"]
 
 
+def test_a_model_note_cut_off_at_the_grammar_limit_has_a_complete_public_explanation():
+    value = {
+        "effect": "lost_qualification",
+        "omitted_condition": "only for the first month",
+        "note": "An unfinished sentence " * 6 + "at",
+    }
+    assert join_note(value) == "The cut omits the condition “only for the first month”."
+
+
 def test_a_misleading_title_finding_requires_one_retitle_even_if_the_checkbox_passed():
     draft = plan([part("p1", 1, 4)])
 
     def answer(job, data):
-        if job == "critic.source":
+        if job.startswith("critic."):
             return source_approval()
         if job == "plan":
             assert any(choice["choice"] == "retitle" for choice in data["choices"])
@@ -291,10 +300,10 @@ def test_a_misleading_title_finding_requires_one_retitle_even_if_the_checkbox_pa
     )
     assert [job for job, _ in ctx.calls] == [
         "critic",
-        "critic.source",
+        "critic.edge",
         "plan",
         "critic",
-        "critic.source",
+        "critic.edge",
     ]
     assert row["quality"]["verdict"] == "accept" and row["quality"]["repaired"]
     assert row["plan"]["plan_id"] == draft["plan_id"]
@@ -345,7 +354,7 @@ def test_trailing_subscription_promotion_ends_at_the_preceding_spoken_conclusion
     clean = choices["original_ending"]
     assert clean["parts"][-1]["end_ticks"] == source["units"][-2]["end_ticks"]
     assert clean["plan_id"] != original["plan_id"]
-    ctx = Calls(lambda job, _: source_approval() if job == "critic.source" else approval())
+    ctx = Calls(lambda job, _: source_approval() if job.startswith("critic.") else approval())
     assert judge(ctx, original, transcript)["verdict"] == "reject"
     assert judge(ctx, clean, transcript)["verdict"] == "accept"
     ctx.brief = "End on the subscription call to action"

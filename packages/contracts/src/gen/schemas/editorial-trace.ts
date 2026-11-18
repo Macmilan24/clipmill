@@ -41,6 +41,7 @@ export interface Call {
     | "score"
     | "plan"
     | "critic"
+    | "critic.edge"
     | "critic.source"
     | "compare";
   /**

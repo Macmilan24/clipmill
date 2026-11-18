@@ -43,6 +43,7 @@ class Job(StrEnum):
     score = 'score'
     plan = 'plan'
     critic = 'critic'
+    critic_edge = 'critic.edge'
     critic_source = 'critic.source'
     compare = 'compare'
 
