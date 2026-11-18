@@ -4,6 +4,8 @@
 //! because an agent reads them to decide. Arguments mirror the engine API
 //! (docs/engine-api.md) so a tool call is that operation and nothing more.
 
+mod output;
+
 use serde_json::{Value, json};
 
 #[derive(Debug)]
@@ -509,7 +511,7 @@ pub fn listing(tool: &Tool) -> Value {
         "title": tool.title,
         "description": tool.description,
         "inputSchema": (tool.input)(),
-        "outputSchema": {"type":"object"},
+        "outputSchema": output::schema(tool.op),
         "annotations": {
             "title": tool.title,
             "readOnlyHint": tool.read_only,
