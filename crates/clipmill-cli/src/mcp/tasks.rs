@@ -1,7 +1,7 @@
 //! Durable, caller-bound task handles for the job-producing tools.
 
-use chrono::{DateTime, SecondsFormat};
 use serde_json::{Value, json};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::{Engine, error, tool_result, wire};
 
@@ -13,10 +13,11 @@ pub(super) fn creates_job(op: &str) -> bool {
 }
 
 fn timestamp(job: &Value, key: &str) -> Option<String> {
-    Some(
-        DateTime::from_timestamp_millis(job[key].as_i64()?)?
-            .to_rfc3339_opts(SecondsFormat::Millis, true),
-    )
+    let nanos = i128::from(job[key].as_u64()?) * 1_000_000;
+    OffsetDateTime::from_unix_timestamp_nanos(nanos)
+        .ok()?
+        .format(&Rfc3339)
+        .ok()
 }
 
 fn snapshot(job: &Value, creation: bool) -> Option<Value> {
@@ -114,7 +115,7 @@ mod tests {
     fn creation_and_polling_use_durable_job_times() {
         let created = snapshot(&job("queued"), true).unwrap();
         let poll = snapshot(&job("running"), false).unwrap();
-        assert_eq!(created["createdAt"], "1970-01-01T00:00:00.000Z");
+        assert_eq!(created["createdAt"], "1970-01-01T00:00:00Z");
         assert_eq!(created["lastUpdatedAt"], "1970-01-01T00:01:30.123Z");
         assert_eq!(created["taskId"], poll["taskId"]);
         assert_eq!(created["resultType"], "task");

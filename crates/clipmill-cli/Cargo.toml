@@ -13,7 +13,6 @@ path = "src/main.rs"
 
 [dependencies]
 base64 = "0.22"
-chrono = { version = "0.4", default-features = false, features = ["std"] }
 clap = { workspace = true, features = ["env"] }
 clipmill-contracts.workspace = true
 clipmilld.workspace = true
@@ -24,6 +23,7 @@ hyper = { version = "1.11", features = ["http1", "server"] }
 hyper-util = { version = "0.1.20", features = ["tokio"] }
 prost.workspace = true
 serde_json.workspace = true
+time = { version = "0.3", features = ["formatting"] }
 tokio = { workspace = true, features = ["io-std"] }
 ulid.workspace = true
 
