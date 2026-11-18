@@ -153,6 +153,16 @@ enum Command {
     },
     /// Serve ClipMill to an agent over MCP (stdio).
     Mcp,
+    /// Serve the engine API and MCP over HTTP on 127.0.0.1, for agents and
+    /// scripts that speak HTTP. Every request needs a connected-agent token.
+    Serve {
+        #[arg(long, default_value_t = clipmill_cli::gateway::DEFAULT_PORT)]
+        port: u16,
+        /// A browser origin allowed to call, such as `http://localhost:3000`.
+        /// None is allowed unless named.
+        #[arg(long = "allow-origin")]
+        allow_origin: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -459,16 +469,28 @@ fn request(command: &Command) -> Result<(&str, Value, bool), String> {
                 .map_err(|error| format!("the arguments are not JSON: {error}"))?;
             (op.as_str(), args, false)
         }
-        Command::Mcp => unreachable!("served above"),
+        Command::Mcp | Command::Serve { .. } => unreachable!("served above"),
     })
 }
 
 async fn run(cli: Cli) -> Result<(), String> {
     let engine = Engine::locate(cli.socket, cli.token.unwrap_or_default())?;
-    if matches!(cli.command, Command::Mcp) {
-        return clipmill_cli::mcp::serve(engine)
+    match &cli.command {
+        Command::Mcp => {
+            return clipmill_cli::mcp::serve(engine)
+                .await
+                .map_err(|error| error.to_string());
+        }
+        Command::Serve { port, allow_origin } => {
+            return clipmill_cli::gateway::serve(clipmill_cli::gateway::Settings {
+                socket: engine.socket().to_path_buf(),
+                port: *port,
+                allowed_origins: allow_origin.clone(),
+            })
             .await
             .map_err(|error| error.to_string());
+        }
+        _ => {}
     }
     let (op, args, wait) = request(&cli.command)?;
     let mut value = call(&engine, op, args).await?;

@@ -15,6 +15,11 @@ path = "src/main.rs"
 clap = { workspace = true, features = ["env"] }
 clipmill-contracts.workspace = true
 clipmilld.workspace = true
+# The gateway's HTTP/1.1 server, from the same hyper the daemon's downloads
+# already compile in.
+http-body-util = "0.1.4"
+hyper = { version = "1.11", features = ["http1", "server"] }
+hyper-util = { version = "0.1.20", features = ["tokio"] }
 prost.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["io-std"] }

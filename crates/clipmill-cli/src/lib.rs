@@ -4,5 +4,6 @@
 //! running on this computer; neither does any work of its own.
 
 pub mod client;
+pub mod gateway;
 pub mod mcp;
 pub mod tools;
