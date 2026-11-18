@@ -412,6 +412,9 @@ def plan_one(ctx, options, transcript, repair=None):
         return None
     plan = copy.deepcopy(options[answer["choice"]])
     plan["title"] = answer["title"].strip()
+    if answer["choice"] == "retitle":
+        # The cut, its transitions and its opening already passed their checks.
+        return plan, answer["reasons"]
     # Generated titles can be new. A quote cannot be new or moved from later on.
     first = transcript.opening_quote(plan)
     hook = answer["hook_text"].strip()

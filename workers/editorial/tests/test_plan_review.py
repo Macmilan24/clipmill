@@ -315,6 +315,7 @@ def test_an_unspoken_only_claim_is_repaired_with_a_source_title_on_the_exact_sam
     source["units"][1]["text"] = "Bottom line, memory capacity is a floor, not a flex."
     draft = plan([part("p1", 0, 2)])
     draft["title"] = "Memory: The Only Budget That Matters"
+    draft["hook_text"] = "Memory is the core budget"
     alternate = plan([part("p1", 2, 5)], name="2")
 
     def answer(job, data):
@@ -356,6 +357,9 @@ def test_an_unspoken_only_claim_is_repaired_with_a_source_title_on_the_exact_sam
     assert row["quality"]["verdict"] == "accept" and row["quality"]["repaired"]
     assert row["plan"]["plan_id"] == draft["plan_id"] and row["plan"]["parts"] == draft["parts"]
     assert row["plan"]["title"] == "Memory capacity is a floor, not a flex"
+    assert {k: v for k, v in row["plan"].items() if k != "title"} == {
+        k: v for k, v in draft.items() if k != "title"
+    }
     source["units"][0]["text"] = "For this workload, memory is the only budget that matters."
     assert judge(ctx, draft, Transcript(source))["verdict"] == "accept"
     assert (
