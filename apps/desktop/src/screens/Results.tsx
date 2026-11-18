@@ -25,9 +25,11 @@ import { CandidateGrid } from '../results/parts/CandidateGrid.js';
 import { CandidateTable } from '../results/parts/CandidateTable.js';
 import { DeclinedMoments } from '../results/parts/DeclinedMoments.js';
 import { DetailRail } from '../results/parts/DetailRail.js';
+import { MindPlans } from '../results/parts/MindPlans.js';
 import { StatStrip } from '../results/parts/StatStrip.js';
 import { type BoardView, Toolbar } from '../results/parts/Toolbar.js';
 import { TONE_INK, type Tone, wash } from '../results/parts/state.js';
+import type { PlannedClip } from '../results/plans.js';
 import {
   type ClipRow,
   type Filters,
@@ -64,6 +66,12 @@ export interface ResultsProps {
   readonly onReload: () => void;
   readonly notice?: string | null;
   readonly onManualClip?: () => void;
+  /** The mind's clips, plans of parts, best first. */
+  readonly plans?: readonly PlannedClip[];
+  /** The recording's length, to place a plan's parts on it. */
+  readonly sourceDurationTicks?: number | null;
+  /** Make an edit from a plan and open it. */
+  readonly onEditPlan?: (plan: PlannedClip) => void;
 }
 
 /** The job's state as the design's badge, from the job rather than assumed. */
@@ -106,6 +114,9 @@ export function Results({
   onReload,
   notice,
   onManualClip,
+  plans = [],
+  sourceDurationTicks = null,
+  onEditPlan,
 }: ResultsProps) {
   const rows = useMemo(() => allRows.filter((row) => row.review?.status !== 'rejected'), [allRows]);
   const declined = useMemo(
@@ -294,6 +305,15 @@ export function Results({
               ? Math.max(...rows.map((row) => row.displayScore))
               : null
           }
+        />
+      )}
+
+      {!problem && plans.length > 0 && onEditPlan && (
+        <MindPlans
+          plans={plans}
+          sourceDurationTicks={sourceDurationTicks}
+          busy={busy}
+          onEdit={onEditPlan}
         />
       )}
 

@@ -358,6 +358,21 @@ export function ResultsScreen({
         notice={results.notice}
         {...(snapshot.source && snapshot.run ? { onManualClip: () => setManualOpen(true) } : {})}
         rows={snapshot.rows}
+        plans={snapshot.plans ?? []}
+        sourceDurationTicks={snapshot.sourceDurationTicks ?? null}
+        onEditPlan={(plan) => {
+          void results.editPlan(plan).then((directed) => {
+            if (!directed || !mounted.current || intentRef.current !== intent) return;
+            onEdit({
+              projectId: directed.projectId,
+              sourceId: directed.sourceId,
+              candidateId: directed.candidateId,
+              docId: directed.docId,
+              ...(directed.jobId ? { jobId: directed.jobId } : {}),
+              labels: { ...(project ? { project: project.name } : {}), clip: plan.title },
+            });
+          });
+        }}
         summary={snapshot.summary}
         problem={
           projectsProblem
