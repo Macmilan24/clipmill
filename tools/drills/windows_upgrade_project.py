@@ -74,10 +74,17 @@ def main() -> None:
                 project = client.create_project("Installer upgrade")
                 recording = make_recording(paths["ffmpeg"], work)
                 registered = client.register_source(project.project_id, recording)
+                source_id = registered.source.source_id
+                job = client.submit_probe(project.project_id, source_id)
+                assert client.wait_for_job(job.job_id, timeout_seconds=60).state == (
+                    pb.JOB_STATE_SUCCEEDED
+                )
+                query = pb.GetSourceRequest(source_id=source_id)
+                source = client._call(pb.Request(get_source=query)).get_source.source
                 expected = {
                     "project": project.project_id,
-                    "source": registered.source.source_id,
-                    "map": registered.source.source_map_artifact_id,
+                    "source": source_id,
+                    "map": source.source_map_artifact_id,
                 }
                 expected["sha256"] = hashlib.sha256(
                     client.read_artifact(expected["project"], expected["map"])
@@ -90,7 +97,8 @@ def main() -> None:
                 assert project.name == "Installer upgrade"
                 query = pb.ListSourcesRequest(project_id=project.project_id)
                 sources = client._call(pb.Request(list_sources=query)).list_sources.sources
-                assert any(s.source_id == expected["source"] for s in sources)
+                source = next(s for s in sources if s.source_id == expected["source"])
+                assert source.source_map_artifact_id == expected["map"]
                 content = client.read_artifact(project.project_id, expected["map"])
                 assert hashlib.sha256(content).hexdigest() == expected["sha256"]
             assert stop(client, daemon) == 0
