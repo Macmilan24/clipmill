@@ -12,6 +12,7 @@ import logging
 import os
 import signal
 import threading
+from dataclasses import asdict
 from pathlib import Path
 
 from clipmill.ipc.v1 import daemon_pb2
@@ -32,11 +33,13 @@ from clipmill_worker_sdk.gen.schemas.audio_events import (
     Producer,
     Threshold,
 )
+from clipmill_worker_sdk.gen.schemas.speech_vad import SpeechVad
 from clipmill_worker_sdk.inputs import MissingInputError, require_input
 from clipmill_worker_sdk.ticks import samples_to_ticks, samples_to_ticks_ceil
 from clipmill_worker_sdk.weights import ModelVerificationError, VerifiedModel, require_model
 
 from . import events as detection
+from . import prosody
 from .ced import (
     HOP_SAMPLES,
     IMPLEMENTATION,
@@ -47,11 +50,12 @@ from .ced import (
     labels,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 CAPABILITIES = ("audio-events",)
 STAGE = "audio-events"
 OUTPUT_FILE = "audio_events.json"
-KEY_VERSION = "clipmill.audio-events-stage.v1"
+KEY_VERSION = "clipmill.audio-events-stage.v2"
+LEGACY_KEY_VERSION = "clipmill.audio-events-stage.v1"
 AUDIO_KIND = "media.audio_16k.v1"
 
 LOGGER = logging.getLogger(__name__)
@@ -85,7 +89,8 @@ def execute_audio_events(context: TaskContext) -> tuple[str, ...]:
         context.cancellation.raise_if_cancelled()
         context.report_progress("audio_windows", done, total)
 
-    scores = AudioTagger(model).scores(decode_pcm16(audio.frames), on_batch=progress)
+    samples = decode_pcm16(audio.frames)
+    scores = AudioTagger(model).scores(samples, on_batch=progress)
     found = detection.detect(
         scores,
         columns,
@@ -93,7 +98,33 @@ def execute_audio_events(context: TaskContext) -> tuple[str, ...]:
         hop_samples=HOP_SAMPLES,
         total_samples=audio.sample_count,
     )
-    document = build_document(payload, audio_input.artifact_id, audio, model, found)
+    del scores
+    vad_id = None
+    if payload.key_version == KEY_VERSION:
+        try:
+            vad_input = require_input(context, "speech.vad.v1")
+        except MissingInputError as error:
+            raise DeterministicTaskError(str(error)) from error
+        vad = SpeechVad.model_validate_json(
+            context.artifact_file(vad_input.artifact, "vad.json").read_bytes()
+        )
+        if (
+            vad.audio_artifact_id.root != audio_input.artifact_id
+            or vad.source_fingerprint.root != audio.source_fingerprint
+            or (
+                payload.source_fingerprint
+                and payload.source_fingerprint != audio.source_fingerprint
+            )
+        ):
+            raise DeterministicTaskError("voice-activity evidence does not describe this audio")
+        vad_id = vad_input.artifact_id
+        found.extend(
+            prosody.emphasis(
+                samples, prosody.speech_ranges(vad), context.cancellation.raise_if_cancelled
+            )
+        )
+        found.sort(key=lambda event: (event.start_sample, event.end_sample, event.kind))
+    document = build_document(payload, audio_input.artifact_id, audio, model, found, vad_id)
     context.staging.write_bytes(OUTPUT_FILE, canonical_bytes(document))
     return (OUTPUT_FILE,)
 
@@ -104,7 +135,7 @@ def _payload(context: TaskContext) -> daemon_pb2.AudioEventsStagePayloadV1:
         payload.ParseFromString(context.lease.payload)
     except Exception as error:
         raise DeterministicTaskError("task payload is not an audio events payload") from error
-    if payload.key_version != KEY_VERSION or payload.stage != STAGE:
+    if payload.key_version not in (KEY_VERSION, LEGACY_KEY_VERSION) or payload.stage != STAGE:
         raise DeterministicTaskError("task payload does not describe audio event detection")
     return payload
 
@@ -115,15 +146,18 @@ def build_document(
     audio: PcmAudio,
     model: VerifiedModel,
     found: list[detection.Event],
+    vad_artifact_id: str | None = None,
 ) -> AudioEvents:
     rate = audio.sample_rate
+    producer_version = "0.1.0" if payload.key_version == LEGACY_KEY_VERSION else __version__
     return AudioEvents(
         schema_version="clipmill.audio.events.v1",
         source_fingerprint=payload.source_fingerprint or audio.source_fingerprint,
         audio_artifact_id=audio_artifact_id,
+        vad_artifact_id=vad_artifact_id,
         producer=Producer(
             stage=STAGE,
-            implementation=f"clipmill-worker-audio-events@{__version__}+{IMPLEMENTATION}",
+            implementation=f"clipmill-worker-audio-events@{producer_version}+{IMPLEMENTATION}",
             model_digest=model.digest,
         ),
         detection=Detection(
@@ -144,6 +178,7 @@ def build_document(
                 end_ticks=samples_to_ticks_ceil(event.end_sample, rate),
                 peak=event.peak,
                 mean=event.mean,
+                delivery=asdict(event.delivery) if event.delivery is not None else None,
             )
             for event in found
         ],

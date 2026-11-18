@@ -141,7 +141,8 @@ analysis, install the shots and faces workers and the YuNet model, then run
 
 Run `clipmill find PROJECT SOURCE "where do they talk about pricing"`. Pass
 `--speaker A`, `--mood funny`, `--chapter c2` or `--modality laughter` to
-narrow the results. The HTTP operation and the MCP tool accept the same
+narrow the results. Use `--modality emphasis` for passages with a sustained rise in
+voiced pitch or level relative to nearby speech. The HTTP operation and the MCP tool accept the same
 filters in a `filters` object. Obtain chapter identifiers with
 `clipmill call memory_overview`.
 

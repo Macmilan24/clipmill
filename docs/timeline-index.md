@@ -19,7 +19,7 @@ readers open it read-only.
 | `topics`        | lexical topic segments and their keywords                                                                            |
 | `turns`         | speaker turns, with voices labelled `S1`, `S2`... in order of first speech                                           |
 | `shots`         | shots between cuts, when the recording has video                                                                     |
-| `events`        | timed events: today, pauses of at least 0.7 s; later stages add laughter, applause, music, emphasis and visual notes |
+| `events`        | pauses of at least 0.7 s, detected room sounds, and vocal emphasis with measured changes in pitch (semitones) and level (dB) |
 
 Times are integer ticks at 1/90000 s. The inputs are `speech.transcript.v1`
 and `index.transcript.v1`, plus `speech.speakers.v1` and `evidence.shots.v1`
@@ -37,6 +37,6 @@ stage is skipped with the reason `no_audio`.
   FTS5 query in which every word and quoted phrase is literal text, so input
   from a person or an agent cannot use FTS5 operators or cause a syntax error.
 
-The `clipmill-timeline` crate builds and reads the file. Nothing in the
-analysis plan reads it yet; the editorial mind, library search and the agent
-tools will.
+The `clipmill-timeline` crate builds and reads the file. The editorial script
+puts measured emphasis beside the spoken lines. Recording search accepts
+`--modality emphasis` for passages that overlap those cues.

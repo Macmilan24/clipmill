@@ -29,7 +29,7 @@ pub mod error {
         }
     }
 }
-#[doc = "What can be heard in a recording besides words: laughter, applause, cheering, music, shouting, gasps. An audio tagger scores overlapping windows of the 16 kHz rendition and each run of windows above its kind's threshold becomes an event. These are the reactions a transcript cannot show, written into the Timeline Index for the editorial mind to read. Every interval is integer ticks at 1/90000; coverage says what was listened to, so no event in a covered span means nothing was heard, not that nobody listened."]
+#[doc = "Timed sounds and vocal delivery in the 16 kHz rendition. A tagger detects laughter, applause, cheering, music, shouts and gasps. Emphasis records a sustained rise in pitch or level relative to recent voiced speech. Intervals use 1/90000-second ticks."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
 #[doc = r""]
@@ -37,7 +37,7 @@ pub mod error {
 #[doc = "{"]
 #[doc = "  \"$id\": \"https://clipmill.dev/schemas/clipmill.audio.events.v1.json\","]
 #[doc = "  \"title\": \"AudioEvents\","]
-#[doc = "  \"description\": \"What can be heard in a recording besides words: laughter, applause, cheering, music, shouting, gasps. An audio tagger scores overlapping windows of the 16 kHz rendition and each run of windows above its kind's threshold becomes an event. These are the reactions a transcript cannot show, written into the Timeline Index for the editorial mind to read. Every interval is integer ticks at 1/90000; coverage says what was listened to, so no event in a covered span means nothing was heard, not that nobody listened.\","]
+#[doc = "  \"description\": \"Timed sounds and vocal delivery in the 16 kHz rendition. A tagger detects laughter, applause, cheering, music, shouts and gasps. Emphasis records a sustained rise in pitch or level relative to recent voiced speech. Intervals use 1/90000-second ticks.\","]
 #[doc = "  \"type\": \"object\","]
 #[doc = "  \"required\": ["]
 #[doc = "    \"audio_artifact_id\","]
@@ -88,7 +88,7 @@ pub mod error {
 #[doc = "          \"minimum\": 1.0"]
 #[doc = "        },"]
 #[doc = "        \"thresholds\": {"]
-#[doc = "          \"description\": \"Per kind, the score an event must reach to start and the score it must stay above to continue.\","]
+#[doc = "          \"description\": \"Start and continuation scores for the audio tagger's classes.\","]
 #[doc = "          \"type\": \"array\","]
 #[doc = "          \"items\": {"]
 #[doc = "            \"type\": \"object\","]
@@ -135,6 +135,33 @@ pub mod error {
 #[doc = "          \"start_ticks\""]
 #[doc = "        ],"]
 #[doc = "        \"properties\": {"]
+#[doc = "          \"delivery\": {"]
+#[doc = "            \"description\": \"Measurements on the voiced frames of an emphasis event. Changes are relative to the preceding local median.\","]
+#[doc = "            \"type\": \"object\","]
+#[doc = "            \"required\": ["]
+#[doc = "              \"level_change_db\","]
+#[doc = "              \"level_dbfs\","]
+#[doc = "              \"pitch_change_semitones\","]
+#[doc = "              \"pitch_hz\""]
+#[doc = "            ],"]
+#[doc = "            \"properties\": {"]
+#[doc = "              \"level_change_db\": {"]
+#[doc = "                \"type\": \"number\""]
+#[doc = "              },"]
+#[doc = "              \"level_dbfs\": {"]
+#[doc = "                \"type\": \"number\","]
+#[doc = "                \"maximum\": 0.0"]
+#[doc = "              },"]
+#[doc = "              \"pitch_change_semitones\": {"]
+#[doc = "                \"type\": \"number\""]
+#[doc = "              },"]
+#[doc = "              \"pitch_hz\": {"]
+#[doc = "                \"type\": \"number\","]
+#[doc = "                \"exclusiveMinimum\": 0.0"]
+#[doc = "              }"]
+#[doc = "            },"]
+#[doc = "            \"additionalProperties\": false"]
+#[doc = "          },"]
 #[doc = "          \"end_ticks\": {"]
 #[doc = "            \"type\": \"integer\","]
 #[doc = "            \"minimum\": 1.0"]
@@ -143,12 +170,13 @@ pub mod error {
 #[doc = "            \"$ref\": \"#/$defs/kind\""]
 #[doc = "          },"]
 #[doc = "          \"mean\": {"]
+#[doc = "            \"description\": \"Mean tagger score, or mean normalized periodicity for an emphasis event.\","]
 #[doc = "            \"type\": \"number\","]
 #[doc = "            \"maximum\": 1.0,"]
 #[doc = "            \"minimum\": 0.0"]
 #[doc = "          },"]
 #[doc = "          \"peak\": {"]
-#[doc = "            \"description\": \"The highest window score in the event; an uncalibrated tagger score, not a probability of anything a person would agree with.\","]
+#[doc = "            \"description\": \"Highest tagger score, or highest normalized periodicity for an emphasis event.\","]
 #[doc = "            \"type\": \"number\","]
 #[doc = "            \"maximum\": 1.0,"]
 #[doc = "            \"minimum\": 0.0"]
@@ -187,6 +215,10 @@ pub mod error {
 #[doc = "    },"]
 #[doc = "    \"source_fingerprint\": {"]
 #[doc = "      \"$ref\": \"#/$defs/sha256\""]
+#[doc = "    },"]
+#[doc = "    \"vad_artifact_id\": {"]
+#[doc = "      \"description\": \"Voice-activity evidence used to measure emphasis. Absent on earlier recordings whose producer only tagged sounds.\","]
+#[doc = "      \"$ref\": \"#/$defs/sha256\""]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -205,6 +237,9 @@ pub struct AudioEvents {
     pub producer: AudioEventsProducer,
     pub schema_version: ::serde_json::Value,
     pub source_fingerprint: Sha256,
+    #[doc = "Voice-activity evidence used to measure emphasis. Absent on earlier recordings whose producer only tagged sounds."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub vad_artifact_id: ::std::option::Option<Sha256>,
 }
 impl AudioEvents {
     pub fn builder() -> builder::AudioEvents {
@@ -270,7 +305,7 @@ impl AudioEventsCoverage {
 #[doc = "      \"minimum\": 1.0"]
 #[doc = "    },"]
 #[doc = "    \"thresholds\": {"]
-#[doc = "      \"description\": \"Per kind, the score an event must reach to start and the score it must stay above to continue.\","]
+#[doc = "      \"description\": \"Start and continuation scores for the audio tagger's classes.\","]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
 #[doc = "        \"type\": \"object\","]
@@ -310,7 +345,7 @@ impl AudioEventsCoverage {
 #[serde(deny_unknown_fields)]
 pub struct AudioEventsDetection {
     pub hop_ticks: ::std::num::NonZeroU64,
-    #[doc = "Per kind, the score an event must reach to start and the score it must stay above to continue."]
+    #[doc = "Start and continuation scores for the audio tagger's classes."]
     pub thresholds: ::std::vec::Vec<AudioEventsDetectionThresholdsItem>,
     pub window_ticks: ::std::num::NonZeroU64,
 }
@@ -377,6 +412,33 @@ impl AudioEventsDetectionThresholdsItem {
 #[doc = "    \"start_ticks\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"delivery\": {"]
+#[doc = "      \"description\": \"Measurements on the voiced frames of an emphasis event. Changes are relative to the preceding local median.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"level_change_db\","]
+#[doc = "        \"level_dbfs\","]
+#[doc = "        \"pitch_change_semitones\","]
+#[doc = "        \"pitch_hz\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"level_change_db\": {"]
+#[doc = "          \"type\": \"number\""]
+#[doc = "        },"]
+#[doc = "        \"level_dbfs\": {"]
+#[doc = "          \"type\": \"number\","]
+#[doc = "          \"maximum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"pitch_change_semitones\": {"]
+#[doc = "          \"type\": \"number\""]
+#[doc = "        },"]
+#[doc = "        \"pitch_hz\": {"]
+#[doc = "          \"type\": \"number\","]
+#[doc = "          \"exclusiveMinimum\": 0.0"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"end_ticks\": {"]
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"minimum\": 1.0"]
@@ -385,12 +447,13 @@ impl AudioEventsDetectionThresholdsItem {
 #[doc = "      \"$ref\": \"#/$defs/kind\""]
 #[doc = "    },"]
 #[doc = "    \"mean\": {"]
+#[doc = "      \"description\": \"Mean tagger score, or mean normalized periodicity for an emphasis event.\","]
 #[doc = "      \"type\": \"number\","]
 #[doc = "      \"maximum\": 1.0,"]
 #[doc = "      \"minimum\": 0.0"]
 #[doc = "    },"]
 #[doc = "    \"peak\": {"]
-#[doc = "      \"description\": \"The highest window score in the event; an uncalibrated tagger score, not a probability of anything a person would agree with.\","]
+#[doc = "      \"description\": \"Highest tagger score, or highest normalized periodicity for an emphasis event.\","]
 #[doc = "      \"type\": \"number\","]
 #[doc = "      \"maximum\": 1.0,"]
 #[doc = "      \"minimum\": 0.0"]
@@ -407,15 +470,65 @@ impl AudioEventsDetectionThresholdsItem {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct AudioEventsEventsItem {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub delivery: ::std::option::Option<AudioEventsEventsItemDelivery>,
     pub end_ticks: ::std::num::NonZeroU64,
     pub kind: Kind,
+    #[doc = "Mean tagger score, or mean normalized periodicity for an emphasis event."]
     pub mean: f64,
-    #[doc = "The highest window score in the event; an uncalibrated tagger score, not a probability of anything a person would agree with."]
+    #[doc = "Highest tagger score, or highest normalized periodicity for an emphasis event."]
     pub peak: f64,
     pub start_ticks: u64,
 }
 impl AudioEventsEventsItem {
     pub fn builder() -> builder::AudioEventsEventsItem {
+        Default::default()
+    }
+}
+#[doc = "Measurements on the voiced frames of an emphasis event. Changes are relative to the preceding local median."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Measurements on the voiced frames of an emphasis event. Changes are relative to the preceding local median.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"level_change_db\","]
+#[doc = "    \"level_dbfs\","]
+#[doc = "    \"pitch_change_semitones\","]
+#[doc = "    \"pitch_hz\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"level_change_db\": {"]
+#[doc = "      \"type\": \"number\""]
+#[doc = "    },"]
+#[doc = "    \"level_dbfs\": {"]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"maximum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"pitch_change_semitones\": {"]
+#[doc = "      \"type\": \"number\""]
+#[doc = "    },"]
+#[doc = "    \"pitch_hz\": {"]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"exclusiveMinimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AudioEventsEventsItemDelivery {
+    pub level_change_db: f64,
+    pub level_dbfs: f64,
+    pub pitch_change_semitones: f64,
+    pub pitch_hz: f64,
+}
+impl AudioEventsEventsItemDelivery {
+    pub fn builder() -> builder::AudioEventsEventsItemDelivery {
         Default::default()
     }
 }
@@ -539,7 +652,8 @@ impl<'de> ::serde::Deserialize<'de> for AudioEventsProducerImplementation {
 #[doc = "    \"cheering\","]
 #[doc = "    \"music\","]
 #[doc = "    \"shout\","]
-#[doc = "    \"gasp\""]
+#[doc = "    \"gasp\","]
+#[doc = "    \"emphasis\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -569,6 +683,8 @@ pub enum Kind {
     Shout,
     #[serde(rename = "gasp")]
     Gasp,
+    #[serde(rename = "emphasis")]
+    Emphasis,
 }
 impl ::std::fmt::Display for Kind {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -579,6 +695,7 @@ impl ::std::fmt::Display for Kind {
             Self::Music => f.write_str("music"),
             Self::Shout => f.write_str("shout"),
             Self::Gasp => f.write_str("gasp"),
+            Self::Emphasis => f.write_str("emphasis"),
         }
     }
 }
@@ -592,6 +709,7 @@ impl ::std::str::FromStr for Kind {
             "music" => Ok(Self::Music),
             "shout" => Ok(Self::Shout),
             "gasp" => Ok(Self::Gasp),
+            "emphasis" => Ok(Self::Emphasis),
             _ => Err("invalid value".into()),
         }
     }
@@ -702,6 +820,8 @@ pub mod builder {
         producer: ::std::result::Result<super::AudioEventsProducer, ::std::string::String>,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
         source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
+        vad_artifact_id:
+            ::std::result::Result<::std::option::Option<super::Sha256>, ::std::string::String>,
     }
     impl ::std::default::Default for AudioEvents {
         fn default() -> Self {
@@ -713,6 +833,7 @@ pub mod builder {
                 producer: Err("no value supplied for producer".to_string()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
                 source_fingerprint: Err("no value supplied for source_fingerprint".to_string()),
+                vad_artifact_id: Ok(Default::default()),
             }
         }
     }
@@ -787,6 +908,16 @@ pub mod builder {
             });
             self
         }
+        pub fn vad_artifact_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::Sha256>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.vad_artifact_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for vad_artifact_id: {e}"));
+            self
+        }
     }
     impl ::std::convert::TryFrom<AudioEvents> for super::AudioEvents {
         type Error = super::error::ConversionError;
@@ -801,6 +932,7 @@ pub mod builder {
                 producer: value.producer?,
                 schema_version: value.schema_version?,
                 source_fingerprint: value.source_fingerprint?,
+                vad_artifact_id: value.vad_artifact_id?,
             })
         }
     }
@@ -814,6 +946,7 @@ pub mod builder {
                 producer: Ok(value.producer),
                 schema_version: Ok(value.schema_version),
                 source_fingerprint: Ok(value.source_fingerprint),
+                vad_artifact_id: Ok(value.vad_artifact_id),
             }
         }
     }
@@ -1030,6 +1163,10 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct AudioEventsEventsItem {
+        delivery: ::std::result::Result<
+            ::std::option::Option<super::AudioEventsEventsItemDelivery>,
+            ::std::string::String,
+        >,
         end_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
         kind: ::std::result::Result<super::Kind, ::std::string::String>,
         mean: ::std::result::Result<f64, ::std::string::String>,
@@ -1039,6 +1176,7 @@ pub mod builder {
     impl ::std::default::Default for AudioEventsEventsItem {
         fn default() -> Self {
             Self {
+                delivery: Ok(Default::default()),
                 end_ticks: Err("no value supplied for end_ticks".to_string()),
                 kind: Err("no value supplied for kind".to_string()),
                 mean: Err("no value supplied for mean".to_string()),
@@ -1048,6 +1186,16 @@ pub mod builder {
         }
     }
     impl AudioEventsEventsItem {
+        pub fn delivery<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::AudioEventsEventsItemDelivery>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.delivery = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for delivery: {e}"));
+            self
+        }
         pub fn end_ticks<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::std::num::NonZeroU64>,
@@ -1105,6 +1253,7 @@ pub mod builder {
             value: AudioEventsEventsItem,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                delivery: value.delivery?,
                 end_ticks: value.end_ticks?,
                 kind: value.kind?,
                 mean: value.mean?,
@@ -1116,11 +1265,98 @@ pub mod builder {
     impl ::std::convert::From<super::AudioEventsEventsItem> for AudioEventsEventsItem {
         fn from(value: super::AudioEventsEventsItem) -> Self {
             Self {
+                delivery: Ok(value.delivery),
                 end_ticks: Ok(value.end_ticks),
                 kind: Ok(value.kind),
                 mean: Ok(value.mean),
                 peak: Ok(value.peak),
                 start_ticks: Ok(value.start_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct AudioEventsEventsItemDelivery {
+        level_change_db: ::std::result::Result<f64, ::std::string::String>,
+        level_dbfs: ::std::result::Result<f64, ::std::string::String>,
+        pitch_change_semitones: ::std::result::Result<f64, ::std::string::String>,
+        pitch_hz: ::std::result::Result<f64, ::std::string::String>,
+    }
+    impl ::std::default::Default for AudioEventsEventsItemDelivery {
+        fn default() -> Self {
+            Self {
+                level_change_db: Err("no value supplied for level_change_db".to_string()),
+                level_dbfs: Err("no value supplied for level_dbfs".to_string()),
+                pitch_change_semitones: Err(
+                    "no value supplied for pitch_change_semitones".to_string()
+                ),
+                pitch_hz: Err("no value supplied for pitch_hz".to_string()),
+            }
+        }
+    }
+    impl AudioEventsEventsItemDelivery {
+        pub fn level_change_db<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.level_change_db = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for level_change_db: {e}"));
+            self
+        }
+        pub fn level_dbfs<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.level_dbfs = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for level_dbfs: {e}"));
+            self
+        }
+        pub fn pitch_change_semitones<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.pitch_change_semitones = value.try_into().map_err(|e| {
+                format!("error converting supplied value for pitch_change_semitones: {e}")
+            });
+            self
+        }
+        pub fn pitch_hz<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.pitch_hz = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for pitch_hz: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<AudioEventsEventsItemDelivery>
+        for super::AudioEventsEventsItemDelivery
+    {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: AudioEventsEventsItemDelivery,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                level_change_db: value.level_change_db?,
+                level_dbfs: value.level_dbfs?,
+                pitch_change_semitones: value.pitch_change_semitones?,
+                pitch_hz: value.pitch_hz?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::AudioEventsEventsItemDelivery> for AudioEventsEventsItemDelivery {
+        fn from(value: super::AudioEventsEventsItemDelivery) -> Self {
+            Self {
+                level_change_db: Ok(value.level_change_db),
+                level_dbfs: Ok(value.level_dbfs),
+                pitch_change_semitones: Ok(value.pitch_change_semitones),
+                pitch_hz: Ok(value.pitch_hz),
             }
         }
     }

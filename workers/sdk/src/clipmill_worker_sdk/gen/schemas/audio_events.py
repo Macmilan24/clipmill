@@ -6,7 +6,16 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveFloat,
+    RootModel,
+    confloat,
+    conint,
+    constr,
+)
 
 
 class Coverage(BaseModel):
@@ -16,6 +25,16 @@ class Coverage(BaseModel):
     start_ticks: conint(ge=0)
     end_ticks: conint(ge=0)
     analyzed: bool
+
+
+class Delivery(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    pitch_hz: PositiveFloat
+    level_dbfs: confloat(le=0.0)
+    pitch_change_semitones: float
+    level_change_db: float
 
 
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
@@ -29,6 +48,7 @@ class Kind(Enum):
     music = 'music'
     shout = 'shout'
     gasp = 'gasp'
+    emphasis = 'emphasis'
 
 
 class Producer(BaseModel):
@@ -56,8 +76,7 @@ class Detection(BaseModel):
     window_ticks: conint(ge=1)
     hop_ticks: conint(ge=1)
     thresholds: list[Threshold] = Field(
-        ...,
-        description='Per kind, the score an event must reach to start and the score it must stay above to continue.',
+        ..., description="Start and continuation scores for the audio tagger's classes."
     )
 
 
@@ -70,9 +89,16 @@ class Event(BaseModel):
     end_ticks: conint(ge=1)
     peak: confloat(ge=0.0, le=1.0) = Field(
         ...,
-        description='The highest window score in the event; an uncalibrated tagger score, not a probability of anything a person would agree with.',
+        description='Highest tagger score, or highest normalized periodicity for an emphasis event.',
     )
-    mean: confloat(ge=0.0, le=1.0)
+    mean: confloat(ge=0.0, le=1.0) = Field(
+        ...,
+        description='Mean tagger score, or mean normalized periodicity for an emphasis event.',
+    )
+    delivery: Delivery | None = Field(
+        None,
+        description='Measurements on the voiced frames of an emphasis event. Changes are relative to the preceding local median.',
+    )
 
 
 class AudioEvents(BaseModel):
@@ -84,6 +110,10 @@ class AudioEvents(BaseModel):
     audio_artifact_id: Sha256 = Field(
         ...,
         description='The 16 kHz mono rendition this pass read, verified before use.',
+    )
+    vad_artifact_id: Sha256 | None = Field(
+        None,
+        description='Voice-activity evidence used to measure emphasis. Absent on earlier recordings whose producer only tagged sounds.',
     )
     producer: Producer
     detection: Detection

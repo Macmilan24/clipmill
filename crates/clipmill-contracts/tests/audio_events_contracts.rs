@@ -26,6 +26,7 @@ fn canonical(value: &serde_json::Value) -> String {
 #[test]
 fn audio_events_parse_and_roundtrip_canonically() {
     for rel in [
+        "contracts/fixtures/audio.events/valid/delivery_accent.json",
         "contracts/fixtures/audio.events/valid/live_talk.json",
         "contracts/fixtures/audio.events/valid/nothing_heard.json",
     ] {

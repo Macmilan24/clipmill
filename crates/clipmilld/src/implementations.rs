@@ -131,7 +131,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accuracy: 1,
     },
     Implementation {
-        name: "clipmill-worker-audio-events@0.1.0",
+        name: "clipmill-worker-audio-events@0.2.0",
         capability: "audio-events",
         stage: "audio-events",
         model: "ced-mini-audio-events",

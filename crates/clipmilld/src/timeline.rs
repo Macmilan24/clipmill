@@ -258,8 +258,7 @@ fn recording(
     }
 }
 
-/// Laughter, applause, music and the rest, as index events with their peak
-/// score, so the script can show them and a search can find them.
+/// Keep the measured change beside an emphasis cue as it enters the index and scripts.
 fn audio_events(heard: &AudioEvents) -> Vec<Event> {
     heard
         .events
@@ -269,8 +268,35 @@ fn audio_events(heard: &AudioEvents) -> Vec<Event> {
             start_ticks: event.start_ticks,
             end_ticks: event.end_ticks.get(),
             value: Some(event.peak),
-            label: None,
+            label: event.delivery.as_ref().map(|voice| {
+                format!(
+                    "pitch {:+.1} semitones, level {:+.1} dB from recent voiced speech",
+                    voice.pitch_change_semitones, voice.level_change_db
+                )
+            }),
             producer: heard.producer.implementation.to_string(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AudioEvents, audio_events};
+
+    #[test]
+    fn the_index_retains_the_measured_accent_and_its_time() -> Result<(), serde_json::Error> {
+        let heard: AudioEvents = serde_json::from_str(include_str!(
+            "../../../contracts/fixtures/audio.events/valid/delivery_accent.json"
+        ))?;
+        let events = audio_events(&heard);
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        assert_eq!(event.kind, "emphasis");
+        assert_eq!((event.start_ticks, event.end_ticks), (180_000, 225_000));
+        assert_eq!(
+            event.label.as_deref(),
+            Some("pitch +6.2 semitones, level +3.5 dB from recent voiced speech")
+        );
+        Ok(())
+    }
 }

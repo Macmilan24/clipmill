@@ -1,0 +1,67 @@
+{
+  "audio_artifact_id": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "coverage": {
+    "analyzed": true,
+    "end_ticks": 2700000,
+    "start_ticks": 0
+  },
+  "detection": {
+    "hop_ticks": 90000,
+    "thresholds": [
+      {
+        "kind": "laughter",
+        "off": 0.2,
+        "on": 0.35
+      },
+      {
+        "kind": "applause",
+        "off": 0.25,
+        "on": 0.4
+      },
+      {
+        "kind": "cheering",
+        "off": 0.25,
+        "on": 0.4
+      },
+      {
+        "kind": "music",
+        "off": 0.35,
+        "on": 0.5
+      },
+      {
+        "kind": "shout",
+        "off": 0.3,
+        "on": 0.45
+      },
+      {
+        "kind": "gasp",
+        "off": 0.2,
+        "on": 0.3
+      }
+    ],
+    "window_ticks": 180000
+  },
+  "events": [
+    {
+      "delivery": {
+        "level_change_db": 3.5,
+        "level_dbfs": -18.8,
+        "pitch_change_semitones": 6.2,
+        "pitch_hz": 200.0
+      },
+      "end_ticks": 225000,
+      "kind": "emphasis",
+      "mean": 0.95,
+      "peak": 0.98,
+      "start_ticks": 180000
+    }
+  ],
+  "producer": {
+    "implementation": "clipmill-worker-audio-events@0.2.0+ced-mini",
+    "model_digest": "sha256:2a86374dbe1fa03e96b0acf6a02618ac71852d12aa3d72a030b062ff1e5c5434",
+    "stage": "audio-events"
+  },
+  "schema_version": "clipmill.audio.events.v1",
+  "source_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "vad_artifact_id": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+}

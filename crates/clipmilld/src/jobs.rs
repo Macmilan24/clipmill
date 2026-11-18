@@ -56,7 +56,7 @@ pub(crate) const SPEECH_STAGE_KEY_VERSION: &str = "clipmill.speech-stage.v1";
 pub(crate) const TEXT_EMBED_KEY_VERSION: &str = "clipmill.text-embed-stage.v1";
 
 /// Key version the audio events stage payload carries.
-pub(crate) const AUDIO_EVENTS_STAGE_KEY_VERSION: &str = "clipmill.audio-events-stage.v1";
+pub(crate) const AUDIO_EVENTS_STAGE_KEY_VERSION: &str = "clipmill.audio-events-stage.v2";
 
 /// Key version the shot-detection stage payload carries, for the same reason.
 pub(crate) const SHOTS_STAGE_KEY_VERSION: &str = "clipmill.shots-stage.v1";
@@ -616,11 +616,11 @@ fn faces_task(task_id: String, payload: &FacesStagePayloadV1) -> TaskSpec {
 /// Its payload is the speech chain's, naming its own stage and nothing else:
 /// how voices are told apart is the worker's, recorded in what it publishes,
 /// so the key moves with the implementation rather than with a knob here.
-/// What can be heard besides words: laughter, applause, music, shouting.
+/// Room sounds and vocal delivery from the mono rendition and its speech intervals.
 fn audio_events_task(
     task_id: String,
     source_fingerprint: &str,
-    audio_task: &str,
+    (audio_task, vad_task): (&str, &str),
     models: &crate::models::ModelRegistry,
     bindings: &crate::selection::Bindings,
 ) -> TaskSpec {
@@ -629,7 +629,7 @@ fn audio_events_task(
         task_id,
         ordinal: 0,
         kind: "audio-events".to_owned(),
-        input_kinds: vec!["media.audio_16k.v1".to_owned()],
+        input_kinds: vec!["media.audio_16k.v1".to_owned(), "speech.vad.v1".to_owned()],
         output_kind: "audio.events.v1".to_owned(),
         payload: AudioEventsStagePayloadV1 {
             key_version: AUDIO_EVENTS_STAGE_KEY_VERSION.to_owned(),
@@ -637,7 +637,7 @@ fn audio_events_task(
             source_fingerprint: source_fingerprint.to_owned(),
         }
         .encode_to_vec(),
-        dependencies: vec![audio_task.to_owned()],
+        dependencies: vec![audio_task.to_owned(), vad_task.to_owned()],
         input_artifact_ids: Vec::new(),
         // One session thread, fixed by the worker for the same reason the
         // voice detector's is: an event's edge must not depend on the load.
@@ -1722,18 +1722,17 @@ impl JobPlan {
                     stages.push(("speech.speakers.v1".to_owned(), speakers.task_id.clone()));
                     speakers_id = Some(speakers.task_id.clone());
                     tasks.push(speakers);
+                    let events = audio_events_task(
+                        TaskId::new().to_string(),
+                        source.source_fingerprint,
+                        (audio.task_id.as_str(), vad.as_str()),
+                        models,
+                        bindings,
+                    );
+                    stages.push(("audio.events.v1".to_owned(), events.task_id.clone()));
+                    audio_events_id = Some(events.task_id.clone());
+                    tasks.push(events);
                 }
-                // The reactions a transcript cannot show, from the same rendition.
-                let events = audio_events_task(
-                    TaskId::new().to_string(),
-                    source.source_fingerprint,
-                    audio.task_id.as_str(),
-                    models,
-                    bindings,
-                );
-                stages.push(("audio.events.v1".to_owned(), events.task_id.clone()));
-                audio_events_id = Some(events.task_id.clone());
-                tasks.push(events);
                 Some(chain.transcript_task_id)
             }
         };

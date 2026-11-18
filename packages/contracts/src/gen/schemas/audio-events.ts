@@ -6,10 +6,10 @@
  */
 
 export type Sha256 = string;
-export type Kind = "laughter" | "applause" | "cheering" | "music" | "shout" | "gasp";
+export type Kind = "laughter" | "applause" | "cheering" | "music" | "shout" | "gasp" | "emphasis";
 
 /**
- * What can be heard in a recording besides words: laughter, applause, cheering, music, shouting, gasps. An audio tagger scores overlapping windows of the 16 kHz rendition and each run of windows above its kind's threshold becomes an event. These are the reactions a transcript cannot show, written into the Timeline Index for the editorial mind to read. Every interval is integer ticks at 1/90000; coverage says what was listened to, so no event in a covered span means nothing was heard, not that nobody listened.
+ * Timed sounds and vocal delivery in the 16 kHz rendition. A tagger detects laughter, applause, cheering, music, shouts and gasps. Emphasis records a sustained rise in pitch or level relative to recent voiced speech. Intervals use 1/90000-second ticks.
  */
 export interface AudioEvents {
   schema_version: "clipmill.audio.events.v1";
@@ -18,6 +18,10 @@ export interface AudioEvents {
    * The 16 kHz mono rendition this pass read, verified before use.
    */
   audio_artifact_id: string;
+  /**
+   * Voice-activity evidence used to measure emphasis. Absent on earlier recordings whose producer only tagged sounds.
+   */
+  vad_artifact_id?: string;
   producer: {
     stage: "audio-events";
     implementation: string;
@@ -27,7 +31,7 @@ export interface AudioEvents {
     window_ticks: number;
     hop_ticks: number;
     /**
-     * Per kind, the score an event must reach to start and the score it must stay above to continue.
+     * Start and continuation scores for the audio tagger's classes.
      */
     thresholds: {
       kind: Kind;
@@ -48,9 +52,21 @@ export interface AudioEvents {
     start_ticks: number;
     end_ticks: number;
     /**
-     * The highest window score in the event; an uncalibrated tagger score, not a probability of anything a person would agree with.
+     * Highest tagger score, or highest normalized periodicity for an emphasis event.
      */
     peak: number;
+    /**
+     * Mean tagger score, or mean normalized periodicity for an emphasis event.
+     */
     mean: number;
+    /**
+     * Measurements on the voiced frames of an emphasis event. Changes are relative to the preceding local median.
+     */
+    delivery?: {
+      pitch_hz: number;
+      level_dbfs: number;
+      pitch_change_semitones: number;
+      level_change_db: number;
+    };
   }[];
 }
