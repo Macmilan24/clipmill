@@ -6,6 +6,10 @@ path. Run that executable for the commands below, or add its directory to
 your shell's search path. In a development checkout, build the command with
 `cargo build -p clipmill-cli`.
 
+For the portable Linux AppImage, run `./ClipMill.AppImage --cli status` and
+pass later commands after `--cli` in the same way. Use the image's filename on
+your computer. `--print-cli-path` prints the path Settings gives MCP clients.
+
 ## Create and analyze
 
 ```sh

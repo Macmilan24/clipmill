@@ -147,6 +147,9 @@ jobs:
         run: |
           dpkg-deb --extract target/${{ matrix.target }}/release/bundle/deb/*.deb "$RUNNER_TEMP/clipmill-install"
           python3 tools/release/verify_cli.py "$RUNNER_TEMP/clipmill-install/usr/bin"
+      - name: Reconnect using the portable AppImage Settings command
+        if: runner.os == 'Linux'
+        run: python3 tools/release/verify_cli.py --appimage target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
       - name: Connect to the installed MCP command (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
