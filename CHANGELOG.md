@@ -2,17 +2,20 @@
 
 ## Unreleased
 
-- **Older processors.** On a PC whose processor lacks AVX2 (an Intel Core
-  i7-3770, for example), the bundled Whisper crashed with an illegal
-  instruction and its worker restarted forever (#140). Models now marks
-  Whisper as unsupported there and analysis uses Parakeet, which runs on any
-  x86-64 processor; a task that reaches Whisper anyway is refused with a
-  sentence saying what to do.
-- **The mind always offers its moments.** When the line markup marked most of
-  a recording as cuttable, the cutter found no moment long enough and the
-  mind proposed nothing. Markup that would cut more than a third of a moment
-  is now set aside for that moment, and every remembered event still yields
-  its plain clip.
+## 0.5.1 — Whisper on older Windows PCs and reliable upgrades
+
+- **Speech recognition on older Windows PCs.** Whisper selects a CPU build
+  when it starts. An AVX processor such as the Intel Core i7-3770 can now
+  transcribe the same recordings with Whisper, including languages outside
+  Parakeet's coverage. On a PC with an existing installation, open **Models →
+  Components** and choose **Update** to replace the old transcription worker.
+- **Windows upgrades.** Installing over 0.4 keeps both Studio and the
+  `clipmill` command. Installing over 0.5 also restores the command on PCs
+  where the previous upgrade removed it. Existing Studio shortcuts continue
+  to open the app.
+- **Clip suggestions.** A recording could produce an empty Results panel
+  when most of its lines were marked as retakes or asides. The cutter now
+  considers the original moments as well and limits cuts to 35% of a moment.
 
 ## 0.5.0 — Word timing, recording search and connected clients
 

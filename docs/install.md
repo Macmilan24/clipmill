@@ -55,12 +55,16 @@ As on Linux, the editorial model runs in llama.cpp; see
 
 ### Older processors
 
-The bundled Whisper recognizer needs a processor with AVX2, which most Intel
-and AMD processors made since 2013 have (Intel Haswell, AMD Excavator and
-later). On an older one, such as an Intel Core i7-3770, Models marks Whisper as
-unsupported: choose **Parakeet** for speech, which runs on any x86-64
-processor and covers English and 24 other European languages. This applies to
-Linux too.
+From 0.5.1, Whisper on 64-bit Windows selects a build for your processor.
+It supports x86-64-v2 and newer processors, including the Intel Core i7-3770.
+If you already set up ClipMill in 0.4 or 0.5.0, open **Models → Components**
+after installing the update and choose **Update**. Once **Transcription** is
+installed, reopen the affected project and run its analysis again. Your
+existing Whisper model can be used for the new run.
+
+On an older Linux PC, **Models** indicates when the bundled Whisper runtime
+requires CPU features the machine lacks. For a recording in one of its 25
+supported languages, choose **Parakeet** in **Models**.
 
 ## First run: Set up ClipMill
 
@@ -135,9 +139,9 @@ then delete the folder above to remove projects, components and models.
   output is in `logs/engine-install.log`.
 - **The window stays blank on Linux with an NVIDIA GPU** — start ClipMill with
   `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
-- **"This processor lacks AVX2"** — the processor is too old for the bundled
-  Whisper; choose Parakeet for speech in Models (see
-  [Older processors](#older-processors)).
+- **Speech recognition restarts on an older Windows PC** — install 0.5.1
+  or later, then update the **Transcription** component in **Models**.
+  [Older processors](#older-processors)
 
 Report problems at
 [github.com/Macmilan24/clipmill/issues](https://github.com/Macmilan24/clipmill/issues).
