@@ -190,6 +190,9 @@ def execution(tmp_path, monkeypatch):
             events.append("closed-local-model")
 
     monkeypatch.setattr("clipmill_worker_editorial.runtime.LocalModel", Runtime)
+    # These tests are about one task's guarantees; with nothing kept warm, a
+    # model handed back is a model closed. Reuse is tested on its own below.
+    monkeypatch.setenv("CLIPMILL_EDITORIAL_KEEP_WARM_SECONDS", "0")
     return SimpleNamespace(
         context=context,
         payload=payload,
@@ -277,3 +280,12 @@ def test_bad_bindings_or_empty_text_fail_before_loading_weights(execution, chang
     with pytest.raises(DeterministicTaskError):
         execute(e.context)
     assert e.outputs == {} and e.events == []
+
+
+def test_a_warm_model_serves_the_next_task_without_loading_again(execution, monkeypatch):
+    e = execution
+    monkeypatch.setenv("CLIPMILL_EDITORIAL_KEEP_WARM_SECONDS", "90")
+    assert execute(e.context) == ("metadata.json",)
+    assert execute(e.context) == ("metadata.json",)
+    assert e.events.count("opened-local-model") == 1
+    assert "closed-local-model" not in e.events

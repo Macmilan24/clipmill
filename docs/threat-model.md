@@ -173,7 +173,11 @@ the editorial worker starts for a GGUF model and ends with itself.
   Each request is built by the worker: the prompt, the reply's JSON schema,
   and frames the worker read from its own artifacts and re-encoded.
 - **Lifetime.** It runs with no console window in the worker's process group,
-  so whatever ends the worker ends it, and the worker stops it on close.
+  so whatever ends the worker ends it. Between tasks for the same model the
+  worker keeps it running, idle, for up to the keep-warm period (90 seconds by
+  default, `CLIPMILL_EDITORIAL_KEEP_WARM_SECONDS`), then stops it; it also
+  stops it when a task's call fails, before starting another model's server,
+  and when the worker stops.
 
 Residual: a process running as the same user can read the server's
 environment, and so its key, as it can read the endpoint secrets (R68). A

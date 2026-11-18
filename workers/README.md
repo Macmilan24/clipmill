@@ -55,9 +55,13 @@ uses the portable implementation, explicitly marked `unmeasured_fallback`.
 ## Editorial workers
 
 `clipmill-worker-editorial` serves local proposal, review, and visual-check tasks
-using pinned MLX weights. The separately launched
-`clipmill-worker-editorial-cloud` serves only cloud proposal and review tasks.
-Cloud use requires transcript consent and a run budget; media is not sent. The
+using pinned MLX weights. It keeps its one loaded model between tasks for
+the same model, so the stages of one analysis load it once; an idle model is
+unloaded after `CLIPMILL_EDITORIAL_KEEP_WARM_SECONDS` (90 by default; 0 unloads
+after every task), and a model whose call failed is unloaded at once. Each task
+still declares its model's memory, and the worker never holds two models.
+The separately launched `clipmill-worker-editorial-cloud` serves only cloud
+proposal and review tasks. Cloud use requires transcript consent and a run budget; media is not sent. The
 adapter retrieves its credential from the OS credential store and reserves budget
 before requests, retaining the charge for uncertain or interrupted calls.
 
