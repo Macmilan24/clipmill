@@ -32,7 +32,15 @@ REFUSED_CLASSES = {
     "unknown": "states no terms, which is not the same as permitting them",
 }
 # SPDX identifiers that may claim the permissive class.
-PERMISSIVE_SPDX = {"MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "CC0-1.0", "CC-BY-4.0", "ISC"}
+PERMISSIVE_SPDX = {
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "CC0-1.0",
+    "CC-BY-4.0",
+    "ISC",
+}
 # How a manifest knows its own terms. Stating this is not bureaucracy: an ONNX
 # re-export that declares no licence and one that ships the upstream's LICENSE
 # file are different evidentiary positions, and the second is not improved by
