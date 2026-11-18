@@ -206,6 +206,8 @@ pub(super) fn job_json(job: &Job) -> Value {
         .iter()
         .map(|task| {
             json!({
+                "task_id": task.task_id,
+                "kind": task.kind,
                 "stage": task.output_kind,
                 "artifact_id": (!task.output_artifact_id.is_empty()).then_some(task.output_artifact_id.as_str()),
                 "state": TaskState::try_from(task.state)
