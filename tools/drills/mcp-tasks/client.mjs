@@ -40,6 +40,27 @@ function http() {
     });
 }
 
+async function checkEditHistory(client, docId) {
+    async function call(name, args = {}) {
+        const result = await client.callTool({
+            name: 'clipmill_' + name,
+            arguments: { doc_id: docId, ...args },
+        });
+        assert.equal(result.isError, false, JSON.stringify(result.content));
+        return result.structuredContent;
+    }
+
+    const original = await call('get_edit');
+    const changed = await call('apply_edits', {
+        expected_revision: original.revision,
+        commands: [{ op: 'set_title', title: 'Edited through MCP' }],
+    });
+    assert.equal((await call('get_edit')).document.title, 'Edited through MCP');
+    await call('undo_edit', { expected_revision: changed.revision });
+    assert.equal((await call('get_edit')).document.title, original.document.title);
+    assert((await call('edit_log')).entries.length >= 2);
+}
+
 // The v2 extension adapter delegates dispatch to its host. Use a second
 // official transport and correlate the wire responses by JSON-RPC ID.
 async function taskSession(client, transport) {
@@ -131,6 +152,7 @@ if (phase === 'start') {
             const uri = 'clipmill://edits/' + fixture.docId;
             const resource = await client.readResource({ uri });
             assert.equal(JSON.parse(resource.contents[0].text).doc_id, fixture.docId);
+            if (action === 'decline') await checkEditHistory(client, fixture.docId);
             const result = await client.callTool({
                 name: 'clipmill_export_clip',
                 arguments: { doc_id: fixture.docId, destination_dir: fixture.destination },

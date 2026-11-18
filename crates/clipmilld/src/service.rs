@@ -4,6 +4,7 @@ mod batch;
 mod engine;
 mod mcp_consent;
 mod models;
+mod resources;
 mod search;
 mod storage;
 mod updates;

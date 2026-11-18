@@ -89,6 +89,7 @@ pub(crate) enum AgentCommand {
     Record(AuditEntry),
     Log {
         limit: u32,
+        client_id: Option<String>,
     },
 }
 
@@ -233,14 +234,15 @@ pub(super) fn execute(
             )?;
             Ok(AgentReply::Recorded)
         }
-        AgentCommand::Log { limit } => {
+        AgentCommand::Log { limit, client_id } => {
             let mut statement = connection.prepare(
                 "SELECT a.at_unix_millis, a.client_id, COALESCE(c.name, a.client_id), a.operation,
                         a.target, a.outcome, a.detail
                  FROM engine_audit a LEFT JOIN agent_clients c ON c.client_id = a.client_id
+                 WHERE ?2 IS NULL OR a.client_id = ?2
                  ORDER BY a.audit_id DESC LIMIT ?1",
             )?;
-            let rows = statement.query_map([i64::from(limit)], |row| {
+            let rows = statement.query_map(params![i64::from(limit), client_id], |row| {
                 let outcome: String = row.get(5)?;
                 Ok(AuditEntry {
                     at_unix_millis: millis(row.get(0)?),
@@ -348,8 +350,14 @@ mod tests {
             )
             .unwrap();
         }
-        let AgentReply::Log(log) = execute(&mut db, AgentCommand::Log { limit: 10 }).unwrap()
-        else {
+        let AgentReply::Log(log) = execute(
+            &mut db,
+            AgentCommand::Log {
+                limit: 10,
+                client_id: None,
+            },
+        )
+        .unwrap() else {
             panic!("log");
         };
         assert_eq!(log[0].operation, "start_analysis");

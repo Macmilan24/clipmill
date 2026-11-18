@@ -36,15 +36,23 @@ const TOKEN_PREFIX: &str = "cmt_";
 const READ_CHUNK: u64 = 4 * 1024 * 1024;
 
 /// Every operation and the scope it needs.
-pub(crate) const OPERATIONS: [(&str, &str); 23] = [
+pub(crate) const OPERATIONS: [(&str, &str); 31] = [
     ("whoami", "authenticated"),
     ("mcp_export_consent", "render"),
     ("read_edit_resource", "read"),
+    ("audit_log", "read"),
     ("status", "read"),
     ("list_projects", "read"),
     ("create_project", "edit"),
     ("add_source", "edit"),
     ("list_sources", "read"),
+    ("get_source", "read"),
+    ("get_timeline", "read"),
+    ("job_events", "read"),
+    ("get_edit", "read"),
+    ("apply_edits", "edit"),
+    ("undo_edit", "edit"),
+    ("edit_log", "read"),
     ("start_analysis", "edit"),
     ("get_job", "read"),
     ("get_owned_job", "read"),
@@ -81,7 +89,7 @@ pub(super) struct ApiError {
 }
 
 impl ApiError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(super) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -93,7 +101,7 @@ impl ApiError {
         Self::new("invalid_argument", message)
     }
 
-    fn not_found(message: impl Into<String>) -> Self {
+    pub(super) fn not_found(message: impl Into<String>) -> Self {
         Self::new("not_found", message)
     }
 }
@@ -402,32 +410,6 @@ impl Service {
         match op {
             "whoami" => Ok(json!({"client_id": caller.client_id, "scopes": caller.scopes})),
             "mcp_export_consent" => super::mcp_consent::export_consent(&caller.client_id, args),
-            "read_edit_resource" => {
-                let body = self
-                    .v1(
-                        request::Body::GetEditDoc(
-                            clipmill_contracts::proto::ipc::v1::GetEditDocRequest {
-                                doc_id: arg_str(args, "doc_id")?.to_owned(),
-                            },
-                        ),
-                        None,
-                    )
-                    .await?;
-                let response::Body::GetEditDoc(found) = body else {
-                    return Err(ApiError::new(
-                        "internal",
-                        "unexpected edit document response",
-                    ));
-                };
-                let doc = found
-                    .doc
-                    .ok_or_else(|| ApiError::not_found("edit not found"))?;
-                let document: Value = serde_json::from_str(&doc.document_json)
-                    .map_err(|_| ApiError::new("internal", "invalid stored edit document"))?;
-                Ok(
-                    json!({"doc_id":doc.doc_id,"revision":doc.revision,"project_id":doc.project_id,"document":document}),
-                )
-            }
             "status" => {
                 let health = self
                     .v1(request::Body::Health(HealthRequest {}), None)
@@ -512,6 +494,33 @@ impl Service {
                     "source_id": s.source_id, "path": s.absolute_path, "bytes": s.byte_size, "missing": s.missing,
                 })).collect::<Vec<_>>() }))
             }
+            "audit_log" => {
+                let limit = args
+                    .get("limit")
+                    .map_or(Some(100), Value::as_u64)
+                    .filter(|n| (1..=2000).contains(n))
+                    .ok_or_else(|| ApiError::invalid("limit must be from 1 to 2000"))?;
+                let client_id = (caller.client_id != "local").then(|| caller.client_id.clone());
+                let log = self
+                    .database
+                    .agents(AgentCommand::Log {
+                        limit: u32::try_from(limit).unwrap_or(2000),
+                        client_id,
+                    })
+                    .await
+                    .map_err(|e| ApiError::new("unavailable", e.to_string()))?;
+                let AgentReply::Log(log) = log else {
+                    return Err(ApiError::new("internal", "unexpected audit result"));
+                };
+                let entries:Vec<_>=log.into_iter().map(|e|json!({"at_unix_millis":e.at_unix_millis,"client":e.client_name,"op":e.operation,"target":e.target,"outcome":e.outcome,"detail":e.detail})).collect();
+                Ok(json!({"entries":entries}))
+            }
+            "get_source" => self.get_api_source(args).await,
+            "get_timeline" => self.timeline(args).await,
+            "job_events" => self.job_events(args).await,
+            "get_edit" | "read_edit_resource" => self.get_api_edit(args).await,
+            "apply_edits" | "undo_edit" => self.change_edit(args, id, op == "undo_edit").await,
+            "edit_log" => self.api_edit_log(args).await,
             "start_analysis" => self.start_analysis(args, id).await,
             "get_owned_job" | "cancel_owned_job" => {
                 let job_id = arg_str(args, "job_id")?;
@@ -1170,7 +1179,14 @@ impl Service {
         } else {
             limit.min(2_000)
         };
-        match self.database.agents(AgentCommand::Log { limit }).await {
+        match self
+            .database
+            .agents(AgentCommand::Log {
+                limit,
+                client_id: None,
+            })
+            .await
+        {
             Ok(AgentReply::Log(entries)) => response_reply(
                 request_id,
                 response::Body::EngineAudit(EngineAuditResponse {

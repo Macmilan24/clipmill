@@ -33,7 +33,7 @@ pub(super) fn schema(operation: &str) -> Value {
         ]),
         "list_projects" => list("projects", &[("project_id", "string"), ("name", "string")]),
         "create_project" => record(&[("project_id", "string"), ("name", "string")]),
-        "add_source" => record(&[
+        "add_source" | "get_source" => record(&[
             ("source_id", "string"),
             ("project_id", "string"),
             ("bytes", "integer"),
@@ -75,6 +75,30 @@ pub(super) fn schema(operation: &str) -> Value {
             ("links", "array"),
             ("entities", "array"),
         ]),
+        "get_timeline" => list(
+            "artifacts",
+            &[("kind", "string"), ("artifact_id", "string")],
+        ),
+        "audit_log" => list(
+            "entries",
+            &[
+                ("client", "string"),
+                ("op", "string"),
+                ("outcome", "string"),
+            ],
+        ),
+        "job_events" => record(&[
+            ("job_id", "string"),
+            ("events", "array"),
+            ("cursor", "integer"),
+        ]),
+        "list_models" => list("models", &[("name", "string")]),
+        _ => edit_schema(operation),
+    }
+}
+
+fn edit_schema(operation: &str) -> Value {
+    match operation {
         "list_clips" => list(
             "clips",
             &[
@@ -94,8 +118,25 @@ pub(super) fn schema(operation: &str) -> Value {
             ("revision", "integer"),
             ("reopened", "boolean"),
         ]),
+        "get_edit" => record(&[
+            ("doc_id", "string"),
+            ("revision", "integer"),
+            ("document", "object"),
+        ]),
+        "apply_edits" | "undo_edit" => record(&[
+            ("doc_id", "string"),
+            ("revision", "integer"),
+            ("inverse", "object"),
+        ]),
+        "edit_log" => list(
+            "entries",
+            &[
+                ("revision", "integer"),
+                ("command", "object"),
+                ("inverse", "object"),
+            ],
+        ),
         "export_clip" => record(&[("job_id", "string"), ("destination_dir", "string")]),
-        "list_models" => list("models", &[("name", "string")]),
         _ => json!({"type":"object"}),
     }
 }

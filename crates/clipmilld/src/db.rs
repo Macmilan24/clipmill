@@ -445,6 +445,7 @@ impl DbActor {
                                         reply.send(job_store::current_event_id(&connection));
                                 }
                                 Command::ListEvents {
+                                    limit,
                                     after_event_id,
                                     filter,
                                     reply,
@@ -453,6 +454,7 @@ impl DbActor {
                                         &connection,
                                         after_event_id,
                                         &filter,
+                                        limit,
                                     ));
                                 }
                                 Command::FindSourceObservation {
@@ -1293,9 +1295,19 @@ impl DbHandle {
         after_event_id: u64,
         filter: EventFilter,
     ) -> Result<Vec<TaskEventRecord>, StoreError> {
+        self.list_events_page(after_event_id, filter, -1).await
+    }
+
+    pub(crate) async fn list_events_page(
+        &self,
+        after_event_id: u64,
+        filter: EventFilter,
+        limit: i64,
+    ) -> Result<Vec<TaskEventRecord>, StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::ListEvents {
+                limit,
                 after_event_id,
                 filter,
                 reply,
@@ -1910,6 +1922,7 @@ enum Command {
         reply: oneshot::Sender<Result<u64, StoreError>>,
     },
     ListEvents {
+        limit: i64,
         after_event_id: u64,
         filter: EventFilter,
         reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,

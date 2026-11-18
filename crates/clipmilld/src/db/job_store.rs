@@ -1735,6 +1735,7 @@ pub(super) fn list_events(
     connection: &Connection,
     after_event_id: u64,
     filter: &EventFilter,
+    limit: i64,
 ) -> Result<Vec<TaskEventRecord>, StoreError> {
     let after = sqlite_u64(after_event_id, "event cursor")?;
     let mut statement = connection.prepare(
@@ -1745,10 +1746,10 @@ pub(super) fn list_events(
          WHERE event_id > ?1
            AND (?2 IS NULL OR project_id = ?2)
            AND (?3 IS NULL OR job_id = ?3)
-         ORDER BY event_id ASC",
+         ORDER BY event_id ASC LIMIT ?4",
     )?;
     let rows = statement.query_map(
-        params![after, filter.project_id, filter.job_id],
+        params![after, filter.project_id, filter.job_id, limit],
         event_from_row,
     )?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
