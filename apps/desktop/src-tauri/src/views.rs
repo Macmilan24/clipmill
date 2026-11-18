@@ -246,6 +246,8 @@ pub struct AnalysisSettingsView {
     pub count: u64,
     #[serde(rename = "localEditorial")]
     pub local_editorial: bool,
+    #[serde(rename = "editorialPrompt", skip_serializing_if = "String::is_empty")]
+    pub editorial_prompt: String,
 }
 
 /// The identity of an export, as its job carries it.
@@ -291,6 +293,7 @@ impl From<Job> for JobView {
                 max_ticks: settings.max_ticks,
                 count: settings.count,
                 local_editorial: settings.local_editorial,
+                editorial_prompt: settings.editorial_prompt,
             }),
         }
     }
@@ -342,6 +345,8 @@ pub struct AnalyzeRequest {
     pub count: u64,
     #[serde(default, rename = "localEditorial")]
     pub local_editorial: bool,
+    #[serde(default, rename = "editorialPrompt")]
+    pub editorial_prompt: String,
     #[serde(default, rename = "contentProfile")]
     pub content_profile: String,
     #[serde(default, rename = "cloudEditorial")]
@@ -369,6 +374,8 @@ impl AnalyzeRequest {
             count: self.count,
             diversity_milli: 0,
             local_editorial: self.local_editorial,
+            editorial_prompt: self.editorial_prompt,
+            editorial_taste: Vec::new(),
             content_profile: self.content_profile,
             cloud_editorial: self.cloud_editorial.map(|c| {
                 clipmill_contracts::proto::ipc::v1::EditorialCloudV1 {
@@ -894,6 +901,9 @@ pub struct CaptionFontView {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewSegmentView {
+    pub fade_in_ticks: i64,
+    pub fade_out_ticks: i64,
+    pub room_tone_start_ticks: Option<i64>,
     pub segment_id: String,
     pub source_fingerprint: String,
     pub in_ticks: i64,
@@ -928,6 +938,9 @@ pub struct PreviewSourceView {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewProxyView {
+    pub audio_artifact_id: String,
+    pub audio_file: String,
+    pub audio_start_ticks: i64,
     pub source_fingerprint: String,
     pub artifact_id: String,
     pub file: String,
@@ -1159,6 +1172,9 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 .segments
                 .into_iter()
                 .map(|segment| PreviewSegmentView {
+                    fade_in_ticks: segment.fade_in_ticks,
+                    fade_out_ticks: segment.fade_out_ticks,
+                    room_tone_start_ticks: segment.room_tone_start_ticks,
                     segment_id: segment.segment_id,
                     source_fingerprint: segment.source_fingerprint,
                     in_ticks: segment.in_ticks,
@@ -1194,6 +1210,9 @@ impl From<clipmill_contracts::proto::ipc::v1::GetPreviewPlanResponse> for Previe
                 .proxies
                 .into_iter()
                 .map(|proxy| PreviewProxyView {
+                    audio_artifact_id: proxy.audio_artifact_id,
+                    audio_file: proxy.audio_file,
+                    audio_start_ticks: proxy.audio_start_ticks,
                     source_fingerprint: proxy.source_fingerprint,
                     artifact_id: proxy.artifact_id,
                     file: proxy.file,

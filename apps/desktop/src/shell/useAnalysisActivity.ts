@@ -5,18 +5,18 @@ import { JobState, TaskState } from '@clipmill/contracts';
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { type ConnectionState, type Job, subscribeTaskEvents } from '../daemon/client.js';
 import { EXPORT_JOB_KIND } from '../export/delivery.js';
-import { ANALYZE_KIND } from '../library/model.js';
+import { ANALYZE_KIND, REPROMPT_KIND, isAnalysisKind } from '../library/model.js';
 import { announceFinished } from './announce.js';
 
 type ActivityApi = Pick<ShellApi, 'listProjects' | 'listJobs' | 'fetchJob'>;
 type Subscribe = typeof subscribeTaskEvents;
 
 /** The runs followed: analyses, and exports, which can take as long. */
-const FOLLOWED = new Set([ANALYZE_KIND, EXPORT_JOB_KIND]);
+const FOLLOWED = new Set([ANALYZE_KIND, REPROMPT_KIND, EXPORT_JOB_KIND]);
 
 function isProcessing(job: Job): boolean {
   return (
-    job.kind === ANALYZE_KIND &&
+    isAnalysisKind(job.kind) &&
     (job.state === JobState.PLANNED || job.state === JobState.RUNNING) &&
     job.tasks.some((task) => task.state === TaskState.ADMITTED || task.state === TaskState.RUNNING)
   );
@@ -27,14 +27,14 @@ function isUnfinished(job: Job): boolean {
 }
 
 function isUnfinishedAnalysis(job: Job): boolean {
-  return job.kind === ANALYZE_KIND && isUnfinished(job);
+  return isAnalysisKind(job.kind) && isUnfinished(job);
 }
 
 /** What a finished run says in the window title, or nothing to say. */
 function finishedTitle(job: Job, project: string): string | null {
   const succeeded = job.state === JobState.SUCCEEDED;
   if (!succeeded && job.state !== JobState.FAILED) return null;
-  if (job.kind === ANALYZE_KIND) {
+  if (isAnalysisKind(job.kind)) {
     return succeeded ? `Clips ready · ${project}` : `Analysis stopped · ${project}`;
   }
   return succeeded ? `Export ready · ${project}` : `Export stopped · ${project}`;

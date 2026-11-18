@@ -46,6 +46,58 @@ pub(crate) struct Implementation {
     pub accuracy: u8,
 }
 
+const EDITORIAL_MLX_9B: Implementation = Implementation {
+    name: "clipmill-worker-editorial@0.2.0/score",
+    capability: "editorial",
+    stage: "editorial-score",
+    model: "qwen3-5-editorial-mlx",
+    worker: "editorial",
+    backend: "mlx",
+    accelerator_class: "metal",
+    portable: false,
+    opt_in: false,
+    accuracy: 1,
+};
+
+const EDITORIAL_MLX_4B: Implementation = Implementation {
+    name: "clipmill-worker-editorial@0.2.0/score/qwen3-5-4b-editorial-mlx",
+    capability: "editorial",
+    stage: "editorial-score",
+    model: "qwen3-5-4b-editorial-mlx",
+    worker: "editorial",
+    backend: "mlx",
+    accelerator_class: "metal",
+    portable: false,
+    opt_in: true,
+    accuracy: 1,
+};
+
+const EDITORIAL_GGUF_9B: Implementation = Implementation {
+    name: "clipmill-worker-editorial@0.2.0/score-llama.cpp",
+    capability: "editorial",
+    stage: "editorial-score",
+    model: "qwen3-5-editorial-gguf",
+    worker: "editorial",
+    backend: "llama.cpp",
+    accelerator_class: "llama.cpp",
+    portable: false,
+    opt_in: false,
+    accuracy: 2,
+};
+
+const EDITORIAL_GGUF_4B: Implementation = Implementation {
+    name: "clipmill-worker-editorial@0.2.0/score-llama.cpp/qwen3-5-4b-editorial-gguf",
+    capability: "editorial",
+    stage: "editorial-score",
+    model: "qwen3-5-4b-editorial-gguf",
+    worker: "editorial",
+    backend: "llama.cpp",
+    accelerator_class: "llama.cpp",
+    portable: false,
+    opt_in: true,
+    accuracy: 1,
+};
+
 /// Every implementation the daemon knows how to plan.
 ///
 /// The order within a capability is not a preference. Selection reads the
@@ -79,7 +131,7 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accuracy: 1,
     },
     Implementation {
-        name: "clipmill-worker-audio-events@0.1.0",
+        name: "clipmill-worker-audio-events@0.2.0",
         capability: "audio-events",
         stage: "audio-events",
         model: "ced-mini-audio-events",
@@ -225,17 +277,21 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         opt_in: false,
         accuracy: 1,
     },
+    EDITORIAL_MLX_9B,
     Implementation {
-        name: "clipmill-worker-editorial@0.2.0/score",
-        capability: "editorial",
-        stage: "editorial-score",
-        model: "qwen3-5-editorial-mlx",
-        worker: "editorial",
-        backend: "mlx",
-        accelerator_class: "metal",
-        portable: false,
-        opt_in: false,
-        accuracy: 1,
+        name: "clipmill-worker-editorial@0.2.0/plan",
+        stage: "editorial-plan",
+        ..EDITORIAL_MLX_9B
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/critic",
+        stage: "editorial-critic",
+        ..EDITORIAL_MLX_9B
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/rank",
+        stage: "editorial-rank",
+        ..EDITORIAL_MLX_9B
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/metadata",
@@ -299,17 +355,21 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         opt_in: true,
         accuracy: 1,
     },
+    EDITORIAL_MLX_4B,
     Implementation {
-        name: "clipmill-worker-editorial@0.2.0/score/qwen3-5-4b-editorial-mlx",
-        capability: "editorial",
-        stage: "editorial-score",
-        model: "qwen3-5-4b-editorial-mlx",
-        worker: "editorial",
-        backend: "mlx",
-        accelerator_class: "metal",
-        portable: false,
-        opt_in: true,
-        accuracy: 1,
+        name: "clipmill-worker-editorial@0.2.0/plan/qwen3-5-4b-editorial-mlx",
+        stage: "editorial-plan",
+        ..EDITORIAL_MLX_4B
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/critic/qwen3-5-4b-editorial-mlx",
+        stage: "editorial-critic",
+        ..EDITORIAL_MLX_4B
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/rank/qwen3-5-4b-editorial-mlx",
+        stage: "editorial-rank",
+        ..EDITORIAL_MLX_4B
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/metadata/qwen3-5-4b-editorial-mlx",
@@ -373,17 +433,21 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         opt_in: false,
         accuracy: 2,
     },
+    EDITORIAL_GGUF_9B,
     Implementation {
-        name: "clipmill-worker-editorial@0.2.0/score-llama.cpp",
-        capability: "editorial",
-        stage: "editorial-score",
-        model: "qwen3-5-editorial-gguf",
-        worker: "editorial",
-        backend: "llama.cpp",
-        accelerator_class: "llama.cpp",
-        portable: false,
-        opt_in: false,
-        accuracy: 2,
+        name: "clipmill-worker-editorial@0.2.0/plan-llama.cpp",
+        stage: "editorial-plan",
+        ..EDITORIAL_GGUF_9B
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/critic-llama.cpp",
+        stage: "editorial-critic",
+        ..EDITORIAL_GGUF_9B
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/rank-llama.cpp",
+        stage: "editorial-rank",
+        ..EDITORIAL_GGUF_9B
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/metadata-llama.cpp",
@@ -445,17 +509,21 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         opt_in: true,
         accuracy: 1,
     },
+    EDITORIAL_GGUF_4B,
     Implementation {
-        name: "clipmill-worker-editorial@0.2.0/score-llama.cpp/qwen3-5-4b-editorial-gguf",
-        capability: "editorial",
-        stage: "editorial-score",
-        model: "qwen3-5-4b-editorial-gguf",
-        worker: "editorial",
-        backend: "llama.cpp",
-        accelerator_class: "llama.cpp",
-        portable: false,
-        opt_in: true,
-        accuracy: 1,
+        name: "clipmill-worker-editorial@0.2.0/plan-llama.cpp/qwen3-5-4b-editorial-gguf",
+        stage: "editorial-plan",
+        ..EDITORIAL_GGUF_4B
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/critic-llama.cpp/qwen3-5-4b-editorial-gguf",
+        stage: "editorial-critic",
+        ..EDITORIAL_GGUF_4B
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/rank-llama.cpp/qwen3-5-4b-editorial-gguf",
+        stage: "editorial-rank",
+        ..EDITORIAL_GGUF_4B
     },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/metadata-llama.cpp/qwen3-5-4b-editorial-gguf",

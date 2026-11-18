@@ -1,3 +1,5 @@
+mod mind_edits;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
@@ -54,7 +56,7 @@ pub(crate) const SPEECH_STAGE_KEY_VERSION: &str = "clipmill.speech-stage.v1";
 pub(crate) const TEXT_EMBED_KEY_VERSION: &str = "clipmill.text-embed-stage.v1";
 
 /// Key version the audio events stage payload carries.
-pub(crate) const AUDIO_EVENTS_STAGE_KEY_VERSION: &str = "clipmill.audio-events-stage.v1";
+pub(crate) const AUDIO_EVENTS_STAGE_KEY_VERSION: &str = "clipmill.audio-events-stage.v2";
 
 /// Key version the shot-detection stage payload carries, for the same reason.
 pub(crate) const SHOTS_STAGE_KEY_VERSION: &str = "clipmill.shots-stage.v1";
@@ -614,11 +616,11 @@ fn faces_task(task_id: String, payload: &FacesStagePayloadV1) -> TaskSpec {
 /// Its payload is the speech chain's, naming its own stage and nothing else:
 /// how voices are told apart is the worker's, recorded in what it publishes,
 /// so the key moves with the implementation rather than with a knob here.
-/// What can be heard besides words: laughter, applause, music, shouting.
+/// Room sounds and vocal delivery from the mono rendition and its speech intervals.
 fn audio_events_task(
     task_id: String,
     source_fingerprint: &str,
-    audio_task: &str,
+    (audio_task, vad_task): (&str, &str),
     models: &crate::models::ModelRegistry,
     bindings: &crate::selection::Bindings,
 ) -> TaskSpec {
@@ -627,7 +629,7 @@ fn audio_events_task(
         task_id,
         ordinal: 0,
         kind: "audio-events".to_owned(),
-        input_kinds: vec!["media.audio_16k.v1".to_owned()],
+        input_kinds: vec!["media.audio_16k.v1".to_owned(), "speech.vad.v1".to_owned()],
         output_kind: "audio.events.v1".to_owned(),
         payload: AudioEventsStagePayloadV1 {
             key_version: AUDIO_EVENTS_STAGE_KEY_VERSION.to_owned(),
@@ -635,7 +637,7 @@ fn audio_events_task(
             source_fingerprint: source_fingerprint.to_owned(),
         }
         .encode_to_vec(),
-        dependencies: vec![audio_task.to_owned()],
+        dependencies: vec![audio_task.to_owned(), vad_task.to_owned()],
         input_artifact_ids: Vec::new(),
         // One session thread, fixed by the worker for the same reason the
         // voice detector's is: an event's edge must not depend on the load.
@@ -1587,6 +1589,7 @@ impl JobPlan {
         decoder_bom: &str,
         now: u64,
     ) -> Result<Self, &'static str> {
+        mind_edits::validate(request)?;
         if !matches!(
             request.content_profile.as_str(),
             "" | "interview" | "scripted"
@@ -1719,18 +1722,17 @@ impl JobPlan {
                     stages.push(("speech.speakers.v1".to_owned(), speakers.task_id.clone()));
                     speakers_id = Some(speakers.task_id.clone());
                     tasks.push(speakers);
+                    let events = audio_events_task(
+                        TaskId::new().to_string(),
+                        source.source_fingerprint,
+                        (audio.task_id.as_str(), vad.as_str()),
+                        models,
+                        bindings,
+                    );
+                    stages.push(("audio.events.v1".to_owned(), events.task_id.clone()));
+                    audio_events_id = Some(events.task_id.clone());
+                    tasks.push(events);
                 }
-                // The reactions a transcript cannot show, from the same rendition.
-                let events = audio_events_task(
-                    TaskId::new().to_string(),
-                    source.source_fingerprint,
-                    audio.task_id.as_str(),
-                    models,
-                    bindings,
-                );
-                stages.push(("audio.events.v1".to_owned(), events.task_id.clone()));
-                audio_events_id = Some(events.task_id.clone());
-                tasks.push(events);
                 Some(chain.transcript_task_id)
             }
         };
@@ -1895,144 +1897,143 @@ impl JobPlan {
                     tasks.push(embed);
                 }
 
-                // The windows an editorial model reads.
-                // Cut here so the model's stages, when they arrive, read a
-                // published artifact rather than recomputing one; nothing
-                // downstream reads them yet.
+                // Cloud editorial still uses the window protocol. Local model work
+                // runs once through memory, markup, planning, critique and ranking.
                 let windows = TaskId::new().to_string();
-                tasks.push(builtin_task(
-                    windows.clone(),
-                    Builtin {
-                        kind: editorial::KIND_WINDOWS,
-                        output_kind: "editorial.windows.v1",
-                        implementation: editorial::IMPLEMENTATION,
-                        input_kinds: vec![
-                            "index.transcript.v1".to_owned(),
-                            "speech.transcript.v1".to_owned(),
-                        ],
-                        dependencies: vec![index.clone(), transcript.clone()],
-                        payload: EditorialStagePayloadV1 {
-                            key_version: EDITORIAL_STAGE_KEY_VERSION.to_owned(),
-                            stage: editorial::KIND_WINDOWS.to_owned(),
-                            content_profile: editorial_profile(request).to_owned(),
-                            duration: Some(editorial_duration(request)),
-                            ..Default::default()
-                        }
-                        .encode_to_vec(),
-                        ram_mib: 256,
-                    },
-                ));
-                stages.push(("editorial.windows.v1".to_owned(), windows.clone()));
+                if !request.local_editorial {
+                    tasks.push(builtin_task(
+                        windows.clone(),
+                        Builtin {
+                            kind: editorial::KIND_WINDOWS,
+                            output_kind: "editorial.windows.v1",
+                            implementation: editorial::IMPLEMENTATION,
+                            input_kinds: vec![
+                                "index.transcript.v1".to_owned(),
+                                "speech.transcript.v1".to_owned(),
+                            ],
+                            dependencies: vec![index.clone(), transcript.clone()],
+                            payload: EditorialStagePayloadV1 {
+                                key_version: EDITORIAL_STAGE_KEY_VERSION.to_owned(),
+                                stage: editorial::KIND_WINDOWS.to_owned(),
+                                content_profile: editorial_profile(request).to_owned(),
+                                duration: Some(editorial_duration(request)),
+                                ..Default::default()
+                            }
+                            .encode_to_vec(),
+                            ram_mib: 256,
+                        },
+                    ));
+                    stages.push(("editorial.windows.v1".to_owned(), windows.clone()));
+                }
 
-                let (discover, judgments, looks) =
-                    if request.local_editorial || request.cloud_editorial.is_some() {
-                        let propose = editorial_worker_task(
-                            "propose",
-                            vec![windows.clone()],
-                            vec!["editorial.windows.v1".into()],
-                            request,
-                            models,
-                            bindings,
-                        )?;
-                        let propose_id = propose.task_id.clone();
-                        stages.push((propose.output_kind.clone(), propose_id.clone()));
-                        tasks.push(propose);
-                        let validate = TaskId::new().to_string();
-                        tasks.push(builtin_task(
-                            validate.clone(),
-                            Builtin {
-                                kind: editorial::KIND_VALIDATE,
-                                output_kind: "discovery.candidates.v1",
-                                implementation: "clipmill-editorial-validate@1.0.0",
-                                input_kinds: vec![
-                                    "editorial.windows.v1".into(),
-                                    "editorial.proposals.v1".into(),
-                                    "speech.transcript.v1".into(),
-                                ],
-                                dependencies: vec![windows.clone(), propose_id, transcript.clone()],
-                                payload: EditorialStagePayloadV1 {
-                                    key_version: EDITORIAL_STAGE_KEY_VERSION.into(),
-                                    stage: editorial::KIND_VALIDATE.into(),
-                                    content_profile: editorial_profile(request).to_owned(),
-                                    duration: Some(editorial_duration(request)),
-                                    ..Default::default()
-                                }
-                                .encode_to_vec(),
-                                ram_mib: 256,
-                            },
-                        ));
-                        stages.push(("discovery.candidates.v1".into(), validate.clone()));
-                        let review = editorial_worker_task(
-                            "review",
-                            vec![validate.clone(), windows.clone()],
-                            vec![
-                                "discovery.candidates.v1".into(),
+                let (discover, judgments, looks) = if request.cloud_editorial.is_some() {
+                    let propose = editorial_worker_task(
+                        "propose",
+                        vec![windows.clone()],
+                        vec!["editorial.windows.v1".into()],
+                        request,
+                        models,
+                        bindings,
+                    )?;
+                    let propose_id = propose.task_id.clone();
+                    stages.push((propose.output_kind.clone(), propose_id.clone()));
+                    tasks.push(propose);
+                    let validate = TaskId::new().to_string();
+                    tasks.push(builtin_task(
+                        validate.clone(),
+                        Builtin {
+                            kind: editorial::KIND_VALIDATE,
+                            output_kind: "discovery.candidates.v1",
+                            implementation: "clipmill-editorial-validate@1.0.0",
+                            input_kinds: vec![
                                 "editorial.windows.v1".into(),
+                                "editorial.proposals.v1".into(),
+                                "speech.transcript.v1".into(),
+                            ],
+                            dependencies: vec![windows.clone(), propose_id, transcript.clone()],
+                            payload: EditorialStagePayloadV1 {
+                                key_version: EDITORIAL_STAGE_KEY_VERSION.into(),
+                                stage: editorial::KIND_VALIDATE.into(),
+                                content_profile: editorial_profile(request).to_owned(),
+                                duration: Some(editorial_duration(request)),
+                                ..Default::default()
+                            }
+                            .encode_to_vec(),
+                            ram_mib: 256,
+                        },
+                    ));
+                    stages.push(("discovery.candidates.v1".into(), validate.clone()));
+                    let review = editorial_worker_task(
+                        "review",
+                        vec![validate.clone(), windows.clone()],
+                        vec![
+                            "discovery.candidates.v1".into(),
+                            "editorial.windows.v1".into(),
+                        ],
+                        request,
+                        models,
+                        bindings,
+                    )?;
+                    let review_id = review.task_id.clone();
+                    stages.push((review.output_kind.clone(), review_id.clone()));
+                    tasks.push(review);
+                    let looks = if let Some(frames) = &handles.frames {
+                        let look = editorial_worker_task(
+                            "look",
+                            vec![review_id.clone(), validate.clone(), frames.task_id.clone()],
+                            vec![
+                                "editorial.judgments.v1".into(),
+                                "discovery.candidates.v1".into(),
+                                "media.frames.v1".into(),
                             ],
                             request,
                             models,
                             bindings,
                         )?;
-                        let review_id = review.task_id.clone();
-                        stages.push((review.output_kind.clone(), review_id.clone()));
-                        tasks.push(review);
-                        let looks = if let Some(frames) = &handles.frames {
-                            let look = editorial_worker_task(
-                                "look",
-                                vec![review_id.clone(), validate.clone(), frames.task_id.clone()],
-                                vec![
-                                    "editorial.judgments.v1".into(),
-                                    "discovery.candidates.v1".into(),
-                                    "media.frames.v1".into(),
-                                ],
-                                request,
-                                models,
-                                bindings,
-                            )?;
-                            let id = look.task_id.clone();
-                            stages.push((look.output_kind.clone(), id.clone()));
-                            tasks.push(look);
-                            Some(id)
-                        } else {
-                            None
-                        };
-                        (validate, Some(review_id), looks)
+                        let id = look.task_id.clone();
+                        stages.push((look.output_kind.clone(), id.clone()));
+                        tasks.push(look);
+                        Some(id)
                     } else {
-                        let discover = TaskId::new().to_string();
-                        let mut discover_dependencies = vec![index.clone(), transcript.clone()];
-                        let mut discover_kinds = vec![
-                            "index.transcript.v1".to_owned(),
-                            "speech.transcript.v1".to_owned(),
-                        ];
-                        if let Some(loudness) = &handles.loudness {
-                            discover_dependencies.push(loudness.task_id.clone());
-                            discover_kinds.push("media.loudness_envelope.v1".to_owned());
-                        }
-                        tasks.push(builtin_task(
-                            discover.clone(),
-                            Builtin {
-                                kind: discovery::KIND_DISCOVER,
-                                output_kind: "discovery.candidates.v1",
-                                implementation: discovery::IMPLEMENTATION,
-                                input_kinds: discover_kinds,
-                                dependencies: discover_dependencies,
-                                payload: DiscoverStagePayloadV1 {
-                                    key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
-                                    stage: discovery::KIND_DISCOVER.to_owned(),
-                                    duration: request.duration.or(Some(ClipDurationV1 {
-                                        min_ticks: 0,
-                                        max_ticks: 0,
-                                    })),
-                                    exploration_floor: 0,
-                                }
-                                .encode_to_vec(),
-                                ram_mib: 512,
-                            },
-                        ));
-                        stages.push(("discovery.candidates.v1".to_owned(), discover.clone()));
-
-                        (discover, None, None)
+                        None
                     };
+                    (validate, Some(review_id), looks)
+                } else {
+                    let discover = TaskId::new().to_string();
+                    let mut discover_dependencies = vec![index.clone(), transcript.clone()];
+                    let mut discover_kinds = vec![
+                        "index.transcript.v1".to_owned(),
+                        "speech.transcript.v1".to_owned(),
+                    ];
+                    if let Some(loudness) = &handles.loudness {
+                        discover_dependencies.push(loudness.task_id.clone());
+                        discover_kinds.push("media.loudness_envelope.v1".to_owned());
+                    }
+                    tasks.push(builtin_task(
+                        discover.clone(),
+                        Builtin {
+                            kind: discovery::KIND_DISCOVER,
+                            output_kind: "discovery.candidates.v1",
+                            implementation: discovery::IMPLEMENTATION,
+                            input_kinds: discover_kinds,
+                            dependencies: discover_dependencies,
+                            payload: DiscoverStagePayloadV1 {
+                                key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
+                                stage: discovery::KIND_DISCOVER.to_owned(),
+                                duration: request.duration.or(Some(ClipDurationV1 {
+                                    min_ticks: 0,
+                                    max_ticks: 0,
+                                })),
+                                exploration_floor: 0,
+                            }
+                            .encode_to_vec(),
+                            ram_mib: 512,
+                        },
+                    ));
+                    stages.push(("discovery.candidates.v1".to_owned(), discover.clone()));
+
+                    (discover, None, None)
+                };
                 let mut rank_kinds = vec![
                     "discovery.candidates.v1".into(),
                     "index.transcript.v1".into(),
@@ -2381,8 +2382,6 @@ fn mind_tasks(
         },
     )];
     stages.push(("mind.script.v1".to_owned(), script.clone()));
-    let mut cut_dependencies = vec![timeline_id.to_owned(), script.clone()];
-    let mut cut_kinds = vec!["timeline.index.v1".to_owned(), "mind.script.v1".to_owned()];
     for operation in ["memory", "score"] {
         let task = editorial_worker_task(
             operation,
@@ -2393,25 +2392,53 @@ fn mind_tasks(
             bindings,
         )?;
         stages.push((task.output_kind.clone(), task.task_id.clone()));
-        cut_dependencies.push(task.task_id.clone());
-        cut_kinds.push(task.output_kind.clone());
         tasks.push(task);
     }
-    let cut = TaskId::new().to_string();
-    tasks.push(builtin_task(
-        cut.clone(),
-        Builtin {
-            kind: mind::KIND_CUT,
-            output_kind: "mind.candidates.v1",
-            implementation: mind::CUT_IMPLEMENTATION,
-            input_kinds: cut_kinds,
-            dependencies: cut_dependencies,
-            payload: payload(mind::KIND_CUT),
-            ram_mib: 256,
-        },
-    ));
-    stages.push(("mind.candidates.v1".to_owned(), cut));
+    tasks.extend(mind_edits::build(
+        request,
+        models,
+        bindings,
+        stages,
+        &BTreeMap::new(),
+    )?);
     Ok(tasks)
+}
+
+/// Prompt bytes and the published kind form one versioned recipe per worker operation.
+fn editorial_recipe(operation: &str) -> Option<(&'static str, &'static str)> {
+    macro_rules! prompt {
+        ($name:literal) => {
+            include_str!(concat!(
+                "../../../workers/editorial/src/clipmill_worker_editorial/prompts/",
+                $name,
+                ".v1.txt"
+            ))
+        };
+    }
+    Some(match operation {
+        "propose" => (prompt!("propose"), "editorial.proposals.v1"),
+        "review" => (prompt!("review"), "editorial.judgments.v1"),
+        "look" => (prompt!("look"), "editorial.looks.v1"),
+        "memory" => (
+            concat!(prompt!("memory.read"), prompt!("memory.link")),
+            "mind.memory.v1",
+        ),
+        "score" => (prompt!("score"), "mind.unit_scores.v1"),
+        "plan" => (prompt!("plan"), "mind.plans.v1"),
+        "critic" => (
+            concat!(
+                prompt!("critic"),
+                prompt!("critic.edge"),
+                prompt!("critic.source"),
+                prompt!("critic.copy"),
+                prompt!("critic.omission"),
+                prompt!("plan")
+            ),
+            "mind.quality_report.v1",
+        ),
+        "rank" => (prompt!("compare"), "ranking.set.v2"),
+        _ => return None,
+    })
 }
 
 fn editorial_worker_task(
@@ -2425,7 +2452,10 @@ fn editorial_worker_task(
     use sha2::{Digest, Sha256};
     // Looking at frames, and the mind's memory and markup, run on this
     // computer only.
-    let cloud = if matches!(operation, "look" | "memory" | "score") {
+    let cloud = if matches!(
+        operation,
+        "look" | "memory" | "score" | "plan" | "critic" | "rank"
+    ) {
         None
     } else {
         request.cloud_editorial.clone()
@@ -2444,38 +2474,10 @@ fn editorial_worker_task(
         .filter(|implementation| implementation.stage == stage)
         .or_else(|| crate::implementations::candidates_for_stage(&stage).next())
         .ok_or("editorial implementation missing")?;
-    let prompt = match operation {
-        "propose" => include_str!(
-            "../../../workers/editorial/src/clipmill_worker_editorial/prompts/propose.v1.txt"
-        ),
-        "review" => include_str!(
-            "../../../workers/editorial/src/clipmill_worker_editorial/prompts/review.v1.txt"
-        ),
-        "look" => include_str!(
-            "../../../workers/editorial/src/clipmill_worker_editorial/prompts/look.v1.txt"
-        ),
-        "memory" => concat!(
-            include_str!(
-                "../../../workers/editorial/src/clipmill_worker_editorial/prompts/memory.read.v1.txt"
-            ),
-            include_str!(
-                "../../../workers/editorial/src/clipmill_worker_editorial/prompts/memory.link.v1.txt"
-            ),
-        ),
-        "score" => include_str!(
-            "../../../workers/editorial/src/clipmill_worker_editorial/prompts/score.v1.txt"
-        ),
-        _ => return Err("unknown editorial operation"),
-    };
-    let output_kind = match operation {
-        "propose" => "editorial.proposals.v1",
-        "look" => "editorial.looks.v1",
-        "memory" => "mind.memory.v1",
-        "score" => "mind.unit_scores.v1",
-        _ => "editorial.judgments.v1",
-    };
+    let (prompt, output_kind) = editorial_recipe(operation).ok_or("unknown editorial operation")?;
     // The link pass lists chapters and links for a whole recording at once.
     let max_output_tokens = if operation == "memory" { 4096 } else { 2048 };
+    let uses_brief = matches!(operation, "plan" | "critic" | "rank");
     Ok(TaskSpec {
         task_id: TaskId::new().to_string(),
         ordinal: 0,
@@ -2490,6 +2492,17 @@ fn editorial_worker_task(
             max_output_tokens,
             cloud: cloud.clone(),
             content_profile: editorial_profile(request).to_owned(),
+            editorial_prompt: if uses_brief {
+                request.editorial_prompt.clone()
+            } else {
+                String::new()
+            },
+            editorial_taste: if uses_brief {
+                request.editorial_taste.clone()
+            } else {
+                Vec::new()
+            },
+            requested_count: if uses_brief { request.count } else { 0 },
         }
         .encode_to_vec(),
         dependencies,
@@ -2498,6 +2511,14 @@ fn editorial_worker_task(
             ResourceDeclaration {
                 network_policy: "network-allowed".into(),
                 ..ingest_resources(1, 128, 32)
+            }
+        } else if implementation.backend == "mlx"
+            && matches!(operation, "memory" | "score" | "plan" | "critic" | "rank")
+        {
+            // Includes the recording's private, bounded MLX prefix checkpoints.
+            ResourceDeclaration {
+                disk_bytes: 512 * 1024 * 1024,
+                ..speech_resources(implementation, models, 1)
             }
         } else {
             speech_resources(implementation, models, 1)
@@ -4522,6 +4543,8 @@ mod analyze_tests {
     fn request() -> AnalyzeSourcePayloadV1 {
         AnalyzeSourcePayloadV1 {
             local_editorial: false,
+            editorial_prompt: String::new(),
+            editorial_taste: Vec::new(),
             content_profile: String::new(),
             cloud_editorial: None,
             key_version: "clipmill.analyze-source.v1".to_owned(),
@@ -4578,37 +4601,104 @@ mod analyze_tests {
     }
 
     #[test]
-    fn editorial_route_is_explicit_and_uses_the_fixed_model() {
+    fn local_editorial_routes_the_brief_through_review_and_ranking_only() {
         use prost::Message;
         let plan = editorial_plan(&AnalyzeSourcePayloadV1 {
             local_editorial: true,
+            editorial_prompt: "pricing".into(),
+            editorial_taste: vec!["Kept a short interview answer.".into()],
             ..request()
         })
         .unwrap();
-        assert!(
-            !plan
-                .tasks
-                .iter()
-                .any(|t| t.kind.ends_with("-cloud") || t.kind == "discover-candidates")
-        );
-        for operation in ["propose", "review", "look"] {
+        assert!(!plan.tasks.iter().any(|t| t.kind.ends_with("-cloud")
+            || matches!(
+                t.kind.as_str(),
+                "editorial-windows" | "editorial-propose" | "editorial-review" | "editorial-look"
+            )));
+        for operation in ["memory", "score", "plan", "critic", "rank"] {
             let task = task(&plan, &format!("editorial-{operation}"));
-            let payload = clipmill_contracts::proto::ipc::v1::EditorialStagePayloadV1::decode(
-                task.payload.as_slice(),
-            )
-            .unwrap();
+            let payload = super::EditorialStagePayloadV1::decode(task.payload.as_slice()).unwrap();
             assert!(payload.cloud.is_none());
             assert!(payload.prompt_digest.starts_with("sha256:"));
             assert_eq!(payload.duration.unwrap().min_ticks, 20 * 90_000);
+            if matches!(operation, "plan" | "critic" | "rank") {
+                assert_eq!(payload.editorial_prompt, "pricing");
+                assert_eq!(payload.editorial_taste.len(), 1);
+            } else {
+                assert!(payload.editorial_prompt.is_empty() && payload.editorial_taste.is_empty());
+            }
         }
-        let validate = task(&plan, "editorial-validate");
-        assert!(!validate.dependencies.is_empty());
         assert!(
-            task(&plan, "rank-candidates")
+            task(&plan, "editorial-rank")
                 .input_kinds
                 .iter()
-                .any(|kind| kind == "editorial.judgments.v1")
+                .any(|k| k == "mind.quality_report.v1")
         );
+        assert!(
+            task(&plan, "analysis-manifest")
+                .input_kinds
+                .iter()
+                .any(|k| k == "ranking.set.v2")
+        );
+    }
+
+    #[test]
+    fn a_new_brief_reuses_observations_and_roots_them_with_the_new_decisions() {
+        let request = AnalyzeSourcePayloadV1 {
+            local_editorial: true,
+            editorial_prompt: "pricing".into(),
+            ..request()
+        };
+        let parent = editorial_plan(&request).unwrap();
+        let published = parent
+            .tasks
+            .iter()
+            .filter(|t| !t.is_final)
+            .map(|t| (t.output_kind.clone(), t.task_id.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let manifest = super::AnalysisStagePayloadV1 {
+            source_fingerprint: FINGERPRINT.to_owned(),
+            ..Default::default()
+        };
+        let plan = JobPlan::reprompt(
+            &ProjectId::new(),
+            SOURCE.to_owned(),
+            (&published, manifest),
+            &request,
+            &models(),
+            &crate::selection::Bindings::portable(),
+            8,
+        )
+        .unwrap();
+        assert_eq!(
+            plan.tasks
+                .iter()
+                .map(|t| t.kind.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "mind-cut",
+                "editorial-plan",
+                "editorial-critic",
+                "editorial-rank",
+                "analysis-manifest"
+            ]
+        );
+        let root = task(&plan, "analysis-manifest");
+        assert!(
+            root.is_final
+                && root
+                    .input_artifact_ids
+                    .contains(&published["speech.transcript.v1"])
+        );
+        for kind in [
+            "mind.candidates.v1",
+            "mind.plans.v1",
+            "mind.quality_report.v1",
+            "ranking.set.v2",
+        ] {
+            assert!(!root.input_artifact_ids.contains(&published[kind]));
+            assert!(root.input_kinds.iter().any(|k| k == kind));
+        }
     }
 
     #[test]

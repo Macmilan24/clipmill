@@ -41,3 +41,27 @@ Settings shows the client's activity and lets you revoke access. After
 revocation its token can no longer poll tasks or read edits, including ones it
 opened earlier. The engine reference describes the supported methods,
 request metadata and retry behavior. [Engine API](engine-api.md)
+
+## Work with editorial plans
+
+Use the project, source and job IDs of a finished local editorial analysis to
+keep every call on the same recording and run.
+
+- **Ask ClipMill to edit.** Call `clipmill_propose_clips` with the IDs and a
+  `prompt` such as “Find the explanation of the monthly bill and keep the
+  numbers together.” Follow the returned job, then use its ID in
+  `clipmill_list_clips`. Inspect a proposal with `clipmill_describe_clip`
+  and open it with `clipmill_create_clip_from_plan` using its `clip_id`.
+- **Supply an edit.** Inspect `clipmill_memory_overview` and
+  `clipmill_find_moments`, then read `clipmill_get_transcript`. Use its
+  `source_fingerprint` and the exact `start_ticks` and `end_ticks`
+  from the sentences you want to keep. Pass a complete
+  `clipmill.mind.clip_plan.v1` document to `clipmill_create_clip_from_plan`
+  in the `plan` argument. ClipMill checks its source fingerprint and cut
+  boundaries. The reply includes a readable edit resource and the revision
+  to use for subsequent commands. [Clip plan schema](../contracts/schemas/clipmill.mind.clip_plan.v1.json)
+- **Revise the brief.** Call `clipmill_reprompt` with the previous job ID,
+  a new prompt, and optional `min_seconds`, `max_seconds` and `count`.
+  The new job reuses the recording's observations. To record feedback on
+  one of its clips, pass its run and clip IDs, your decision, and an optional
+  reason to `clipmill_set_decision`.

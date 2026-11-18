@@ -1,0 +1,125 @@
+{
+  "inputs": {
+    "mind.candidates.v1": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "mind.memory.v1": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "mind.plans.v1": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "mind.script.v1": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "reviews": [
+    {
+      "candidate_id": "plan_7f3a9c21d04e8b65",
+      "chapter": "Losing the company",
+      "plan": {
+        "doubts": [
+          "The payoff is said more calmly; the join may feel like a jump"
+        ],
+        "duration_ticks": 3060000,
+        "evidence": [
+          "v027",
+          "callback:s1203>s0413"
+        ],
+        "form": "stitch",
+        "hook_text": "We lost everything.",
+        "joins": [
+          {
+            "after": "p1",
+            "kind": "adjacent"
+          },
+          {
+            "after": "p2",
+            "crossfade_ms": 60,
+            "framing": "punch_in",
+            "kind": "distant",
+            "link": "callback:s1203>s0413",
+            "room_tone": true
+          }
+        ],
+        "parts": [
+          {
+            "end_ticks": 68760000,
+            "part_id": "p1",
+            "role": "question",
+            "start_ticks": 68490000,
+            "units": [
+              "s0412"
+            ],
+            "why": "The question that frames the story"
+          },
+          {
+            "end_ticks": 71280000,
+            "part_id": "p2",
+            "removed": [
+              {
+                "end_ticks": 70740000,
+                "note": "The office lease",
+                "reason": "tangent",
+                "start_ticks": 70290000
+              }
+            ],
+            "role": "answer",
+            "start_ticks": 68850000,
+            "units": [
+              "s0413",
+              "s0414",
+              "s0415",
+              "s0417"
+            ],
+            "why": "The story, with its tangent removed"
+          },
+          {
+            "end_ticks": 159030000,
+            "part_id": "p3",
+            "role": "payoff",
+            "start_ticks": 158220000,
+            "units": [
+              "s1203"
+            ],
+            "why": "Sixteen minutes later she says what it taught her"
+          }
+        ],
+        "plan_id": "plan_7f3a9c21d04e8b65",
+        "provenance": {
+          "by": "mind",
+          "models": [
+            "qwen3-5-editorial-mlx"
+          ],
+          "prompts": [
+            "plan.v1"
+          ]
+        },
+        "schema_version": "clipmill.mind.clip_plan.v1",
+        "source_fingerprint": "sha256:c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+        "title": "Why the first company closed"
+      },
+      "quality": {
+        "hook": "adequate",
+        "issues": [],
+        "joins": [
+          {
+            "after": "p1",
+            "note": "Matches the surrounding account.",
+            "verdict": "pass"
+          },
+          {
+            "after": "p2.cut1",
+            "note": "Matches the surrounding account.",
+            "verdict": "pass"
+          },
+          {
+            "after": "p2",
+            "note": "Matches the surrounding account.",
+            "verdict": "pass"
+          }
+        ],
+        "repaired": true,
+        "summary": "The account preserves the speaker’s original qualification.",
+        "verdict": "accept"
+      },
+      "reasons": [
+        "The later reflection answers the opening question."
+      ]
+    }
+  ],
+  "schema_version": "clipmill.mind.quality_report.v1",
+  "source_fingerprint": "sha256:c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+}

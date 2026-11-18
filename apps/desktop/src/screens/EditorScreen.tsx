@@ -273,6 +273,7 @@ export function EditorScreen({
           : ''
       }
       proxyUrls={editor.proxyUrls}
+      audioUrls={editor.audioUrls}
       docId={editor.docId}
       labels={clip?.labels ?? null}
       focus={focus}

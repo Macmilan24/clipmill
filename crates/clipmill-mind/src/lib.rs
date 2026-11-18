@@ -33,7 +33,7 @@ pub const MIN_REACTION_TICKS: u64 = 36_000;
 pub const ADJACENT_GAP_TICKS: u64 = 3 * SECOND;
 
 /// The fewest parts a theme montage is made of.
-pub const MIN_MONTAGE_PARTS: usize = 3;
+pub const MIN_MONTAGE_PARTS: usize = 2;
 
 /// What a plan is checked against besides itself.
 #[derive(Clone, Copy, Debug)]
@@ -319,9 +319,8 @@ fn check_form(plan: &MindClipPlan, found: &mut Vec<Violation>) {
             || plan.parts[0].role != PartRole::Hook
             || plan.joins.first().map(|join| join.kind) != Some(JoinKind::Reorder))
         .then_some("A cold open starts with a hook lifted from later, then goes back."),
-        MindClipPlanForm::ThemeMontage => {
-            (parts < MIN_MONTAGE_PARTS).then_some("A theme montage needs at least three moments.")
-        }
+        MindClipPlanForm::ThemeMontage => (parts < MIN_MONTAGE_PARTS)
+            .then_some("A theme montage needs at least two source regions."),
     };
     if let Some(message) = problem {
         found.push(violation("form", None, message.to_owned()));

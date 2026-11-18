@@ -278,3 +278,76 @@ describe('the words the Inspector reads', () => {
     expect(await loader.loadTranscript(OLD, snapshot)).toBeNull();
   });
 });
+
+describe('ranked plans from a fresh brief', () => {
+  it('opens an empty shortlist on its own job and follows the frozen source artifacts', async () => {
+    const world = twoProjects();
+    const fingerprint = world.sources[OLD]![0]!.sourceFingerprint;
+    const root = 'sha256:reprompt-root';
+    const result = 'sha256:reprompt-ranking';
+    const ingest = 'sha256:parent-ingest';
+    const index = 'sha256:original-index';
+    const rerun = {
+      ...job(OLD, JobState.SUCCEEDED, [
+        task('ranking.set.v2', TaskState.SUCCEEDED, { outputArtifactId: result }),
+        task('analysis.manifest.v1', TaskState.SUCCEEDED, { outputArtifactId: root }),
+      ]),
+      kind: 'reprompt',
+      sourceId: OLD_SOURCE,
+      jobId: 'fresh-brief',
+    };
+    const docs = [
+      {
+        artifactId: root,
+        kind: 'analysis.manifest.v1',
+        json: JSON.stringify({
+          schema_version: 'clipmill.analysis.manifest.v1',
+          source_fingerprint: fingerprint,
+          stages: [
+            { kind: 'media.ingest_manifest.v1', artifact_id: ingest },
+            { kind: 'index.transcript.v1', artifact_id: index },
+          ],
+        }),
+      },
+      {
+        artifactId: ingest,
+        kind: 'media.ingest_manifest.v1',
+        json: JSON.stringify({
+          schema_version: 'clipmill.media.ingest_manifest.v1',
+          source_fingerprint: fingerprint,
+          children: [{ kind: 'media.proxy.v1', artifact_id: 'sha256:parent-proxy' }],
+        }),
+      },
+      {
+        artifactId: result,
+        kind: 'ranking.set.v2',
+        json: JSON.stringify({
+          schema_version: 'clipmill.ranking.set.v2',
+          source_fingerprint: fingerprint,
+          editorial_prompt: 'Find the prices',
+          clips: [],
+          requested_count: 3,
+          cutoff_reason: 'No distinct matches.',
+        }),
+      },
+    ];
+    const loader = new ResultsLoader(
+      fakeApi({
+        ...world,
+        jobs: { ...world.jobs, [OLD]: [rerun, ...world.jobs[OLD]!] },
+        documents: {
+          ...world.documents,
+          ...Object.fromEntries(docs.map((doc) => [doc.artifactId, doc])),
+        },
+      }),
+    );
+    const shot = await loader.load(OLD, OLD_SOURCE);
+    expect(shot.problem).toBeNull();
+    expect(shot.run?.jobId).toBe('fresh-brief');
+    expect(shot.rows).toEqual([]);
+    expect(shot.plans).toEqual([]);
+    expect(shot.editorialRanking?.cutoff).toBe('No distinct matches.');
+    expect(shot.proxyArtifactId).toBe('sha256:parent-proxy');
+    expect(shot.searchable).toBe(true);
+  });
+});

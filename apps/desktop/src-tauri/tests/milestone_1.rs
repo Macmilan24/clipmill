@@ -297,6 +297,8 @@ async fn analyse(client: &DaemonClient, name: &str, recording: &Path) -> Analyse
             AnalyzeSourcePayloadV1 {
                 content_profile: "interview".to_owned(),
                 local_editorial: false,
+                editorial_prompt: String::new(),
+                editorial_taste: Vec::new(),
                 cloud_editorial: None,
                 key_version: "clipmill.analyze-source.v1".to_owned(),
                 source_id: source.source_id.clone(),

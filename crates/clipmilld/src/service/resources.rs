@@ -2,7 +2,7 @@
 
 use clipmill_contracts::proto::ipc::v1::{
     ApplyEditCommandRequest, EditDoc, GetEditDocRequest, GetSourceRequest, ListEditHistoryRequest,
-    TaskState, request, response,
+    SnapshotEditDocRequest, TaskState, request, response,
 };
 use serde_json::{Value, json};
 
@@ -202,5 +202,55 @@ impl Service {
         Ok(
             json!({"doc_id":doc.doc_id,"revision":doc.revision,"inverse":document_json(&applied.inverse_command_json)?}),
         )
+    }
+
+    pub(super) async fn preview_render(&self, args: &Value, id: Option<String>) -> ApiResult {
+        use clipmill_contracts::proto::ipc::v1::RenderClipPayloadV1;
+        use prost::Message;
+        use sha2::{Digest, Sha256};
+        let doc_id = arg_str(args, "doc_id")?;
+        let id = id.unwrap_or_else(|| format!("v2_{}", ulid::Ulid::new()));
+        let hash = Sha256::digest(super::api_v2::canonical_json(args).as_bytes()).into();
+        let expected = revision(args)?;
+        if let Some(bytes) = self
+            .database
+            .replay_request(id.clone(), hash)
+            .await
+            .map_err(|e| super::briefs::store_error(&e))?
+        {
+            let mut saved = super::briefs::submitted(&bytes)?;
+            saved["revision"] = json!(expected);
+            return Ok(saved);
+        }
+        let doc = self.get_api_edit(args).await?;
+        let snapshot = self
+            .v1(
+                request::Body::SnapshotEditDoc(SnapshotEditDocRequest {
+                    doc_id: doc_id.to_owned(),
+                }),
+                None,
+            )
+            .await?;
+        let response::Body::SnapshotEditDoc(frozen) = snapshot else {
+            return Err(ApiError::new("internal", "unexpected snapshot"));
+        };
+        if expected != frozen.revision {
+            return Err(ApiError::new("conflict", "the edit has changed"));
+        }
+        let data = RenderClipPayloadV1 {
+            key_version: super::RENDER_CLIP_KEY_VERSION.to_owned(),
+            doc_id: doc_id.to_owned(),
+            ir_artifact_id: frozen.artifact_id,
+            source_attestation: "Local working preview. Rights unassessed.".to_owned(),
+            ..Default::default()
+        };
+        let project = arg_str(&doc, "project_id")?
+            .parse()
+            .map_err(|_| ApiError::new("internal", "invalid stored project"))?;
+        let now = super::unix_millis().map_err(|e| ApiError::new("internal", e))?;
+        let plan = crate::jobs::JobPlan::render_clip(&project, data.encode_to_vec(), now);
+        let mut result = self.enqueue_engine_job(id, hash, plan).await?;
+        result["revision"] = json!(frozen.revision);
+        Ok(result)
     }
 }

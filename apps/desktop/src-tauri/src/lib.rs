@@ -5,6 +5,7 @@
 mod daemon;
 mod engine;
 mod media;
+mod mind;
 mod models;
 mod packaged;
 mod updates;
@@ -979,6 +980,7 @@ async fn set_clip_decision(
         source_id,
         candidate_id: candidate_id.clone(),
         decision: views::decision_code(&decision),
+        reason: String::new(),
     };
     let reply = supervisor
         .client()
@@ -1151,6 +1153,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             list_youtube_imports,
             update_youtube_import,
             submit_analyze,
+            mind::find_moments,
+            mind::plan_decision,
+            mind::reprompt,
             apply_edit_command,
             list_edit_docs,
             get_edit_doc,

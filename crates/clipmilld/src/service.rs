@@ -1,6 +1,7 @@
 mod api_v2;
 mod assets;
 mod batch;
+mod briefs;
 mod engine;
 mod mcp_consent;
 mod models;
@@ -1428,7 +1429,8 @@ impl Service {
                 )
             }
             "analyze-source" => {
-                let Ok(payload) = AnalyzeSourcePayloadV1::decode(submit.payload.as_slice()) else {
+                let Ok(mut payload) = AnalyzeSourcePayloadV1::decode(submit.payload.as_slice())
+                else {
                     return error_reply(
                         request_id,
                         ErrorCode::InvalidArgument,
@@ -1474,6 +1476,12 @@ impl Service {
                         ErrorCode::Conflict,
                         "this source has not been probed, so nothing knows which streams it has",
                     );
+                }
+                if payload.local_editorial {
+                    match self.database.editorial_taste(project_id.to_string()).await {
+                        Ok(taste) => payload.editorial_taste = taste,
+                        Err(error) => return store_error_reply(request_id, &error),
+                    }
                 }
                 let bindings = self.planning_bindings_for_language(&payload.language);
                 match JobPlan::analyze_source(
@@ -1816,14 +1824,37 @@ impl Service {
             }
             // A plan is its own identity: the same plan is the same clip,
             // and a different plan from the same moments is another.
-            let identity = format!(
-                "plan:{}:{}:{}",
-                direct.source_id, direct.job_id, direct.plan_json
-            );
-            normalized.candidate_id = format!(
-                "cand_{}",
-                &hex::encode(Sha256::digest(identity.as_bytes()))[..16]
-            );
+            let mut plan: serde_json::Value =
+                serde_json::from_str(&direct.plan_json).map_err(|_| {
+                    (
+                        ErrorCode::InvalidArgument,
+                        "The clip plan is not valid JSON".to_owned(),
+                    )
+                })?;
+            plan.sort_all_objects();
+            normalized.plan_json = plan.to_string();
+            normalized.candidate_id =
+                api_v2::plan_candidate_id(&direct.source_id, &direct.job_id, &normalized.plan_json);
+            if normalized.plan_json != direct.plan_json {
+                let previous =
+                    api_v2::plan_candidate_id(&direct.source_id, &direct.job_id, &direct.plan_json);
+                if self
+                    .database
+                    .list_clip_decisions(direct.project_id.clone(), direct.source_id.clone())
+                    .await
+                    .is_ok_and(|decisions| decisions.iter().any(|d| d.candidate_id == previous))
+                    || self
+                        .database
+                        .list_edit_docs(direct.project_id.clone())
+                        .await
+                        .is_ok_and(|docs| {
+                            docs.iter()
+                                .any(|d| d.candidate_id.as_deref() == Some(previous.as_str()))
+                        })
+                {
+                    normalized.candidate_id = previous;
+                }
+            }
         }
         if direct.manual_span {
             if direct.job_id.is_empty() || direct.start_ticks >= direct.end_ticks {
@@ -2134,6 +2165,13 @@ impl Service {
         if decide.candidate_id.is_empty() {
             return error_reply(request_id, ErrorCode::InvalidArgument, "no candidate named");
         }
+        if decide.reason.chars().count() > 240 {
+            return error_reply(
+                request_id,
+                ErrorCode::InvalidArgument,
+                "A decision reason is limited to 240 characters",
+            );
+        }
         let decision = match ClipDecisionV1::try_from(decide.decision) {
             Ok(ClipDecisionV1::Rejected) => Some(Decision::Rejected),
             Ok(ClipDecisionV1::Kept) => Some(Decision::Kept),
@@ -2174,6 +2212,7 @@ impl Service {
                         decide.candidate_id.clone(),
                         decision,
                         now,
+                        decide.reason.trim().to_owned(),
                     )
                     .await
             }
@@ -2228,6 +2267,7 @@ impl Service {
                                 Decision::Approved => 3,
                             }),
                             decided_unix_millis: record.decided_unix_millis,
+                            reason: record.reason,
                         })
                         .collect(),
                 }),
@@ -2831,7 +2871,7 @@ impl Service {
             Ok(now) => now,
             Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
         };
-        // Two requests are resolved here into commands the log can replay
+        // Resolve source-dependent gestures into commands the log can replay
         // without the evidence they were derived from.
         let op = serde_json::from_str::<serde_json::Value>(&apply.command_json)
             .ok()
@@ -2844,6 +2884,9 @@ impl Service {
         let resolved = match op.as_deref() {
             Some("extend_with_captions") => {
                 Some(self.prepare_extension(&doc_id.to_string(), apply).await)
+            }
+            Some("restore_plan_range") => {
+                Some(self.prepare_restoration(&doc_id.to_string(), apply).await)
             }
             Some("refresh_captions") => {
                 Some(self.prepare_refresh(&doc_id.to_string(), apply).await)
@@ -2943,31 +2986,35 @@ impl Service {
         Ok((position, span))
     }
 
-    /// Resolve a source edge gesture into one replayable command. The command
-    /// log stores the derived cues, so replay never depends on a later analysis.
-    async fn prepare_extension(
+    async fn source_edit(
         &self,
         doc_id: &str,
-        apply: &ApplyEditCommandRequest,
-    ) -> Result<String, (ErrorCode, String)> {
-        let (segment_id, in_ticks, out_ticks) = Self::extension_request(&apply.command_json)?;
+        revision: u64,
+    ) -> Result<(crate::db::EditDocRecord, clipmill_edit_ir::EditDocument), (ErrorCode, String)>
+    {
         let record = self
             .database
             .get_edit_doc(doc_id.to_owned())
             .await
             .map_err(|error| (ErrorCode::NotFound, error.to_string()))?;
-        if record.revision != apply.expected_revision {
+        if record.revision != revision {
             return Err((
                 ErrorCode::Conflict,
-                "The edit changed. Reload before extending.".to_owned(),
+                "The edit changed. Reload before editing.".to_owned(),
             ));
         }
         let document =
             clipmill_edit_ir::EditDocument::from_canonical_json(record.document_json.as_bytes())
                 .map_err(|error| (ErrorCode::Internal, error.to_string()))?;
-        let (position, span) = Self::extension_span(&document, &segment_id, in_ticks, out_ticks)?;
-        let part = &document.video.segments[position];
-        let source_id = record.source_id.ok_or((
+        Ok((record, document))
+    }
+
+    async fn edit_evidence(
+        &self,
+        record: &crate::db::EditDocRecord,
+        fingerprint: &str,
+    ) -> Result<crate::inspector::Evidence, (ErrorCode, String)> {
+        let source_id = record.source_id.as_ref().ok_or((
             ErrorCode::InvalidArgument,
             "This edit has no linked source".to_owned(),
         ))?;
@@ -2980,23 +3027,109 @@ impl Service {
             .get_source(source_id.clone())
             .await
             .map_err(|error| (ErrorCode::NotFound, error.to_string()))?;
-        if source.project_id != record.project_id
-            || source.source_fingerprint != part.source_fingerprint
-        {
+        if source.project_id != record.project_id || source.source_fingerprint != fingerprint {
             return Err((
                 ErrorCode::Conflict,
                 "The edit source no longer matches its recording".to_owned(),
             ));
         }
-        let evidence = crate::inspector::load(
+        crate::inspector::load(
             &self.database,
             artifacts,
-            &source_id,
+            source_id,
             &source.source_map_json,
             record.job_id.as_deref(),
         )
         .await
-        .map_err(|error| (ErrorCode::Conflict, error.message()))?;
+        .map_err(|error| (ErrorCode::Conflict, error.message()))
+    }
+
+    /// Freeze the omitted range's original picture and words in the command.
+    /// Redo and durable replay then work even if its evidence has been archived.
+    async fn prepare_restoration(
+        &self,
+        doc_id: &str,
+        apply: &ApplyEditCommandRequest,
+    ) -> Result<String, (ErrorCode, String)> {
+        #[derive(serde::Deserialize)]
+        struct Restore {
+            index: usize,
+        }
+        let Restore { index } = serde_json::from_str(&apply.command_json).map_err(|_| {
+            (
+                ErrorCode::InvalidArgument,
+                "Choose a removed source range".to_owned(),
+            )
+        })?;
+        let (record, document) = self.source_edit(doc_id, apply.expected_revision).await?;
+        let range = document
+            .plan
+            .as_ref()
+            .and_then(|plan| plan.removed.get(index))
+            .ok_or((
+                ErrorCode::InvalidArgument,
+                "This edit has no such omission".to_owned(),
+            ))?;
+        let evidence = self
+            .edit_evidence(&record, &range.source_fingerprint)
+            .await?;
+        let boundary = clipmill_director::Boundary {
+            start_ticks: range.in_ticks,
+            end_ticks: range.out_ticks,
+        };
+        let directed = clipmill_director::direct_span(
+            clipmill_director::Evidence {
+                candidates: &evidence.candidates,
+                ranking: &evidence.ranking,
+                transcript: &evidence.transcript,
+                index: evidence.index.as_ref(),
+                shots: evidence.shots.as_ref(),
+                faces: evidence.faces.as_ref(),
+            },
+            &clipmill_director::Request {
+                candidate_id: String::new(),
+                cut: clipmill_director::Cut::Exact(boundary),
+                style_ref: document.captions.style_ref.clone(),
+                frame: evidence.frame,
+                shape: document.video.shape,
+            },
+            boundary,
+        )
+        .map_err(|error| (ErrorCode::InvalidArgument, error.to_string()))?;
+        let length = range.out_ticks - range.in_ticks;
+        let command = clipmill_edit_ir::EditCommand::RestoreRemovedRange {
+            index,
+            segments: directed.video.segments,
+            reading_cues: fit_extension_cues(
+                &document.captions.cues,
+                directed.captions.cues,
+                length,
+                range.in_ticks,
+            ),
+            burn_in_cues: fit_extension_cues(
+                &document.captions.burn_in,
+                directed.captions.burn_in,
+                length,
+                range.in_ticks,
+            ),
+        };
+        serde_json::to_string(&command).map_err(|error| (ErrorCode::Internal, error.to_string()))
+    }
+
+    /// Resolve a source edge gesture into one replayable command. The command
+    /// log stores the derived cues, so replay never depends on a later analysis.
+    async fn prepare_extension(
+        &self,
+        doc_id: &str,
+        apply: &ApplyEditCommandRequest,
+    ) -> Result<String, (ErrorCode, String)> {
+        let (segment_id, in_ticks, out_ticks) = Self::extension_request(&apply.command_json)?;
+        let (record, document) = self.source_edit(doc_id, apply.expected_revision).await?;
+        let (position, span) = Self::extension_span(&document, &segment_id, in_ticks, out_ticks)?;
+        let part = &document.video.segments[position];
+        let evidence = self
+            .edit_evidence(&record, &part.source_fingerprint)
+            .await?;
         let captions = clipmill_director::captions_for_span(
             &evidence.transcript,
             evidence.index.as_ref(),
@@ -3220,7 +3353,13 @@ impl Service {
                 display_width: frame.map_or(0, |frame| frame.width),
                 display_height: frame.map_or(0, |frame| frame.height),
             });
-            if let Some(proxy) = self.proxy_of(&source.source_id).await {
+            let needs_room_tone = document.video.segments.iter().any(|segment| {
+                segment.source_fingerprint == fingerprint
+                    && segment
+                        .join
+                        .is_some_and(|join| join.room_tone && join.room_tone_range.is_some())
+            });
+            if let Some(proxy) = self.proxy_of(&source.source_id, needs_room_tone).await {
                 proxies.push(PreviewProxyV1 {
                     source_fingerprint: fingerprint.to_owned(),
                     ..proxy
@@ -3231,7 +3370,7 @@ impl Service {
     }
 
     /// The newest proxy published over a source, as the player needs it.
-    async fn proxy_of(&self, source_id: &str) -> Option<PreviewProxyV1> {
+    async fn proxy_of(&self, source_id: &str, needs_room_tone: bool) -> Option<PreviewProxyV1> {
         let artifacts = self.artifacts.as_ref()?;
         let address = self
             .database
@@ -3243,7 +3382,15 @@ impl Service {
         let lease = artifacts.open(artifact_id).await.ok()?;
         let descriptor: clipmill_contracts::schemas::media_proxy::MediaProxy =
             crate::media::read_artifact_document(&lease, "proxy.json").ok()?;
+        let (audio_artifact_id, audio_file, audio_start_ticks) = if needs_room_tone {
+            self.audition_audio(source_id).await.unwrap_or_default()
+        } else {
+            Default::default()
+        };
         Some(PreviewProxyV1 {
+            audio_artifact_id,
+            audio_file,
+            audio_start_ticks,
             source_fingerprint: String::new(),
             artifact_id: address,
             file: descriptor.file.to_string(),
@@ -3254,6 +3401,28 @@ impl Service {
             rate_num: u32::try_from(descriptor.video.frame_rate.num.get()).unwrap_or(0),
             rate_den: u32::try_from(descriptor.video.frame_rate.den.get()).unwrap_or(0),
         })
+    }
+
+    /// The stereo PCM rendition has stable sample offsets for short range reads.
+    async fn audition_audio(&self, source_id: &str) -> Option<(String, String, i64)> {
+        let address = self
+            .database
+            .latest_source_task_artifact(
+                source_id.to_owned(),
+                crate::media::KIND_AUDIO_48K.to_owned(),
+            )
+            .await
+            .ok()
+            .flatten()?;
+        let id = address.parse::<clipmill_core::ArtifactId>().ok()?;
+        let lease = self.artifacts.as_ref()?.open(id).await.ok()?;
+        let audio: clipmill_contracts::schemas::media_audio::MediaAudio =
+            crate::media::read_artifact_document(&lease, "audio.json").ok()?;
+        Some((
+            address,
+            audio.file.to_string(),
+            i64::try_from(audio.coverage.start_ticks).ok()?,
+        ))
     }
 
     /// Every document a project holds, oldest first.
@@ -4456,6 +4625,9 @@ fn preview_response(revision: u64, plan: &clipmill_render::PreviewPlan) -> GetPr
                 inset_side: segment.inset.map_or(0, |(_, _, side)| side),
                 background_colour: segment.background_colour.clone().unwrap_or_default(),
                 zoom_percent: u32::from(segment.zoom_percent),
+                fade_in_ticks: segment.fade_in_ticks,
+                fade_out_ticks: segment.fade_out_ticks,
+                room_tone_start_ticks: segment.room_tone_start_ticks,
             })
             .collect(),
         // Resolved by the handler, which is the one with a database.

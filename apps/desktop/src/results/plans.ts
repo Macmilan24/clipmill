@@ -10,6 +10,7 @@ import type { MindClipPlan } from '@clipmill/contracts';
 
 import { clock } from './model.js';
 
+export const MIND_RANKING_KIND = 'ranking.set.v2';
 export const MIND_CANDIDATES_KIND = 'mind.candidates.v1';
 
 const TICKS_PER_SECOND = 90_000;
@@ -49,6 +50,8 @@ export interface PlanPart {
   /** How much was cut out of it, and how many cuts. */
   readonly cutTicks: number;
   readonly cuts: number;
+  readonly why: string | null;
+  readonly removed: NonNullable<PlanPartDoc['removed']>;
 }
 
 export interface PlannedClip {
@@ -57,6 +60,22 @@ export interface PlannedClip {
   readonly formLabel: string;
   readonly title: string;
   readonly hookText: string | null;
+  readonly evidence: readonly string[];
+  readonly doubts: readonly string[];
+  readonly joins: Plan['joins'];
+  readonly assessment?: {
+    readonly keepScore: number;
+    readonly reasons: readonly string[];
+    readonly issues: readonly string[];
+    readonly chapter: string;
+    readonly summary: string;
+    readonly repaired: boolean;
+    readonly joins: readonly {
+      readonly after: string;
+      readonly note: string;
+      readonly verdict: string;
+    }[];
+  };
   readonly durationSeconds: number;
   readonly parts: readonly PlanPart[];
   /** One sentence on how the clip is built, in the order it plays. */
@@ -102,7 +121,7 @@ export function describe(form: PlanForm, parts: readonly PlanPart[]): string {
 function plannedClip(plan: Plan): PlannedClip | null {
   if (
     plan.schema_version !== 'clipmill.mind.clip_plan.v1' ||
-    !(plan.form in FORM_LABELS) ||
+    !Object.hasOwn(FORM_LABELS, plan.form) ||
     // A document from disk, whatever its type says.
     !Array.isArray(plan.parts) ||
     (plan.parts as readonly unknown[]).length === 0
@@ -120,6 +139,8 @@ function plannedClip(plan: Plan): PlannedClip | null {
       keptTicks: kept,
       cutTicks: cut,
       cuts,
+      removed: part.removed ?? [],
+      why: part.why ?? null,
     };
   });
   return {
@@ -130,6 +151,9 @@ function plannedClip(plan: Plan): PlannedClip | null {
     hookText: plan.hook_text ?? null,
     durationSeconds: plan.duration_ticks / TICKS_PER_SECOND,
     parts,
+    joins: plan.joins ?? [],
+    doubts: plan.doubts ?? [],
+    evidence: plan.evidence ?? [],
     summary: describe(plan.form, parts),
     planJson: JSON.stringify(plan),
   };
@@ -163,4 +187,77 @@ export function readPlans(document: unknown, sourceFingerprint: string): readonl
     if (read) plans.push(read);
   }
   return plans;
+}
+
+/** The published shortlist is authoritative, including a decision to return no clips. */
+export interface PlanRanking {
+  readonly clips: readonly PlannedClip[];
+  readonly prompt: string;
+  readonly requestedCount: number;
+  readonly cutoff: string | null;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+export function readPlanRanking(document: unknown, fingerprint: string): PlanRanking {
+  const doc = record(document);
+  if (
+    doc.schema_version !== 'clipmill.ranking.set.v2' ||
+    doc.source_fingerprint !== fingerprint ||
+    !Array.isArray(doc.clips)
+  ) {
+    throw new Error('The published editorial ranking does not match this recording.');
+  }
+  const clips = doc.clips.map((value) => {
+    const entry = record(value);
+    const plan = entry.plan as Plan | undefined;
+    const quality = record(entry.quality);
+    const score = entry.keep_score;
+    const clip = plan?.source_fingerprint === fingerprint ? plannedClip(plan) : null;
+    if (
+      !clip ||
+      quality.verdict !== 'accept' ||
+      typeof score !== 'number' ||
+      !Number.isFinite(score) ||
+      score < 0 ||
+      score > 100
+    ) {
+      throw new Error('The published editorial ranking contains an unreadable clip.');
+    }
+    return {
+      ...clip,
+      assessment: {
+        keepScore: score,
+        reasons: strings(entry.reasons),
+        issues: strings(quality.issues),
+        summary: typeof quality.summary === 'string' ? quality.summary : '',
+        chapter: typeof entry.chapter === 'string' ? entry.chapter : '',
+        repaired: quality.repaired === true,
+        joins: Array.isArray(quality.joins)
+          ? quality.joins.flatMap((report) => {
+              const item = record(report);
+              return typeof item.after === 'string' &&
+                typeof item.verdict === 'string' &&
+                typeof item.note === 'string'
+                ? [{ after: item.after, note: item.note, verdict: item.verdict }]
+                : [];
+            })
+          : [],
+      },
+    };
+  });
+  return {
+    clips,
+    requestedCount: typeof doc.requested_count === 'number' ? doc.requested_count : 0,
+    prompt: typeof doc.editorial_prompt === 'string' ? doc.editorial_prompt : '',
+    cutoff: typeof doc.cutoff_reason === 'string' ? doc.cutoff_reason : null,
+  };
 }

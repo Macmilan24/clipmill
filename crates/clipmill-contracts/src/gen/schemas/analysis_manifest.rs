@@ -437,6 +437,9 @@ impl ::std::convert::TryFrom<::std::string::String> for SkippedStageReason {
 #[doc = "        \"mind.memory.v1\","]
 #[doc = "        \"mind.unit_scores.v1\","]
 #[doc = "        \"mind.candidates.v1\","]
+#[doc = "        \"mind.plans.v1\","]
+#[doc = "        \"mind.quality_report.v1\","]
+#[doc = "        \"ranking.set.v2\","]
 #[doc = "        \"text.embeddings.v1\","]
 #[doc = "        \"editorial.windows.v1\","]
 #[doc = "        \"editorial.proposals.v1\","]
@@ -486,6 +489,9 @@ impl Stage {
 #[doc = "    \"mind.memory.v1\","]
 #[doc = "    \"mind.unit_scores.v1\","]
 #[doc = "    \"mind.candidates.v1\","]
+#[doc = "    \"mind.plans.v1\","]
+#[doc = "    \"mind.quality_report.v1\","]
+#[doc = "    \"ranking.set.v2\","]
 #[doc = "    \"text.embeddings.v1\","]
 #[doc = "    \"editorial.windows.v1\","]
 #[doc = "    \"editorial.proposals.v1\","]
@@ -542,6 +548,12 @@ pub enum StageKind {
     MindUnitScoresV1,
     #[serde(rename = "mind.candidates.v1")]
     MindCandidatesV1,
+    #[serde(rename = "mind.plans.v1")]
+    MindPlansV1,
+    #[serde(rename = "mind.quality_report.v1")]
+    MindQualityReportV1,
+    #[serde(rename = "ranking.set.v2")]
+    RankingSetV2,
     #[serde(rename = "text.embeddings.v1")]
     TextEmbeddingsV1,
     #[serde(rename = "editorial.windows.v1")]
@@ -576,6 +588,9 @@ impl ::std::fmt::Display for StageKind {
             Self::MindMemoryV1 => f.write_str("mind.memory.v1"),
             Self::MindUnitScoresV1 => f.write_str("mind.unit_scores.v1"),
             Self::MindCandidatesV1 => f.write_str("mind.candidates.v1"),
+            Self::MindPlansV1 => f.write_str("mind.plans.v1"),
+            Self::MindQualityReportV1 => f.write_str("mind.quality_report.v1"),
+            Self::RankingSetV2 => f.write_str("ranking.set.v2"),
             Self::TextEmbeddingsV1 => f.write_str("text.embeddings.v1"),
             Self::EditorialWindowsV1 => f.write_str("editorial.windows.v1"),
             Self::EditorialProposalsV1 => f.write_str("editorial.proposals.v1"),
@@ -606,6 +621,9 @@ impl ::std::str::FromStr for StageKind {
             "mind.memory.v1" => Ok(Self::MindMemoryV1),
             "mind.unit_scores.v1" => Ok(Self::MindUnitScoresV1),
             "mind.candidates.v1" => Ok(Self::MindCandidatesV1),
+            "mind.plans.v1" => Ok(Self::MindPlansV1),
+            "mind.quality_report.v1" => Ok(Self::MindQualityReportV1),
+            "ranking.set.v2" => Ok(Self::RankingSetV2),
             "text.embeddings.v1" => Ok(Self::TextEmbeddingsV1),
             "editorial.windows.v1" => Ok(Self::EditorialWindowsV1),
             "editorial.proposals.v1" => Ok(Self::EditorialProposalsV1),

@@ -8,7 +8,7 @@ use super::{Engine, error, tool_result, wire};
 pub(super) fn creates_job(op: &str) -> bool {
     matches!(
         op,
-        "start_analysis" | "export_clip" | "propose_clips" | "reprompt"
+        "start_analysis" | "export_clip" | "propose_clips" | "reprompt" | "render_preview"
     )
 }
 

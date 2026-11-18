@@ -92,7 +92,17 @@ pub mod error {
 #[doc = "      \"enum\": ["]
 #[doc = "        \"propose\","]
 #[doc = "        \"review\","]
-#[doc = "        \"look\""]
+#[doc = "        \"look\","]
+#[doc = "        \"memory.read\","]
+#[doc = "        \"memory.link\","]
+#[doc = "        \"score\","]
+#[doc = "        \"plan\","]
+#[doc = "        \"critic\","]
+#[doc = "        \"critic.edge\","]
+#[doc = "        \"critic.source\","]
+#[doc = "        \"critic.copy\","]
+#[doc = "        \"critic.omission\","]
+#[doc = "        \"compare\""]
 #[doc = "      ]"]
 #[doc = "    },"]
 #[doc = "    \"model\": {"]
@@ -156,6 +166,11 @@ pub mod error {
 #[doc = "        \"output\""]
 #[doc = "      ],"]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"cached_input\": {"]
+#[doc = "          \"description\": \"Input tokens served from a prompt checkpoint when the backend reports them.\","]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
 #[doc = "        \"input\": {"]
 #[doc = "          \"type\": \"integer\","]
 #[doc = "          \"minimum\": 0.0"]
@@ -392,7 +407,17 @@ impl CallFramesItem {
 #[doc = "  \"enum\": ["]
 #[doc = "    \"propose\","]
 #[doc = "    \"review\","]
-#[doc = "    \"look\""]
+#[doc = "    \"look\","]
+#[doc = "    \"memory.read\","]
+#[doc = "    \"memory.link\","]
+#[doc = "    \"score\","]
+#[doc = "    \"plan\","]
+#[doc = "    \"critic\","]
+#[doc = "    \"critic.edge\","]
+#[doc = "    \"critic.source\","]
+#[doc = "    \"critic.copy\","]
+#[doc = "    \"critic.omission\","]
+#[doc = "    \"compare\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -416,6 +441,26 @@ pub enum CallJob {
     Review,
     #[serde(rename = "look")]
     Look,
+    #[serde(rename = "memory.read")]
+    MemoryRead,
+    #[serde(rename = "memory.link")]
+    MemoryLink,
+    #[serde(rename = "score")]
+    Score,
+    #[serde(rename = "plan")]
+    Plan,
+    #[serde(rename = "critic")]
+    Critic,
+    #[serde(rename = "critic.edge")]
+    CriticEdge,
+    #[serde(rename = "critic.source")]
+    CriticSource,
+    #[serde(rename = "critic.copy")]
+    CriticCopy,
+    #[serde(rename = "critic.omission")]
+    CriticOmission,
+    #[serde(rename = "compare")]
+    Compare,
 }
 impl ::std::fmt::Display for CallJob {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -423,6 +468,16 @@ impl ::std::fmt::Display for CallJob {
             Self::Propose => f.write_str("propose"),
             Self::Review => f.write_str("review"),
             Self::Look => f.write_str("look"),
+            Self::MemoryRead => f.write_str("memory.read"),
+            Self::MemoryLink => f.write_str("memory.link"),
+            Self::Score => f.write_str("score"),
+            Self::Plan => f.write_str("plan"),
+            Self::Critic => f.write_str("critic"),
+            Self::CriticEdge => f.write_str("critic.edge"),
+            Self::CriticSource => f.write_str("critic.source"),
+            Self::CriticCopy => f.write_str("critic.copy"),
+            Self::CriticOmission => f.write_str("critic.omission"),
+            Self::Compare => f.write_str("compare"),
         }
     }
 }
@@ -433,6 +488,16 @@ impl ::std::str::FromStr for CallJob {
             "propose" => Ok(Self::Propose),
             "review" => Ok(Self::Review),
             "look" => Ok(Self::Look),
+            "memory.read" => Ok(Self::MemoryRead),
+            "memory.link" => Ok(Self::MemoryLink),
+            "score" => Ok(Self::Score),
+            "plan" => Ok(Self::Plan),
+            "critic" => Ok(Self::Critic),
+            "critic.edge" => Ok(Self::CriticEdge),
+            "critic.source" => Ok(Self::CriticSource),
+            "critic.copy" => Ok(Self::CriticCopy),
+            "critic.omission" => Ok(Self::CriticOmission),
+            "compare" => Ok(Self::Compare),
             _ => Err("invalid value".into()),
         }
     }
@@ -880,6 +945,11 @@ impl ::std::convert::TryFrom<::std::string::String> for CallRoute {
 #[doc = "    \"output\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"cached_input\": {"]
+#[doc = "      \"description\": \"Input tokens served from a prompt checkpoint when the backend reports them.\","]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
 #[doc = "    \"input\": {"]
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"minimum\": 0.0"]
@@ -896,6 +966,9 @@ impl ::std::convert::TryFrom<::std::string::String> for CallRoute {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct CallTokens {
+    #[doc = "Input tokens served from a prompt checkpoint when the backend reports them."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub cached_input: ::std::option::Option<u64>,
     pub input: u64,
     pub output: u64,
 }
@@ -1731,18 +1804,30 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct CallTokens {
+        cached_input: ::std::result::Result<::std::option::Option<u64>, ::std::string::String>,
         input: ::std::result::Result<u64, ::std::string::String>,
         output: ::std::result::Result<u64, ::std::string::String>,
     }
     impl ::std::default::Default for CallTokens {
         fn default() -> Self {
             Self {
+                cached_input: Ok(Default::default()),
                 input: Err("no value supplied for input".to_string()),
                 output: Err("no value supplied for output".to_string()),
             }
         }
     }
     impl CallTokens {
+        pub fn cached_input<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<u64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.cached_input = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for cached_input: {e}"));
+            self
+        }
         pub fn input<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<u64>,
@@ -1770,6 +1855,7 @@ pub mod builder {
             value: CallTokens,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                cached_input: value.cached_input?,
                 input: value.input?,
                 output: value.output?,
             })
@@ -1778,6 +1864,7 @@ pub mod builder {
     impl ::std::convert::From<super::CallTokens> for CallTokens {
         fn from(value: super::CallTokens) -> Self {
             Self {
+                cached_input: Ok(value.cached_input),
                 input: Ok(value.input),
                 output: Ok(value.output),
             }

@@ -44,12 +44,21 @@ KINDS: tuple[str, ...] = tuple(KIND_LABELS)
 
 
 @dataclass(frozen=True)
+class Delivery:
+    pitch_hz: float
+    level_dbfs: float
+    pitch_change_semitones: float
+    level_change_db: float
+
+
+@dataclass(frozen=True)
 class Event:
     kind: str
     start_sample: int
     end_sample: int
     peak: float
     mean: float
+    delivery: Delivery | None = None
 
 
 def kind_columns(labels: Sequence[str]) -> dict[str, tuple[int, ...]]:

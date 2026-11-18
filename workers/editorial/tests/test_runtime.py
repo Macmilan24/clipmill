@@ -2,6 +2,7 @@ import gc
 import sys
 import traceback
 import weakref
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock
 
@@ -114,3 +115,27 @@ def test_close_releases_loaded_model_before_collecting_and_clearing_cache(tmp_pa
     model.close()
 
     assert released == ["collect", "cache"]
+
+
+def test_prefix_checkpoints_are_private_reused_and_removed_on_recording_change(
+    tmp_path, mlx_runtime, monkeypatch
+):
+    apc = SimpleNamespace(from_env=Mock(side_effect=lambda **_: Mock()))
+    monkeypatch.setattr(sys.modules["mlx_vlm"], "apc", apc, raising=False)
+    model = LocalModel(tmp_path, SimpleNamespace(raise_if_cancelled=Mock()))
+    model.begin_text_session("one")
+    first = model.prefix_cache
+    path = Path(model.cache_directory.name)
+    assert path.is_dir()
+    model.end_text_session()
+    assert not model.cache_active
+    model.begin_text_session("one")
+    assert model.prefix_cache is first
+    assert apc.from_env.call_count == 1
+    model.begin_text_session("two")
+    assert not path.exists()
+    first.close.assert_called_once_with()
+    second = Path(model.cache_directory.name)
+    assert second.is_dir() and second != path
+    model.close()
+    assert not second.exists()

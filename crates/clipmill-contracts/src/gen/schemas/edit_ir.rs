@@ -1371,6 +1371,10 @@ impl ::std::convert::TryFrom<::std::string::String> for CutawayFit {
 #[doc = "                \"type\": \"integer\","]
 #[doc = "                \"minimum\": 1.0"]
 #[doc = "              },"]
+#[doc = "              \"part_id\": {"]
+#[doc = "                \"type\": \"string\","]
+#[doc = "                \"minLength\": 1"]
+#[doc = "              },"]
 #[doc = "              \"reason\": {"]
 #[doc = "                \"type\": \"string\","]
 #[doc = "                \"minLength\": 1"]
@@ -3038,6 +3042,10 @@ impl<'de> ::serde::Deserialize<'de> for EditIrCaptionsOptionsUnspoken {
 #[doc = "            \"type\": \"integer\","]
 #[doc = "            \"minimum\": 1.0"]
 #[doc = "          },"]
+#[doc = "          \"part_id\": {"]
+#[doc = "            \"type\": \"string\","]
+#[doc = "            \"minLength\": 1"]
+#[doc = "          },"]
 #[doc = "          \"reason\": {"]
 #[doc = "            \"type\": \"string\","]
 #[doc = "            \"minLength\": 1"]
@@ -3243,6 +3251,10 @@ impl<'de> ::serde::Deserialize<'de> for EditIrPlanPlanId {
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"minimum\": 1.0"]
 #[doc = "    },"]
+#[doc = "    \"part_id\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
 #[doc = "    \"reason\": {"]
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"minLength\": 1"]
@@ -3260,12 +3272,82 @@ impl<'de> ::serde::Deserialize<'de> for EditIrPlanPlanId {
 pub struct EditIrPlanRemovedItem {
     pub in_ticks: u64,
     pub out_ticks: ::std::num::NonZeroU64,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub part_id: ::std::option::Option<EditIrPlanRemovedItemPartId>,
     pub reason: EditIrPlanRemovedItemReason,
     pub source_fingerprint: Sha256,
 }
 impl EditIrPlanRemovedItem {
     pub fn builder() -> builder::EditIrPlanRemovedItem {
         Default::default()
+    }
+}
+#[doc = "`EditIrPlanRemovedItemPartId`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrPlanRemovedItemPartId(::std::string::String);
+impl ::std::ops::Deref for EditIrPlanRemovedItemPartId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrPlanRemovedItemPartId> for ::std::string::String {
+    fn from(value: EditIrPlanRemovedItemPartId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrPlanRemovedItemPartId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrPlanRemovedItemPartId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrPlanRemovedItemPartId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrPlanRemovedItemPartId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrPlanRemovedItemPartId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "`EditIrPlanRemovedItemReason`"]
@@ -4396,6 +4478,16 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "        },"]
 #[doc = "        \"room_tone\": {"]
 #[doc = "          \"type\": \"boolean\""]
+#[doc = "        },"]
+#[doc = "        \"room_tone_range\": {"]
+#[doc = "          \"description\": \"A verified speech-free interval of the incoming recording, in source ticks.\","]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 0.0"]
+#[doc = "          },"]
+#[doc = "          \"maxItems\": 2,"]
+#[doc = "          \"minItems\": 2"]
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
@@ -4664,6 +4756,16 @@ impl VideoSegment {
 #[doc = "    },"]
 #[doc = "    \"room_tone\": {"]
 #[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
+#[doc = "    \"room_tone_range\": {"]
+#[doc = "      \"description\": \"A verified speech-free interval of the incoming recording, in source ticks.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"integer\","]
+#[doc = "        \"minimum\": 0.0"]
+#[doc = "      },"]
+#[doc = "      \"maxItems\": 2,"]
+#[doc = "      \"minItems\": 2"]
 #[doc = "    }"]
 #[doc = "  },"]
 #[doc = "  \"additionalProperties\": false"]
@@ -4678,6 +4780,9 @@ pub struct VideoSegmentJoin {
     pub kind: VideoSegmentJoinKind,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub room_tone: ::std::option::Option<bool>,
+    #[doc = "A verified speech-free interval of the incoming recording, in source ticks."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub room_tone_range: ::std::option::Option<[u64; 2usize]>,
 }
 impl VideoSegmentJoin {
     pub fn builder() -> builder::VideoSegmentJoin {
@@ -7504,6 +7609,10 @@ pub mod builder {
     pub struct EditIrPlanRemovedItem {
         in_ticks: ::std::result::Result<u64, ::std::string::String>,
         out_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        part_id: ::std::result::Result<
+            ::std::option::Option<super::EditIrPlanRemovedItemPartId>,
+            ::std::string::String,
+        >,
         reason: ::std::result::Result<super::EditIrPlanRemovedItemReason, ::std::string::String>,
         source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
     }
@@ -7512,6 +7621,7 @@ pub mod builder {
             Self {
                 in_ticks: Err("no value supplied for in_ticks".to_string()),
                 out_ticks: Err("no value supplied for out_ticks".to_string()),
+                part_id: Ok(Default::default()),
                 reason: Err("no value supplied for reason".to_string()),
                 source_fingerprint: Err("no value supplied for source_fingerprint".to_string()),
             }
@@ -7536,6 +7646,16 @@ pub mod builder {
             self.out_ticks = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for out_ticks: {e}"));
+            self
+        }
+        pub fn part_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrPlanRemovedItemPartId>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.part_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for part_id: {e}"));
             self
         }
         pub fn reason<T>(mut self, value: T) -> Self
@@ -7567,6 +7687,7 @@ pub mod builder {
             Ok(Self {
                 in_ticks: value.in_ticks?,
                 out_ticks: value.out_ticks?,
+                part_id: value.part_id?,
                 reason: value.reason?,
                 source_fingerprint: value.source_fingerprint?,
             })
@@ -7577,6 +7698,7 @@ pub mod builder {
             Self {
                 in_ticks: Ok(value.in_ticks),
                 out_ticks: Ok(value.out_ticks),
+                part_id: Ok(value.part_id),
                 reason: Ok(value.reason),
                 source_fingerprint: Ok(value.source_fingerprint),
             }
@@ -7996,6 +8118,8 @@ pub mod builder {
             ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
         kind: ::std::result::Result<super::VideoSegmentJoinKind, ::std::string::String>,
         room_tone: ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
+        room_tone_range:
+            ::std::result::Result<::std::option::Option<[u64; 2usize]>, ::std::string::String>,
     }
     impl ::std::default::Default for VideoSegmentJoin {
         fn default() -> Self {
@@ -8003,6 +8127,7 @@ pub mod builder {
                 audio_crossfade_ticks: Ok(Default::default()),
                 kind: Err("no value supplied for kind".to_string()),
                 room_tone: Ok(Default::default()),
+                room_tone_range: Ok(Default::default()),
             }
         }
     }
@@ -8037,6 +8162,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for room_tone: {e}"));
             self
         }
+        pub fn room_tone_range<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<[u64; 2usize]>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.room_tone_range = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for room_tone_range: {e}"));
+            self
+        }
     }
     impl ::std::convert::TryFrom<VideoSegmentJoin> for super::VideoSegmentJoin {
         type Error = super::error::ConversionError;
@@ -8047,6 +8182,7 @@ pub mod builder {
                 audio_crossfade_ticks: value.audio_crossfade_ticks?,
                 kind: value.kind?,
                 room_tone: value.room_tone?,
+                room_tone_range: value.room_tone_range?,
             })
         }
     }
@@ -8056,6 +8192,7 @@ pub mod builder {
                 audio_crossfade_ticks: Ok(value.audio_crossfade_ticks),
                 kind: Ok(value.kind),
                 room_tone: Ok(value.room_tone),
+                room_tone_range: Ok(value.room_tone_range),
             }
         }
     }

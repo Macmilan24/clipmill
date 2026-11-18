@@ -61,6 +61,12 @@ export function describeCommand(command: EditCommandJson, inverse?: EditCommandJ
       return 'Trim';
     case 'extend_segment':
       return 'Extend the clip';
+    case 'move_part':
+      return 'Move part';
+    case 'remove_part':
+      return 'Remove part';
+    case 'restore_removed_range':
+      return 'Restore source range';
     case 'ripple_delete':
       return 'Cut';
     case 'restore_arrangement':

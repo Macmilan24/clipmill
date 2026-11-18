@@ -644,11 +644,23 @@ pub struct Join {
     /// Fill a dead gap at the cut with the recording's own background sound.
     #[serde(default, skip_serializing_if = "is_false")]
     pub room_tone: bool,
+    /// Half-open, speech-free source ticks in the incoming recording.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room_tone_range: Option<[i64; 2]>,
 }
 
 impl Join {
     /// The longest audio blend a join may ask for: half a second.
     pub const MAX_CROSSFADE_TICKS: i64 = 45_000;
+    /// A room-tone join with no explicit length takes sixty milliseconds.
+    #[must_use]
+    pub fn blend_ticks(self) -> i64 {
+        if self.audio_crossfade_ticks == 0 && self.room_tone && self.room_tone_range.is_some() {
+            5_400
+        } else {
+            self.audio_crossfade_ticks
+        }
+    }
 }
 
 /// The plan a clip was built from. Kept out of every render path like the
@@ -679,6 +691,9 @@ pub enum PlanForm {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RemovedRange {
+    /// The original part, also when another part repeats the same source material.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part_id: Option<String>,
     pub source_fingerprint: String,
     pub in_ticks: i64,
     pub out_ticks: i64,
@@ -2089,6 +2104,9 @@ impl EditDocument {
             }
             if segment.join.is_some_and(|join| {
                 !(0..=Join::MAX_CROSSFADE_TICKS).contains(&join.audio_crossfade_ticks)
+                    || join
+                        .room_tone_range
+                        .is_some_and(|[start, end]| start < 0 || end <= start)
             }) {
                 return Err(DocumentError::InvalidJoin(segment.segment_id.clone()));
             }

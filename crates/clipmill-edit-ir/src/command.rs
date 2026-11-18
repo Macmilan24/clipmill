@@ -5,8 +5,8 @@ use crate::{
     document::{
         Asset, Brand, CaptionCue, CaptionOptions, CaptionPosition, CaptionRegion, CropEasing,
         CropKeyframe, CropRect, Cutaway, DocumentError, EditDocument, FitBackground, FrameShape,
-        GainPoint, Inset, Join, LayoutState, MusicBed, Overlay, Presentation, Punch, VideoSegment,
-        VoiceCleanup, crop_along_keyframes, retime_punches, split_punches,
+        GainPoint, Inset, Join, LayoutState, MusicBed, Overlay, Presentation, Punch, RemovedRange,
+        VideoSegment, VoiceCleanup, crop_along_keyframes, retime_punches, split_punches,
     },
     reflow,
 };
@@ -124,6 +124,22 @@ pub enum EditCommand {
         #[serde(default, skip_serializing_if = "is_false")]
         reflow_edges: bool,
     },
+    /// Reorder all sections of a part together. The destination is its index in the final part list.
+    MovePart {
+        part_id: String,
+        to_index: usize,
+    },
+    /// Remove the sections of a part and close their programme-time interval.
+    RemovePart {
+        part_id: String,
+    },
+    /// Insert material directed from a recorded omission. Cues are local to the restored interval.
+    RestoreRemovedRange {
+        index: usize,
+        segments: Vec<VideoSegment>,
+        reading_cues: Vec<CaptionCue>,
+        burn_in_cues: Vec<CaptionCue>,
+    },
     /// Restore a previously captured arrangement. This is the inverse of
     /// every command that can destroy material.
     RestoreArrangement {
@@ -142,6 +158,8 @@ pub enum EditCommand {
         /// The cutaways as they were, likewise.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cutaways: Option<Vec<Cutaway>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        removed: Option<Vec<RemovedRange>>,
     },
     SetLayout {
         segment_id: String,
@@ -494,6 +512,16 @@ impl EditCommand {
                 end_ticks,
                 reflow_edges,
             } => Self::apply_ripple_delete(document, *start_ticks, *end_ticks, *reflow_edges),
+            Self::MovePart { part_id, to_index } => {
+                crate::parts::arrange(document, part_id, Some(*to_index))
+            }
+            Self::RemovePart { part_id } => crate::parts::arrange(document, part_id, None),
+            Self::RestoreRemovedRange {
+                index,
+                segments,
+                reading_cues,
+                burn_in_cues,
+            } => crate::parts::restore(document, *index, segments, reading_cues, burn_in_cues),
             Self::RestoreArrangement {
                 segments,
                 cues,
@@ -501,8 +529,27 @@ impl EditCommand {
                 burn_in,
                 overlays,
                 cutaways,
+                removed,
             } => {
-                let inverse = Self::capture(document);
+                let mut inverse = Self::capture(document);
+                // An empty track is a value when restoring a replaced track.
+                // Keep it explicit so the inverse of an undo also replays exactly.
+                if let Self::RestoreArrangement {
+                    overlays: prior_overlays,
+                    cutaways: prior_cutaways,
+                    ..
+                } = &mut inverse
+                {
+                    if overlays.is_some() && prior_overlays.is_none() {
+                        *prior_overlays = Some(Vec::new());
+                    }
+                    if cutaways.is_some() && prior_cutaways.is_none() {
+                        *prior_cutaways = Some(Vec::new());
+                    }
+                }
+                if let (Some(plan), Some(removed)) = (document.plan.as_mut(), removed) {
+                    plan.removed.clone_from(removed);
+                }
                 document.video.segments.clone_from(segments);
                 document.captions.cues.clone_from(cues);
                 if let Some(burn_in) = burn_in {
@@ -886,6 +933,7 @@ impl EditCommand {
     /// Capture the current arrangement as the command that would restore it.
     pub fn capture(document: &EditDocument) -> Self {
         Self::RestoreArrangement {
+            removed: document.plan.as_ref().map(|plan| plan.removed.clone()),
             segments: document.video.segments.clone(),
             cues: document.captions.cues.clone(),
             gain_curve: document.audio.gain_curve.clone(),
@@ -1548,6 +1596,12 @@ impl EditCommand {
 
 #[derive(Debug, Error)]
 pub enum CommandError {
+    #[error("this edit has no such part or part position")]
+    InvalidPart,
+    #[error("the clip must keep at least one part")]
+    LastPart,
+    #[error("the source on either side of this omission has changed")]
+    RemovedRangeUnavailable,
     #[error("speaker switch is available only in a two-person section")]
     NotTwoUp,
     #[error("unknown caption preset {0}")]

@@ -128,6 +128,7 @@ class ServerModel:
         content.append({"type": "text", "text": prompt})
         body = {
             "messages": [{"role": "user", "content": content}],
+            "cache_prompt": True,
             "temperature": 0.0,
             "seed": 0,
             "max_tokens": max_tokens,
@@ -139,10 +140,13 @@ class ServerModel:
             },
         }
         text, usage, self.last_timings = self._stream(body)
-        return text, {
+        tokens = {
             "input": int(usage.get("prompt_tokens", 0)),
             "output": int(usage.get("completion_tokens", 0)),
         }
+        if cached := usage.get("prompt_tokens_details"):
+            tokens["cached_input"] = int(cached.get("cached_tokens", 0))
+        return text, tokens
 
     def close(self):
         process = getattr(self, "process", None)

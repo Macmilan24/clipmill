@@ -333,6 +333,7 @@
             "required": ["source_fingerprint", "in_ticks", "out_ticks", "reason"],
             "additionalProperties": false,
             "properties": {
+              "part_id": { "type": "string", "minLength": 1 },
               "source_fingerprint": {
                 "$ref": "#/$defs/sha256"
               },
@@ -758,6 +759,13 @@
             },
             "room_tone": {
               "type": "boolean"
+            },
+            "room_tone_range": {
+              "description": "A verified speech-free interval of the incoming recording, in source ticks.",
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "integer", "minimum": 0 }
             }
           }
         }

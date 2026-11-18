@@ -69,6 +69,7 @@ beforeEach(() => {
     revision: 1,
     plan: program,
     document: null,
+    audioUrls: new Map(),
     proxyUrls: new Map([[segment.sourceFingerprint, 'http://localhost/proxy.mp4']]),
     faceTrack: { projectId: 'project', artifactId: 'faces' },
     transcript: null,

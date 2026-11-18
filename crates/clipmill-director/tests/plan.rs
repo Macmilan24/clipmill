@@ -142,6 +142,19 @@ fn a_stitch_plays_its_parts_in_order_with_what_was_removed_left_out() {
     let distant = document.video.segments[3].join.unwrap();
     assert_eq!(distant.audio_crossfade_ticks, 60 * 90);
     assert!(distant.room_tone);
+    let [start, end] = distant.room_tone_range.expect("a VAD silence for the room");
+    assert_eq!(end - start, 5_400);
+    let (start, end) = (start.cast_unsigned(), end.cast_unsigned());
+    assert!(
+        t.silences
+            .iter()
+            .any(|silence| silence.start_ticks <= start && silence.end_ticks >= end)
+    );
+    assert!(
+        t.words
+            .iter()
+            .all(|word| word.end_ticks <= start || word.start_ticks >= end)
+    );
     assert_eq!(
         document.video.segments[3].part.as_ref().unwrap().role,
         PartRole::Payoff
@@ -261,4 +274,20 @@ fn the_same_plan_directs_the_same_document() {
     let first = direct(&t, &plan).unwrap().to_canonical_json().unwrap();
     let second = direct(&t, &plan).unwrap().to_canonical_json().unwrap();
     assert_eq!(first, second);
+}
+
+#[test]
+fn a_plan_with_no_verified_silence_keeps_the_fades_without_sampling_speech() {
+    let mut transcript = transcript();
+    transcript.silences.clear();
+    let document = direct(&transcript, &stitch(&transcript)).unwrap();
+    let join = document
+        .video
+        .segments
+        .iter()
+        .filter_map(|segment| segment.join)
+        .find(|join| join.room_tone)
+        .unwrap();
+    assert_eq!(join.room_tone_range, None);
+    assert_eq!(join.blend_ticks(), 5_400);
 }

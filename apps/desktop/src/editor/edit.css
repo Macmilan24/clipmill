@@ -94,9 +94,13 @@
   container-type: inline-size;
 }
 
-/* The five tabs sit in from the panel's edge, as its sections do. */
+/* Keep every properties tab reachable in narrow editor panels. */
 .edit-side .review-tabs .review-tab-list[data-slot] {
   padding-inline: 12px;
+  overflow-x: auto;
+}
+.edit-side .review-tab-list [role='tab'] {
+  flex-shrink: 0;
 }
 
 /* Below this their names alone fit the panel, without icons. */

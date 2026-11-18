@@ -69,10 +69,31 @@ enum Command {
         /// Spoken language, such as en.
         #[arg(long)]
         language: Option<String>,
+        /// What to look for when planning clips.
+        #[arg(long)]
+        prompt: Option<String>,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=30))]
+        count: Option<u32>,
         /// Skip the editorial model and the mind.
         #[arg(long)]
         no_editorial: bool,
         /// Show progress until it finishes.
+        #[arg(long)]
+        wait: bool,
+    },
+    /// Reuse an analysis to propose clips for a new brief.
+    Reprompt {
+        project: String,
+        source: String,
+        prompt: String,
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long, requires = "max")]
+        min: Option<f64>,
+        #[arg(long, requires = "min")]
+        max: Option<f64>,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=30))]
+        count: Option<u32>,
         #[arg(long)]
         wait: bool,
     },
@@ -133,6 +154,8 @@ enum Command {
         clip: String,
         #[arg(value_parser = ["approved", "kept", "rejected", "undecided"])]
         decision: String,
+        #[arg(long)]
+        reason: Option<String>,
         #[arg(long)]
         run: Option<String>,
     },
@@ -243,7 +266,7 @@ fn human(op: &str, value: &Value) -> String {
                 j["kind"].as_str().unwrap_or("")
             )
         }),
-        "get_job" | "start_analysis" | "cancel_job" => format!(
+        "get_job" | "reprompt" | "start_analysis" | "cancel_job" => format!(
             "{}  {}  {}/{} stages",
             value["job_id"].as_str().unwrap_or(""),
             value["state"].as_str().unwrap_or(""),
@@ -405,6 +428,8 @@ fn request(command: &Command) -> Result<(&str, Value, bool), String> {
             min,
             max,
             language,
+            prompt,
+            count,
             no_editorial,
             wait,
         } => {
@@ -416,10 +441,37 @@ fn request(command: &Command) -> Result<(&str, Value, bool), String> {
             if let Some(language) = language {
                 args["language"] = json!(language);
             }
+            if let Some(prompt) = prompt {
+                args["prompt"] = json!(prompt);
+            }
+            if let Some(count) = count {
+                args["count"] = json!(count);
+            }
             if *no_editorial {
                 args["editorial"] = json!("none");
             }
             ("start_analysis", args, *wait)
+        }
+        Command::Reprompt {
+            project,
+            source,
+            prompt,
+            run,
+            min,
+            max,
+            count,
+            wait,
+        } => {
+            let mut args = run_args(project, source, run.as_ref());
+            args["prompt"] = json!(prompt);
+            if let Some(count) = count {
+                args["count"] = json!(count);
+            }
+            if let (Some(min), Some(max)) = (min, max) {
+                args["min_seconds"] = json!(min);
+                args["max_seconds"] = json!(max);
+            }
+            ("reprompt", args, *wait)
         }
         Command::Job { job, wait } => ("get_job", json!({ "job_id": job }), *wait),
         Command::Jobs { project } => ("list_jobs", json!({ "project_id": project }), false),
@@ -471,11 +523,15 @@ fn request(command: &Command) -> Result<(&str, Value, bool), String> {
             source,
             clip,
             decision,
+            reason,
             run,
         } => {
             let mut args = run_args(project, source, run.as_ref());
             args["clip_id"] = json!(clip);
             args["decision"] = json!(decision);
+            if let Some(reason) = reason {
+                args["reason"] = json!(reason);
+            }
             ("set_decision", args, false)
         }
         Command::Edit {

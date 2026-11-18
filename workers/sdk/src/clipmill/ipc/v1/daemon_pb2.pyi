@@ -648,7 +648,7 @@ class IndexStagePayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ...) -> None: ...
 
 class EditorialStagePayloadV1(_message.Message):
-    __slots__ = ("key_version", "stage", "duration", "prompt_digest", "max_output_tokens", "cloud", "content_profile")
+    __slots__ = ("key_version", "stage", "duration", "prompt_digest", "max_output_tokens", "cloud", "content_profile", "editorial_prompt", "editorial_taste", "requested_count")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     STAGE_FIELD_NUMBER: _ClassVar[int]
     DURATION_FIELD_NUMBER: _ClassVar[int]
@@ -656,6 +656,9 @@ class EditorialStagePayloadV1(_message.Message):
     MAX_OUTPUT_TOKENS_FIELD_NUMBER: _ClassVar[int]
     CLOUD_FIELD_NUMBER: _ClassVar[int]
     CONTENT_PROFILE_FIELD_NUMBER: _ClassVar[int]
+    EDITORIAL_PROMPT_FIELD_NUMBER: _ClassVar[int]
+    EDITORIAL_TASTE_FIELD_NUMBER: _ClassVar[int]
+    REQUESTED_COUNT_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     stage: str
     duration: ClipDurationV1
@@ -663,7 +666,10 @@ class EditorialStagePayloadV1(_message.Message):
     max_output_tokens: int
     cloud: EditorialCloudV1
     content_profile: str
-    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., prompt_digest: _Optional[str] = ..., max_output_tokens: _Optional[int] = ..., cloud: _Optional[_Union[EditorialCloudV1, _Mapping]] = ..., content_profile: _Optional[str] = ...) -> None: ...
+    editorial_prompt: str
+    editorial_taste: _containers.RepeatedScalarFieldContainer[str]
+    requested_count: int
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., prompt_digest: _Optional[str] = ..., max_output_tokens: _Optional[int] = ..., cloud: _Optional[_Union[EditorialCloudV1, _Mapping]] = ..., content_profile: _Optional[str] = ..., editorial_prompt: _Optional[str] = ..., editorial_taste: _Optional[_Iterable[str]] = ..., requested_count: _Optional[int] = ...) -> None: ...
 
 class DiscoverCandidatesPayloadV1(_message.Message):
     __slots__ = ("key_version", "source_id", "duration")
@@ -744,7 +750,7 @@ class CaptionsStagePayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., span_start_ticks: _Optional[int] = ..., span_end_ticks: _Optional[int] = ...) -> None: ...
 
 class AnalyzeSourcePayloadV1(_message.Message):
-    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli", "local_editorial", "cloud_editorial", "content_profile")
+    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli", "local_editorial", "cloud_editorial", "content_profile", "editorial_prompt", "editorial_taste")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
@@ -754,6 +760,8 @@ class AnalyzeSourcePayloadV1(_message.Message):
     LOCAL_EDITORIAL_FIELD_NUMBER: _ClassVar[int]
     CLOUD_EDITORIAL_FIELD_NUMBER: _ClassVar[int]
     CONTENT_PROFILE_FIELD_NUMBER: _ClassVar[int]
+    EDITORIAL_PROMPT_FIELD_NUMBER: _ClassVar[int]
+    EDITORIAL_TASTE_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     source_id: str
     language: str
@@ -763,7 +771,9 @@ class AnalyzeSourcePayloadV1(_message.Message):
     local_editorial: bool
     cloud_editorial: EditorialCloudV1
     content_profile: str
-    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ..., local_editorial: _Optional[bool] = ..., cloud_editorial: _Optional[_Union[EditorialCloudV1, _Mapping]] = ..., content_profile: _Optional[str] = ...) -> None: ...
+    editorial_prompt: str
+    editorial_taste: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ..., local_editorial: _Optional[bool] = ..., cloud_editorial: _Optional[_Union[EditorialCloudV1, _Mapping]] = ..., content_profile: _Optional[str] = ..., editorial_prompt: _Optional[str] = ..., editorial_taste: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class EditorialCloudV1(_message.Message):
     __slots__ = ("transcript_consent", "budget_micro_usd", "model")
@@ -906,18 +916,20 @@ class Job(_message.Message):
     def __init__(self, job_id: _Optional[str] = ..., project_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[JobState, str]] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., tasks: _Optional[_Iterable[_Union[Task, _Mapping]]] = ..., output_artifact_ids: _Optional[_Iterable[str]] = ..., failure_class: _Optional[_Union[_worker_pb2.FailureClass, str]] = ..., failure_detail: _Optional[str] = ..., source_id: _Optional[str] = ..., export: _Optional[_Union[ExportSummaryV1, _Mapping]] = ..., content_profile: _Optional[str] = ..., analysis: _Optional[_Union[AnalysisSettingsV1, _Mapping]] = ...) -> None: ...
 
 class AnalysisSettingsV1(_message.Message):
-    __slots__ = ("language", "min_ticks", "max_ticks", "count", "local_editorial")
+    __slots__ = ("language", "min_ticks", "max_ticks", "count", "local_editorial", "editorial_prompt")
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     MIN_TICKS_FIELD_NUMBER: _ClassVar[int]
     MAX_TICKS_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
     LOCAL_EDITORIAL_FIELD_NUMBER: _ClassVar[int]
+    EDITORIAL_PROMPT_FIELD_NUMBER: _ClassVar[int]
     language: str
     min_ticks: int
     max_ticks: int
     count: int
     local_editorial: bool
-    def __init__(self, language: _Optional[str] = ..., min_ticks: _Optional[int] = ..., max_ticks: _Optional[int] = ..., count: _Optional[int] = ..., local_editorial: _Optional[bool] = ...) -> None: ...
+    editorial_prompt: str
+    def __init__(self, language: _Optional[str] = ..., min_ticks: _Optional[int] = ..., max_ticks: _Optional[int] = ..., count: _Optional[int] = ..., local_editorial: _Optional[bool] = ..., editorial_prompt: _Optional[str] = ...) -> None: ...
 
 class ExportSummaryV1(_message.Message):
     __slots__ = ("doc_id", "revision", "ir_artifact_id", "destination_dir")
@@ -1460,16 +1472,18 @@ class SnapshotEditDocResponse(_message.Message):
     def __init__(self, artifact_id: _Optional[str] = ..., revision: _Optional[int] = ...) -> None: ...
 
 class SetClipDecisionRequest(_message.Message):
-    __slots__ = ("project_id", "source_id", "candidate_id", "decision")
+    __slots__ = ("project_id", "source_id", "candidate_id", "decision", "reason")
     PROJECT_ID_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
     DECISION_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
     project_id: str
     source_id: str
     candidate_id: str
     decision: ClipDecisionV1
-    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., decision: _Optional[_Union[ClipDecisionV1, str]] = ...) -> None: ...
+    reason: str
+    def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ..., candidate_id: _Optional[str] = ..., decision: _Optional[_Union[ClipDecisionV1, str]] = ..., reason: _Optional[str] = ...) -> None: ...
 
 class SetClipDecisionResponse(_message.Message):
     __slots__ = ("decision", "decided_unix_millis")
@@ -1488,14 +1502,16 @@ class ListClipDecisionsRequest(_message.Message):
     def __init__(self, project_id: _Optional[str] = ..., source_id: _Optional[str] = ...) -> None: ...
 
 class ClipDecisionRecordV1(_message.Message):
-    __slots__ = ("candidate_id", "decision", "decided_unix_millis")
+    __slots__ = ("candidate_id", "decision", "decided_unix_millis", "reason")
     CANDIDATE_ID_FIELD_NUMBER: _ClassVar[int]
     DECISION_FIELD_NUMBER: _ClassVar[int]
     DECIDED_UNIX_MILLIS_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
     candidate_id: str
     decision: ClipDecisionV1
     decided_unix_millis: int
-    def __init__(self, candidate_id: _Optional[str] = ..., decision: _Optional[_Union[ClipDecisionV1, str]] = ..., decided_unix_millis: _Optional[int] = ...) -> None: ...
+    reason: str
+    def __init__(self, candidate_id: _Optional[str] = ..., decision: _Optional[_Union[ClipDecisionV1, str]] = ..., decided_unix_millis: _Optional[int] = ..., reason: _Optional[str] = ...) -> None: ...
 
 class ListClipDecisionsResponse(_message.Message):
     __slots__ = ("decisions",)
@@ -1724,7 +1740,7 @@ class PreviewOverlayV1(_message.Message):
     def __init__(self, overlay_id: _Optional[str] = ..., start_ticks: _Optional[int] = ..., end_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., text: _Optional[str] = ..., role: _Optional[str] = ..., x: _Optional[int] = ..., y: _Optional[int] = ..., size: _Optional[int] = ..., colour: _Optional[str] = ..., plate: _Optional[str] = ..., kind: _Optional[str] = ..., emoji: _Optional[str] = ...) -> None: ...
 
 class PreviewSegmentV1(_message.Message):
-    __slots__ = ("segment_id", "source_fingerprint", "in_ticks", "out_ticks", "program_start_ticks", "first_frame", "end_frame", "has_two_up_paths", "framing_warning", "layout", "upper_height", "has_inset", "inset_x", "inset_y", "inset_side", "background_colour", "zoom_percent")
+    __slots__ = ("segment_id", "source_fingerprint", "in_ticks", "out_ticks", "program_start_ticks", "first_frame", "end_frame", "has_two_up_paths", "framing_warning", "layout", "upper_height", "has_inset", "inset_x", "inset_y", "inset_side", "background_colour", "zoom_percent", "fade_in_ticks", "fade_out_ticks", "room_tone_start_ticks")
     SEGMENT_ID_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
     IN_TICKS_FIELD_NUMBER: _ClassVar[int]
@@ -1742,6 +1758,9 @@ class PreviewSegmentV1(_message.Message):
     INSET_SIDE_FIELD_NUMBER: _ClassVar[int]
     BACKGROUND_COLOUR_FIELD_NUMBER: _ClassVar[int]
     ZOOM_PERCENT_FIELD_NUMBER: _ClassVar[int]
+    FADE_IN_TICKS_FIELD_NUMBER: _ClassVar[int]
+    FADE_OUT_TICKS_FIELD_NUMBER: _ClassVar[int]
+    ROOM_TONE_START_TICKS_FIELD_NUMBER: _ClassVar[int]
     segment_id: str
     source_fingerprint: str
     in_ticks: int
@@ -1759,7 +1778,10 @@ class PreviewSegmentV1(_message.Message):
     inset_side: int
     background_colour: str
     zoom_percent: int
-    def __init__(self, segment_id: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., in_ticks: _Optional[int] = ..., out_ticks: _Optional[int] = ..., program_start_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., has_two_up_paths: _Optional[bool] = ..., framing_warning: _Optional[str] = ..., layout: _Optional[str] = ..., upper_height: _Optional[int] = ..., has_inset: _Optional[bool] = ..., inset_x: _Optional[int] = ..., inset_y: _Optional[int] = ..., inset_side: _Optional[int] = ..., background_colour: _Optional[str] = ..., zoom_percent: _Optional[int] = ...) -> None: ...
+    fade_in_ticks: int
+    fade_out_ticks: int
+    room_tone_start_ticks: int
+    def __init__(self, segment_id: _Optional[str] = ..., source_fingerprint: _Optional[str] = ..., in_ticks: _Optional[int] = ..., out_ticks: _Optional[int] = ..., program_start_ticks: _Optional[int] = ..., first_frame: _Optional[int] = ..., end_frame: _Optional[int] = ..., has_two_up_paths: _Optional[bool] = ..., framing_warning: _Optional[str] = ..., layout: _Optional[str] = ..., upper_height: _Optional[int] = ..., has_inset: _Optional[bool] = ..., inset_x: _Optional[int] = ..., inset_y: _Optional[int] = ..., inset_side: _Optional[int] = ..., background_colour: _Optional[str] = ..., zoom_percent: _Optional[int] = ..., fade_in_ticks: _Optional[int] = ..., fade_out_ticks: _Optional[int] = ..., room_tone_start_ticks: _Optional[int] = ...) -> None: ...
 
 class PreviewSourceV1(_message.Message):
     __slots__ = ("source_fingerprint", "source_id", "display_width", "display_height")
@@ -1774,7 +1796,7 @@ class PreviewSourceV1(_message.Message):
     def __init__(self, source_fingerprint: _Optional[str] = ..., source_id: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
 
 class PreviewProxyV1(_message.Message):
-    __slots__ = ("source_fingerprint", "artifact_id", "file", "coverage_start_ticks", "coverage_end_ticks", "width", "height", "rate_num", "rate_den")
+    __slots__ = ("source_fingerprint", "artifact_id", "file", "coverage_start_ticks", "coverage_end_ticks", "width", "height", "rate_num", "rate_den", "audio_artifact_id", "audio_file", "audio_start_ticks")
     SOURCE_FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
     ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
     FILE_FIELD_NUMBER: _ClassVar[int]
@@ -1784,6 +1806,9 @@ class PreviewProxyV1(_message.Message):
     HEIGHT_FIELD_NUMBER: _ClassVar[int]
     RATE_NUM_FIELD_NUMBER: _ClassVar[int]
     RATE_DEN_FIELD_NUMBER: _ClassVar[int]
+    AUDIO_ARTIFACT_ID_FIELD_NUMBER: _ClassVar[int]
+    AUDIO_FILE_FIELD_NUMBER: _ClassVar[int]
+    AUDIO_START_TICKS_FIELD_NUMBER: _ClassVar[int]
     source_fingerprint: str
     artifact_id: str
     file: str
@@ -1793,7 +1818,10 @@ class PreviewProxyV1(_message.Message):
     height: int
     rate_num: int
     rate_den: int
-    def __init__(self, source_fingerprint: _Optional[str] = ..., artifact_id: _Optional[str] = ..., file: _Optional[str] = ..., coverage_start_ticks: _Optional[int] = ..., coverage_end_ticks: _Optional[int] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ...) -> None: ...
+    audio_artifact_id: str
+    audio_file: str
+    audio_start_ticks: int
+    def __init__(self, source_fingerprint: _Optional[str] = ..., artifact_id: _Optional[str] = ..., file: _Optional[str] = ..., coverage_start_ticks: _Optional[int] = ..., coverage_end_ticks: _Optional[int] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., rate_num: _Optional[int] = ..., rate_den: _Optional[int] = ..., audio_artifact_id: _Optional[str] = ..., audio_file: _Optional[str] = ..., audio_start_ticks: _Optional[int] = ...) -> None: ...
 
 class PreviewCaptionStyleV1(_message.Message):
     __slots__ = ("style_ref", "font_family", "font_size", "spoken", "unspoken", "outline", "shadow", "outline_width", "shadow_depth", "bold", "boxed", "margin_horizontal", "margin_vertical", "accent", "highlight")

@@ -35,6 +35,11 @@ pub(super) const CREATE_V9_TABLES: &str = "
         ON clip_decisions(project_id, source_id, decided_unix_millis DESC);
 ";
 
+pub(super) const CREATE_V17_TABLES: &str = "
+    ALTER TABLE clip_decisions ADD COLUMN reason TEXT NOT NULL DEFAULT '' CHECK(length(reason) <= 240);
+    ALTER TABLE clip_decisions ADD COLUMN subject TEXT NOT NULL DEFAULT '' CHECK(length(subject) <= 200);
+";
+
 /// What a person decided about one candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Decision {
@@ -73,6 +78,7 @@ pub(crate) struct DecisionRecord {
     pub candidate_id: String,
     pub decision: Decision,
     pub decided_unix_millis: u64,
+    pub reason: String,
 }
 
 /// Record a decision, replacing whatever was there.
@@ -84,11 +90,33 @@ pub(crate) fn set(
     decision: Decision,
     now: u64,
 ) -> rusqlite::Result<()> {
+    set_with_reason(
+        connection,
+        project_id,
+        source_id,
+        candidate_id,
+        decision,
+        now,
+        "",
+    )
+}
+
+pub(crate) fn set_with_reason(
+    connection: &Connection,
+    project_id: &str,
+    source_id: &str,
+    candidate_id: &str,
+    decision: Decision,
+    now: u64,
+    reason: &str,
+) -> rusqlite::Result<()> {
     connection.execute(
         "INSERT INTO clip_decisions
-             (project_id, source_id, candidate_id, decision, decided_unix_millis)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+             (project_id, source_id, candidate_id, decision, decided_unix_millis,reason)
+         VALUES (?1, ?2, ?3, ?4, ?5,?6)
          ON CONFLICT(project_id, source_id, candidate_id) DO UPDATE SET
+             reason = CASE WHEN clip_decisions.decision = excluded.decision AND excluded.reason = ''
+                      THEN clip_decisions.reason ELSE excluded.reason END,
              decision = excluded.decision,
              decided_unix_millis = excluded.decided_unix_millis",
         params![
@@ -96,7 +124,8 @@ pub(crate) fn set(
             source_id,
             candidate_id,
             decision.as_str(),
-            i64::try_from(now).unwrap_or(i64::MAX)
+            i64::try_from(now).unwrap_or(i64::MAX),
+            reason
         ],
     )?;
     Ok(())
@@ -128,7 +157,7 @@ pub(crate) fn list(
     source_id: &str,
 ) -> rusqlite::Result<Vec<DecisionRecord>> {
     let mut statement = connection.prepare(
-        "SELECT candidate_id, decision, decided_unix_millis
+        "SELECT candidate_id, decision, decided_unix_millis, reason
            FROM clip_decisions
           WHERE project_id = ?1 AND source_id = ?2
           ORDER BY decided_unix_millis DESC, candidate_id ASC",
@@ -138,15 +167,17 @@ pub(crate) fn list(
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, i64>(2)?,
+            row.get::<_, String>(3)?,
         ))
     })?;
     let mut found = Vec::new();
     for row in rows {
-        let (candidate_id, decision, decided) = row?;
+        let (candidate_id, decision, decided, reason) = row?;
         // A row whose decision word is not one of the three cannot happen while
         // the CHECK holds, and is skipped rather than guessed at if it ever does.
         if let Some(decision) = Decision::parse(&decision) {
             found.push(DecisionRecord {
+                reason,
                 candidate_id,
                 decision,
                 decided_unix_millis: u64::try_from(decided).unwrap_or(0),
@@ -154,4 +185,83 @@ pub(crate) fn list(
         }
     }
     Ok(found)
+}
+
+/// A review submitted through the engine. The subject comes from the ranking
+/// the user viewed, including when no edit document has been created yet.
+#[derive(Debug)]
+pub(crate) struct Review {
+    pub request_id: String,
+    pub hash: [u8; 32],
+    pub project_id: String,
+    pub source_id: String,
+    pub candidate_id: String,
+    pub clip_id: String,
+    pub decision: Option<Decision>,
+    pub reason: String,
+    pub subject: String,
+    pub now: u64,
+}
+
+pub(super) fn save_review(
+    connection: &mut Connection,
+    review: &Review,
+) -> Result<Vec<u8>, super::StoreError> {
+    let db = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    if let Some(bytes) = super::replay(&db, &review.request_id, &review.hash)? {
+        return Ok(bytes);
+    }
+    let (choice, reason) = if let Some(choice) = review.decision {
+        set_with_reason(
+            &db,
+            &review.project_id,
+            &review.source_id,
+            &review.candidate_id,
+            choice,
+            review.now,
+            &review.reason,
+        )?;
+        let reason: String = db.query_row(
+            "UPDATE clip_decisions SET subject=?4 WHERE project_id=?1 AND source_id=?2 AND candidate_id=?3 RETURNING reason",
+            params![review.project_id, review.source_id, review.candidate_id,review.subject],|row|row.get(0)
+        )?;
+        (choice.as_str(), reason)
+    } else {
+        clear(
+            &db,
+            &review.project_id,
+            &review.source_id,
+            &review.candidate_id,
+        )?;
+        ("undecided", String::new())
+    };
+    let result = serde_json::json!({"clip_id":review.clip_id,"decision":choice,"reason":reason})
+        .to_string()
+        .into_bytes();
+    super::remember(&db, &review.request_id, &review.hash, &result, review.now)?;
+    db.commit()?;
+    Ok(result)
+}
+
+/// Recent choices and editing actions within this project. Only the command's
+/// verb goes into a brief, so an edit's file paths and asset IDs stay private.
+pub(super) fn taste(connection: &Connection, project_id: &str) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = connection.prepare("
+        WITH examples AS (
+            SELECT d.decided_unix_millis AS ts, d.candidate_id AS id,
+                d.decision || ' ' || coalesce(nullif(d.subject,''), coalesce(json_extract(e.document,'$.plan.form'),'clip') ||
+                coalesce(' (“' || nullif(json_extract(e.document,'$.title'),'') || '”)','')) ||
+                CASE WHEN d.reason<>'' THEN ' — ' || d.reason ELSE '' END AS detail
+            FROM clip_decisions d LEFT JOIN edit_docs e ON e.doc_id=(
+                SELECT doc_id FROM edit_docs WHERE project_id=d.project_id AND source_id=d.source_id
+                    AND candidate_id=d.candidate_id ORDER BY updated_unix_millis DESC, doc_id LIMIT 1)
+            WHERE d.project_id=?1 AND (e.doc_id IS NOT NULL OR d.reason<>'' OR d.subject<>'')
+            UNION ALL
+            SELECT c.applied_unix_millis, e.doc_id || ':' || c.revision,
+                'Edited ' || coalesce(json_extract(e.document,'$.plan.form'),'clip') ||
+                ' with ' || json_extract(c.command,'$.op')
+            FROM edit_commands c JOIN edit_docs e ON e.doc_id=c.doc_id WHERE e.project_id=?1
+        )
+        SELECT substr(detail,1,240) FROM examples WHERE detail IS NOT NULL ORDER BY ts DESC,id LIMIT 12")?;
+    stmt.query_map([project_id], |r| r.get(0))?.collect()
 }

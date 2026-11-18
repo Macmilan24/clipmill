@@ -112,6 +112,8 @@ pub(crate) struct GraphRequest<'a> {
     pub sources: &'a [SourceInput],
     /// The decoders footage cutaways read from, after the sections' own.
     pub footage: &'a [crate::cutaways::FootageInput],
+    pub joins: &'a [crate::joins::JoinEdges],
+    pub room_tones: &'a [crate::joins::RoomTone],
     /// Name of the ASS file in the working directory, when captions burn in.
     pub subtitle_file: Option<&'a str>,
     /// Loudness normalisation filter. The measurement pass knows its own; the
@@ -168,7 +170,10 @@ pub(crate) fn build(request: &GraphRequest<'_>) -> Result<FilterGraph, RenderErr
         }
         let label = format!("a{index}");
         if span.has_audio {
-            let fades = join_fades(request, index, span);
+            let fades = join_fades(
+                request.joins[index],
+                span.trim_end_ticks - span.trim_start_ticks,
+            );
             chains.push(format!(
                 "{}atrim=start={start}:end={end},asetpts=PTS-STARTPTS,{fades}\
                  aformat=sample_fmts=fltp:sample_rates={rate_hz}:channel_layouts=stereo[{label}]",
@@ -437,25 +442,8 @@ fn decoder_inputs(request: &GraphRequest<'_>) -> DecoderInputs {
 /// still abut, so the programme keeps its length and every caption its time;
 /// an overlapping crossfade would shorten the programme by the overlap at
 /// every join. The first section has nothing before it to fade from.
-fn join_fades(request: &GraphRequest<'_>, index: usize, span: &DecodeSpan) -> String {
-    let blend = |position: usize| {
-        request
-            .spans
-            .get(position)
-            .and_then(|span| {
-                request
-                    .document
-                    .video
-                    .segments
-                    .iter()
-                    .find(|segment| segment.segment_id == span.segment_id)
-            })
-            .and_then(|segment| segment.join)
-            .map_or(0, |join| join.audio_crossfade_ticks.max(0) / 2)
-    };
-    let length = span.trim_end_ticks - span.trim_start_ticks;
-    let fade_in = if index == 0 { 0 } else { blend(index) }.min(length / 2);
-    let fade_out = blend(index + 1).min(length / 2);
+fn join_fades(edges: crate::joins::JoinEdges, length: i64) -> String {
+    let (fade_in, fade_out) = (edges.fade_in, edges.fade_out);
     let mut filters = String::new();
     if fade_in > 0 {
         filters += "afade=t=in:st=0:d=";
@@ -800,8 +788,43 @@ fn axis_expression(
 /// document carries no automation.
 /// The program's sound made final: the voice with its gain and cleanup, the
 /// music under it when there is some, and the loudness pass over the mix.
+/// Place short recording excerpts on one sparse track. Generated silence between
+/// excerpts streams through the filter without buffering the preceding programme.
+fn room_track(request: &GraphRequest<'_>, chains: &mut Vec<String>) -> &'static str {
+    if request.room_tones.is_empty() {
+        return "[acat]";
+    }
+    let rate = request.profile.audio_sample_rate;
+    let first = decoder_groups(request.spans).len() + request.footage.len();
+    let mut labels = Vec::new();
+    let mut cursor = 0;
+    for (index, tone) in request.room_tones.iter().enumerate() {
+        let gap = tone.program_start - cursor;
+        if gap > 0 {
+            chains.push(format!("anullsrc=r={rate}:cl=stereo,atrim=end={},asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp[quiet{index}]", ticks_to_seconds(gap)));
+            labels.push(format!("[quiet{index}]"));
+        }
+        let rise = ticks_to_seconds(tone.rise);
+        let fall = ticks_to_seconds(tone.fall);
+        chains.push(format!("[{}:a:0]aformat=sample_fmts=fltp:sample_rates={rate}:channel_layouts=stereo,atrim=end={},asetpts=PTS-STARTPTS,afade=t=in:st=0:d={rise}:curve=qsin,afade=t=out:st={rise}:d={fall}:curve=qsin[room{index}]",first + index, ticks_to_seconds(tone.rise + tone.fall)));
+        labels.push(format!("[room{index}]"));
+        cursor = tone.program_start + tone.rise + tone.fall;
+    }
+    chains.push(format!(
+        "{}concat=n={}:v=0:a=1[room]",
+        labels.join(""),
+        labels.len()
+    ));
+    chains.push(
+        "[acat][room]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[room_voice]"
+            .to_owned(),
+    );
+    "[room_voice]"
+}
 fn audio_chains(request: &GraphRequest<'_>) -> Vec<String> {
     let audio = &request.document.audio;
+    let mut chains = Vec::new();
+    let track = room_track(request, &mut chains);
     let mut voice: Vec<String> = Vec::new();
     if let Some(gain) = gain_filter(request.document) {
         voice.push(gain);
@@ -822,7 +845,8 @@ fn audio_chains(request: &GraphRequest<'_>) -> Vec<String> {
     };
     let Some(music) = &audio.music else {
         voice.push(loudnorm);
-        return vec![format!("[acat]{}[aout]", voice.join(","))];
+        chains.push(format!("{track}{}[aout]", voice.join(",")));
+        return chains;
     };
     let duration: i64 = request
         .spans
@@ -831,8 +855,8 @@ fn audio_chains(request: &GraphRequest<'_>) -> Vec<String> {
         .sum();
     let envelope = crate::music::music_envelope(request.document, duration);
     let level = volume_filter(&envelope).unwrap_or_else(|| "anull".to_owned());
-    vec![
-        format!("[acat]{}[voice]", joined(&voice)),
+    chains.extend([
+        format!("{track}{}[voice]", joined(&voice)),
         // The music, looped if it is shorter than the clip, from its start
         // point for exactly the program's length, at the envelope's level.
         format!(
@@ -847,7 +871,8 @@ fn audio_chains(request: &GraphRequest<'_>) -> Vec<String> {
         format!(
             "[voice][bed]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,{loudnorm}[aout]"
         ),
-    ]
+    ]);
+    chains
 }
 
 fn gain_filter(document: &EditDocument) -> Option<String> {

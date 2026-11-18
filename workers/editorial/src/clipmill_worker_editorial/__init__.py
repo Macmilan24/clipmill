@@ -30,15 +30,19 @@ from .inference import look, prompt_digest, propose, review
 from .runtime import implementation_suffix
 
 CAPABILITIES = (
+    "editorial-critic",
     "editorial-look",
     "editorial-memory",
+    "editorial-plan",
     "editorial-propose",
+    "editorial-rank",
     "editorial-review",
     "editorial-score",
     "youtube-metadata",
 )
 # The mind's stages: local only, and keyed on their own output budgets.
-MIND_OPERATIONS = ("memory", "score")
+DECISION_OPERATIONS = ("plan", "critic", "rank")
+MIND_OPERATIONS = ("memory", "score", *DECISION_OPERATIONS)
 MAX_OUTPUT_TOKENS = {"memory": 4096}
 
 
@@ -79,6 +83,10 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
     inputs = LeaseInputs(context)
     if operation == "look":
         return execute_look(context, inputs, model, payload)
+    if operation in DECISION_OPERATIONS:
+        from .decision_stages import execute as execute_decision
+
+        return execute_decision(context, inputs, model, payload, operation)
     if operation in MIND_OPERATIONS:
         return execute_mind(context, inputs, model, payload, operation)
     windows_input = inputs.require("editorial.windows.v1")
@@ -197,7 +205,7 @@ def execute_mind(context, inputs, model, payload, operation):
     from clipmill_worker_sdk.gen.schemas.mind_unit_scores import MindUnitScores
 
     from .memory import build_memory
-    from .runtime import acquire_runtime
+    from .runtime import text_session
     from .score import score_units
 
     script_input = inputs.require("mind.script.v1")
@@ -208,8 +216,9 @@ def execute_mind(context, inputs, model, payload, operation):
     traces = []
     # Borrowed from the resident model, so memory, markup and the stages after
     # them reuse one load; closing hands it back.
-    runtime = acquire_runtime(model, context.cancellation) if script["windows"] else None
-    try:
+    with text_session(
+        model, context.cancellation, script["source_fingerprint"], needed=bool(script["windows"])
+    ) as runtime:
         build, schema, output = (
             (build_memory, MindMemory, "memory.json")
             if operation == "memory"
@@ -227,9 +236,6 @@ def execute_mind(context, inputs, model, payload, operation):
             cancellation=context.cancellation,
             progress=context.report_progress,
         )
-    finally:
-        if runtime is not None:
-            runtime.close()
     # A document this worker wrote and its own contract refuses is a bug here,
     # not something a retry fixes.
     try:
@@ -241,7 +247,7 @@ def execute_mind(context, inputs, model, payload, operation):
         raise RetryableTaskError(f"the model answered none of the {operation} calls: {detail}")
     trace = {
         "schema_version": "clipmill.editorial.trace.v1",
-        "content_profile": "interview",
+        "content_profile": content_profile(payload.content_profile),
         "source_fingerprint": script["source_fingerprint"],
         "producer": {"stage": payload.stage, "implementation": implementation},
         "calls": traces,

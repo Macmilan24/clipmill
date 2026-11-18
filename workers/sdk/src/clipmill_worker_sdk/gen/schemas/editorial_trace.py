@@ -38,6 +38,16 @@ class Job(StrEnum):
     propose = 'propose'
     review = 'review'
     look = 'look'
+    memory_read = 'memory.read'
+    memory_link = 'memory.link'
+    score = 'score'
+    plan = 'plan'
+    critic = 'critic'
+    critic_edge = 'critic.edge'
+    critic_source = 'critic.source'
+    critic_copy = 'critic.copy'
+    critic_omission = 'critic.omission'
+    compare = 'compare'
 
 
 class Route(StrEnum):
@@ -76,6 +86,10 @@ class Tokens(BaseModel):
     )
     input: conint(ge=0)
     output: conint(ge=0)
+    cached_input: conint(ge=0) | None = Field(
+        None,
+        description='Input tokens served from a prompt checkpoint when the backend reports them.',
+    )
 
 
 class Call(BaseModel):

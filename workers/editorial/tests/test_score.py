@@ -79,3 +79,22 @@ def test_marks_become_a_row_for_every_sentence():
     assert "needs" not in rows["s1"]
     assert scores["unscored"][0]["first_unit"] == "s6"
     assert '"citable_units": "s6 to s11"' in runtime.prompts[1]
+
+
+def test_disfluency_cannot_mask_a_whole_passage_or_a_rated_anchor():
+    runtime = Scripted(
+        {
+            "hooks": [{"unit": "s2", "level": "strong"}],
+            "landings": [],
+            "cuts": [
+                {"first_unit": "s0", "last_unit": "s5", "why": "false_start"},
+                {"first_unit": "s1", "last_unit": "s2", "why": "retake"},
+            ],
+            "needs": [],
+        },
+        {"hooks": [], "landings": [], "cuts": [], "needs": []},
+    )
+    rows = score(runtime)["units"]
+    assert [r["trim"] for r in rows[:6]] == ["keep", "retake", "keep", "keep", "keep", "keep"]
+    prompt = runtime.prompts[0]
+    assert all(f"s{i} [0:00] A x" in prompt for i in range(6))

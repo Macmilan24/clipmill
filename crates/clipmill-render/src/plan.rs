@@ -127,6 +127,7 @@ pub struct RenderPlan {
     /// The decoders footage cutaways read from, after the sections' own.
     pub footage: Vec<FootageInput>,
     paths: BTreeMap<String, String>,
+    room_tones: Vec<crate::joins::RoomTone>,
 }
 
 impl RenderPlan {
@@ -168,6 +169,17 @@ impl RenderPlan {
                     .collect::<Vec<_>>()
             ),
         );
+        if !self.room_tones.is_empty() {
+            config.insert(
+                "room_tone_samples".to_owned(),
+                json!(
+                    self.room_tones
+                        .iter()
+                        .map(|tone| (&tone.source, tone.source_start, tone.rise + tone.fall))
+                        .collect::<Vec<_>>()
+                ),
+            );
+        }
         config.insert("captions_ass".to_owned(), json!(self.ass));
         config
     }
@@ -337,6 +349,16 @@ impl RenderPlan {
                     .unwrap_or_default(),
             );
         }
+        for tone in &self.room_tones {
+            args.extend([
+                "-ss".to_owned(),
+                ticks_to_seconds(tone.source_start),
+                "-t".to_owned(),
+                ticks_to_seconds(tone.rise + tone.fall),
+                "-i".to_owned(),
+                self.paths.get(&tone.source).cloned().unwrap_or_default(),
+            ]);
+        }
         args
     }
 }
@@ -497,6 +519,8 @@ pub fn compile(
         segments,
         mut paths,
     } = lay_out(document, sources, rate)?;
+    let joins = crate::joins::edges(document);
+    let room_tones = crate::joins::room_tones(document, &joins, sources);
     let footage = cutaways::footage_inputs(document, sources)?;
     for input in &footage {
         if let Some(source) = sources
@@ -520,6 +544,8 @@ pub fn compile(
         spans: &spans,
         sources,
         footage: &footage,
+        joins: &joins,
+        room_tones: &room_tones,
         subtitle_file: burn,
         loudnorm: None,
         audio_only: false,
@@ -530,6 +556,8 @@ pub fn compile(
         spans: &spans,
         sources,
         footage: &footage,
+        joins: &joins,
+        room_tones: &room_tones,
         subtitle_file: None,
         loudnorm: Some(format!(
             "loudnorm=I={}:TP={}:LRA={}:print_format=json",
@@ -553,6 +581,7 @@ pub fn compile(
         graph,
         measurement_graph,
         footage,
+        room_tones,
         paths,
     })
 }

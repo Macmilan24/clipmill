@@ -1,0 +1,13 @@
+{
+  "clips": [],
+  "comparisons": [],
+  "cutoff_reason": "No cuts met the brief and passed independent review.",
+  "editorial_prompt": "Pricing changes",
+  "inputs": {
+    "mind.quality_report.v1": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "mind.script.v1": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "requested_count": 3,
+  "schema_version": "clipmill.ranking.set.v2",
+  "source_fingerprint": "sha256:c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+}

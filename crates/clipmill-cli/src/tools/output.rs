@@ -46,12 +46,14 @@ pub(super) fn schema(operation: &str) -> Value {
                 ("missing", "boolean"),
             ],
         ),
-        "get_job" | "cancel_job" | "start_analysis" | "" => record(&[
-            ("job_id", "string"),
-            ("state", "string"),
-            ("progress", "object"),
-            ("stages", "array"),
-        ]),
+        "get_job" | "cancel_job" | "start_analysis" | "reprompt" | "propose_clips" | "" => {
+            record(&[
+                ("job_id", "string"),
+                ("state", "string"),
+                ("progress", "object"),
+                ("stages", "array"),
+            ])
+        }
         "list_jobs" => list(
             "jobs",
             &[
@@ -60,10 +62,18 @@ pub(super) fn schema(operation: &str) -> Value {
                 ("state", "string"),
             ],
         ),
-        "get_transcript" => list(
-            "sentences",
-            &[("text", "string"), ("start", "number"), ("end", "number")],
-        ),
+        "get_transcript" => {
+            let mut output = record(&[("source_fingerprint", "string"), ("sentences", "array")]);
+            output["properties"]["sentences"]["items"] = record(&[
+                ("unit", "string"),
+                ("text", "string"),
+                ("start", "number"),
+                ("end", "number"),
+                ("start_ticks", "integer"),
+                ("end_ticks", "integer"),
+            ]);
+            output
+        }
         "find_moments" => list(
             "moments",
             &[("text", "string"), ("start", "number"), ("end", "number")],
@@ -113,7 +123,7 @@ fn edit_schema(operation: &str) -> Value {
             ("decision", "string"),
         ]),
         "set_decision" => record(&[("clip_id", "string"), ("decision", "string")]),
-        "create_clip" => record(&[
+        "create_clip" | "create_clip_from_plan" => record(&[
             ("doc_id", "string"),
             ("revision", "integer"),
             ("reopened", "boolean"),
@@ -136,6 +146,7 @@ fn edit_schema(operation: &str) -> Value {
                 ("inverse", "object"),
             ],
         ),
+        "render_preview" => record(&[("job_id", "string"), ("revision", "integer")]),
         "export_clip" => record(&[("job_id", "string"), ("destination_dir", "string")]),
         _ => json!({"type":"object"}),
     }

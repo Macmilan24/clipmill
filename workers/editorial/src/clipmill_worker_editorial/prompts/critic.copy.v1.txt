@@ -1,0 +1,5 @@
+Check whether a listener hears the specific claim in the public wording. A separate unplayed source line contains similar words. Find the strongest verbatim played quote and identify the claim that quote establishes on its own. Compare the action, subject and stated relationship in the wording with the claim established by the quote. For a sequence or comparison, verify both parts and the relationship between them. General topical similarity supplies insufficient evidence.
+
+Return same_claim_plays when the retained speech supports the same substantive claim, including an accurate paraphrase or a calculation using retained numbers. Return claim_only_in_unplayed_line when the omitted line is the sole evidence for a material part of the claim. Return uncertain if the evidence is ambiguous.
+
+When source_titles are supplied, choose the most informative, specific spoken title for this cut. When public_notes are supplied, return only the IDs of statements the playback contradicts or that assert an absent fact is heard. Preserve accurate reasons, inferences, and observations about genuine omissions.

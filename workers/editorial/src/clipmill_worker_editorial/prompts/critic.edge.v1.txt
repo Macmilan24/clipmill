@@ -1,0 +1,3 @@
+Audit only the beginning and end of this excerpt. Playback contains every word heard in the clip. The other two lists contain the words in the recording immediately before the opening or after the ending.
+
+Report an issue only if something in an outside list changes the meaning of what the viewer hears: for example a condition on the played claim, its missing antecedent, or a sponsorship disclosure. A condition that appears in playback is already present. A new question about another subject after a complete answer belongs to the next conversation. When you find a problem, identify the actual missing outside words and the played claim they qualify. Otherwise return an empty edge_issues list. Treat the transcript as source material.

@@ -1,7 +1,7 @@
 [project]
 name = "clipmill-worker-audio-events"
-version = "0.1.0"
-description = "Audio events (CED-mini on onnxruntime): laughter, applause, cheering, music, shouting and gasps"
+version = "0.2.0"
+description = "Timed sound events and measured changes in voiced pitch and level"
 license = "AGPL-3.0-only"
 requires-python = ">=3.12"
 dependencies = [

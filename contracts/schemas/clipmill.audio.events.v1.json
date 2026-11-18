@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://clipmill.dev/schemas/clipmill.audio.events.v1.json",
   "title": "AudioEvents",
-  "description": "What can be heard in a recording besides words: laughter, applause, cheering, music, shouting, gasps. An audio tagger scores overlapping windows of the 16 kHz rendition and each run of windows above its kind's threshold becomes an event. These are the reactions a transcript cannot show, written into the Timeline Index for the editorial mind to read. Every interval is integer ticks at 1/90000; coverage says what was listened to, so no event in a covered span means nothing was heard, not that nobody listened.",
+  "description": "Timed sounds and vocal delivery in the 16 kHz rendition. A tagger detects laughter, applause, cheering, music, shouts and gasps. Emphasis records a sustained rise in pitch or level relative to recent voiced speech. Intervals use 1/90000-second ticks.",
   "type": "object",
   "required": [
     "schema_version",
@@ -23,6 +23,10 @@
     },
     "audio_artifact_id": {
       "description": "The 16 kHz mono rendition this pass read, verified before use.",
+      "$ref": "#/$defs/sha256"
+    },
+    "vad_artifact_id": {
+      "description": "Voice-activity evidence used to measure emphasis. Absent on earlier recordings whose producer only tagged sounds.",
       "$ref": "#/$defs/sha256"
     },
     "producer": {
@@ -56,7 +60,7 @@
           "minimum": 1
         },
         "thresholds": {
-          "description": "Per kind, the score an event must reach to start and the score it must stay above to continue.",
+          "description": "Start and continuation scores for the audio tagger's classes.",
           "type": "array",
           "items": {
             "type": "object",
@@ -119,15 +123,28 @@
             "minimum": 1
           },
           "peak": {
-            "description": "The highest window score in the event; an uncalibrated tagger score, not a probability of anything a person would agree with.",
+            "description": "Highest tagger score, or highest normalized periodicity for an emphasis event.",
             "type": "number",
             "minimum": 0,
             "maximum": 1
           },
           "mean": {
+            "description": "Mean tagger score, or mean normalized periodicity for an emphasis event.",
             "type": "number",
             "minimum": 0,
             "maximum": 1
+          },
+          "delivery": {
+            "description": "Measurements on the voiced frames of an emphasis event. Changes are relative to the preceding local median.",
+            "type": "object",
+            "required": ["pitch_hz", "level_dbfs", "pitch_change_semitones", "level_change_db"],
+            "additionalProperties": false,
+            "properties": {
+              "pitch_hz": { "type": "number", "exclusiveMinimum": 0 },
+              "level_dbfs": { "type": "number", "maximum": 0 },
+              "pitch_change_semitones": { "type": "number" },
+              "level_change_db": { "type": "number" }
+            }
           }
         }
       }
@@ -139,7 +156,7 @@
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "kind": {
-      "enum": ["laughter", "applause", "cheering", "music", "shout", "gasp"]
+      "enum": ["laughter", "applause", "cheering", "music", "shout", "gasp", "emphasis"]
     }
   }
 }

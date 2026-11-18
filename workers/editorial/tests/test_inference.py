@@ -520,7 +520,8 @@ import sys
 from clipmill_worker_editorial import CAPABILITIES
 from clipmill_worker_editorial.inference import call, ReviewReply
 assert CAPABILITIES == (
-    'editorial-look', 'editorial-memory', 'editorial-propose', 'editorial-review',
+    'editorial-critic', 'editorial-look', 'editorial-memory', 'editorial-plan',
+    'editorial-propose', 'editorial-rank', 'editorial-review',
     'editorial-score', 'youtube-metadata'
 )
 class Broken:

@@ -686,6 +686,13 @@ pub struct EditorialStagePayloadV1 {
     /// interview or scripted; empty reads as interview for older runs.
     #[prost(string, tag = "7")]
     pub content_profile: ::prost::alloc::string::String,
+    /// Only local planning, critique/repair and ranking use this brief.
+    #[prost(string, tag = "8")]
+    pub editorial_prompt: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "9")]
+    pub editorial_taste: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(uint64, tag = "10")]
+    pub requested_count: u64,
 }
 /// Versioned payload for discovery (book ch. 15). The request names a source;
 /// the daemon resolves it to the evidence index, the transcript behind it, and
@@ -827,6 +834,12 @@ pub struct AnalyzeSourcePayloadV1 {
     /// Persisted editorial rubric; interview (default) or scripted.
     #[prost(string, tag = "9")]
     pub content_profile: ::prost::alloc::string::String,
+    /// A person's optional brief for the local mind, at most 1000 characters.
+    #[prost(string, tag = "10")]
+    pub editorial_prompt: ::prost::alloc::string::String,
+    /// Local decision and edit examples resolved by the daemon at submission.
+    #[prost(string, repeated, tag = "11")]
+    pub editorial_taste: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Explicit consent applies only to this run. Credentials never enter the request.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1018,6 +1031,9 @@ pub struct AnalysisSettingsV1 {
     pub count: u64,
     #[prost(bool, tag = "5")]
     pub local_editorial: bool,
+    /// Restore the original brief when retrying this analysis.
+    #[prost(string, tag = "6")]
+    pub editorial_prompt: ::prost::alloc::string::String,
 }
 /// The identity of an export, as its job carries it.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1741,6 +1757,9 @@ pub struct SetClipDecisionRequest {
     pub candidate_id: ::prost::alloc::string::String,
     #[prost(enumeration = "ClipDecisionV1", tag = "4")]
     pub decision: i32,
+    /// Optional local editorial feedback, limited to 240 characters.
+    #[prost(string, tag = "5")]
+    pub reason: ::prost::alloc::string::String,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SetClipDecisionResponse {
@@ -1764,6 +1783,8 @@ pub struct ClipDecisionRecordV1 {
     pub decision: i32,
     #[prost(uint64, tag = "3")]
     pub decided_unix_millis: u64,
+    #[prost(string, tag = "4")]
+    pub reason: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListClipDecisionsResponse {
@@ -2128,6 +2149,15 @@ pub struct PreviewSegmentV1 {
     /// A fitted picture's zoom past fitting, in percent; 100 fits.
     #[prost(uint32, tag = "17")]
     pub zoom_percent: u32,
+    /// Quarter-sine fades at the two edges of this source interval.
+    #[prost(int64, tag = "18")]
+    pub fade_in_ticks: i64,
+    #[prost(int64, tag = "19")]
+    pub fade_out_ticks: i64,
+    /// First sample of the recording's verified quiet interval underneath the
+    /// join before this segment, starting at the preceding fade-out.
+    #[prost(int64, optional, tag = "20")]
+    pub room_tone_start_ticks: ::core::option::Option<i64>,
 }
 /// A source the program draws from, as the crops are measured against it.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -2167,6 +2197,13 @@ pub struct PreviewProxyV1 {
     pub rate_num: u32,
     #[prost(uint32, tag = "9")]
     pub rate_den: u32,
+    /// Stereo PCM derivative, present when a join uses the recording's room tone.
+    #[prost(string, tag = "10")]
+    pub audio_artifact_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "11")]
+    pub audio_file: ::prost::alloc::string::String,
+    #[prost(int64, tag = "12")]
+    pub audio_start_ticks: i64,
 }
 /// Resolved export preset. Colours are CSS #RRGGBBAA, dimensions in output pixels.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

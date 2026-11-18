@@ -22,7 +22,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
-from .inference import call, prompt_digest
+from .inference import call, cited_window, prompt_digest
 
 EVENT_KINDS = (
     "story",
@@ -408,7 +408,7 @@ def build_memory(
         answer, failure = call(
             runtime,
             "memory.read",
-            {"citable_units": f"{units[0]} to {units[-1]}", "script": window["text"]},
+            cited_window(builder.units, window),
             reply,
             max_tokens,
             {**identity, "window_index": number - 1},

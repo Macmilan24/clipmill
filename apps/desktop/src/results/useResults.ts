@@ -382,6 +382,23 @@ export function useResults(
   const clipRequest = useCallback(
     (candidateId: string, window: Window | null): DirectClipInput | null => {
       const row = snapshot.rows.find((candidate) => candidate.candidateId === candidateId);
+      const plan = snapshot.plans?.find((candidate) => candidate.planId === candidateId);
+      if (projectId && snapshot.source && snapshot.run && plan) {
+        const styleRef = lookFor(projectId);
+        const options = optionsFor(projectId);
+        return {
+          projectId,
+          sourceId: snapshot.source.sourceId,
+          jobId: snapshot.run.jobId,
+          candidateId: plan.planId,
+          cut: 'chosen',
+          planJson: plan.planJson,
+          ...(styleRef ? { styleRef } : {}),
+          ...(options ? { captionOptionsJson: options } : {}),
+          ...kitRequest(),
+          highlightSpokenWord: highlightFor(projectId),
+        };
+      }
       if (!projectId || !snapshot.source || !row) return null;
       const chosen = { startTicks: row.startTicks, endTicks: row.endTicks };
       const moved = window !== null && !same(window, chosen);
@@ -414,7 +431,7 @@ export function useResults(
         ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
       };
     },
-    [projectId, snapshot.source, snapshot.run, snapshot.rows],
+    [projectId, snapshot.source, snapshot.run, snapshot.rows, snapshot.plans],
   );
 
   /** The request that builds a span nobody proposed: the manual clip's. */
@@ -472,8 +489,10 @@ export function useResults(
         })
         // A clip that cannot be previewed is judged from the solver's crop,
         // as before; the approval itself will say what is wrong.
-        .catch(() => {
-          if (sequence === previewSequence.current) setPreview(null);
+        .catch((error: unknown) => {
+          if (sequence !== previewSequence.current) return;
+          setPreview(null);
+          if (request.planJson) setNotice(error instanceof Error ? error.message : String(error));
         });
     },
     [api, clipRequest, manualRequest],
@@ -555,26 +574,13 @@ export function useResults(
   const editPlan = useCallback(
     async (plan: PlannedClip): Promise<DirectedClip | null> => {
       if (!projectId || !snapshot.source || !snapshot.run) return null;
-      const look = lookFor(projectId);
-      const options = optionsFor(projectId);
+      const request = clipRequest(plan.planId, null);
+      if (!request) return null;
       const context = contextSequence.current;
       setBusy(true);
       setNotice(null);
       try {
-        const directed = await api.directClip({
-          projectId,
-          sourceId: snapshot.source.sourceId,
-          // The plan's own run: its parts are timed against this transcript.
-          jobId: snapshot.run.jobId,
-          candidateId: plan.planId,
-          cut: 'chosen',
-          planJson: plan.planJson,
-          ...(look ? { styleRef: look } : {}),
-          ...(options ? { captionOptionsJson: options } : {}),
-          ...kitRequest(),
-          highlightSpokenWord: highlightFor(projectId),
-          approve: false,
-        });
+        const directed = await api.directClip({ ...request, approve: false });
         if (context !== contextSequence.current) return null;
         setNotice(directed.reopened ? 'Opened its edit as it stands.' : 'Sent to the editor.');
         reload();
@@ -586,7 +592,7 @@ export function useResults(
         if (context === contextSequence.current) setBusy(false);
       }
     },
-    [api, projectId, reload, snapshot.source, snapshot.run],
+    [api, clipRequest, projectId, reload, snapshot.source, snapshot.run],
   );
 
   const approveMany = useCallback(

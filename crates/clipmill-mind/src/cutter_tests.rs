@@ -149,6 +149,40 @@ fn a_distant_answer_is_stitched_to_its_question() {
 }
 
 #[test]
+fn a_long_linked_answer_uses_the_available_sentence_boundary() {
+    let (source, words) = recording();
+    let fingerprint = format!("sha256:{}", "a".repeat(64));
+    let material = Material {
+        source_fingerprint: &fingerprint,
+        source: &source,
+        words: &words,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    };
+    let candidate = stitched(
+        &material,
+        &Table::new(&material),
+        [
+            (3, 3, "question", "Price?"),
+            (30, 50, "answer", "The price"),
+        ],
+        "l1 question_answer: m1>m2",
+        vec!["l1".to_owned()],
+    )
+    .expect("a 5-second question and a 53-second answer fit the 60-second budget");
+    assert_eq!(candidate.plan.duration_ticks.get(), 58 * S);
+    assert_eq!(
+        candidate.plan.parts[1].units.first().unwrap().as_str(),
+        "s30"
+    );
+    assert_eq!(
+        candidate.plan.parts[1].units.last().unwrap().as_str(),
+        "s38"
+    );
+}
+
+#[test]
 fn a_tangent_inside_a_story_is_cut_out() {
     let found = cut(true);
     let tight = find(&found, MindClipPlanForm::Tightened);
@@ -194,6 +228,64 @@ fn most_candidates_are_more_than_one_straight_span() {
         .filter(|c| c.plan.form != MindClipPlanForm::Straight)
         .count();
     assert!(shaped * 2 > found.len(), "{:?}", forms(&found));
+}
+
+#[test]
+fn a_long_dependency_chain_cannot_replace_the_cited_event_with_its_distant_setup() {
+    let (source, words) = recording();
+    let mut table = Table::new(&Material {
+        source_fingerprint: "",
+        source: &source,
+        words: &words,
+        scores: None,
+        memory: None,
+        length: (15 * S, 25 * S),
+    });
+    for index in 1..=17 {
+        table.units[index].needs = Some(index - 1);
+    }
+    let (start, end) = table.fit(17, 23, (15 * S, 25 * S)).unwrap();
+    assert!((18..=23).contains(&start));
+    assert!(end >= start && (15 * S..=25 * S).contains(&table.kept(start, end)));
+    assert!(table.fit(17, 17, (15 * S, 25 * S)).is_none());
+}
+
+#[test]
+fn a_short_event_can_borrow_nearby_setup_and_landing_without_losing_its_evidence() {
+    let (source, words) = recording();
+    let mut table = Table::new(&Material {
+        source_fingerprint: "",
+        source: &source,
+        words: &words,
+        scores: None,
+        memory: None,
+        length: (15 * S, 23 * S),
+    });
+    table.units[7].needs = Some(6);
+    table.units[8].landing = 3;
+    let (start, end) = table.fit(7, 7, (15 * S, 23 * S)).unwrap();
+    assert_eq!((start, end), (6, 8));
+    assert_eq!(table.kept(start, end), 17 * S);
+
+    // An attractive but early landing between the linked events cannot
+    // stand in for the later answer. Both endpoints must survive the cut.
+    let question = (7, 7);
+    let answer = (12, 12);
+    assert!(
+        table
+            .fit_anchored(question, answer, (15 * S, 23 * S))
+            .is_none()
+    );
+    let (start, end) = table
+        .fit_anchored(question, answer, (15 * S, 45 * S))
+        .unwrap();
+    assert!(start <= 7 && end >= 12);
+    table.units[12].cut = Some("tangent");
+    assert!(
+        table
+            .fit_anchored(question, answer, (15 * S, 45 * S))
+            .is_none()
+    );
 }
 
 #[test]
@@ -246,4 +338,188 @@ impl Fits for MindClipPlan {
     fn programme_ticks_fit(&self, (min, max): (u64, u64)) -> bool {
         (min..=max).contains(&crate::programme_ticks(self))
     }
+}
+
+#[test]
+fn the_brief_scout_builds_a_montage_from_disjoint_requested_mentions() {
+    let (mut source, words) = recording();
+    for i in [3, 27, 50] {
+        source.sentences[i].text = "The pricing changed in this quarter.".into();
+    }
+    let found = super::candidates_for_brief(
+        &Material {
+            source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+            source: &source,
+            words: &words,
+            scores: None,
+            memory: None,
+            length: (15 * S, 60 * S),
+        },
+        "Every time they talk about pricing",
+    );
+    let montage = find(&found, MindClipPlanForm::ThemeMontage);
+    assert_eq!(montage.scout, Scout::Brief);
+    assert_eq!(montage.plan.parts.len(), 3);
+    assert!(montage.plan.joins.iter().all(|join| join.link.is_some()));
+    assert_eq!(montage.alternatives.len(), 2);
+    assert_eq!(
+        montage.alternatives[0].parts[0].start_ticks,
+        montage.plan.parts[1].start_ticks
+    );
+    assert_ne!(montage.alternatives[0].plan_id, montage.plan.plan_id);
+}
+
+#[test]
+fn an_exhaustive_montage_reaches_a_sixth_mention_when_all_fit() {
+    let (mut source, words) = recording();
+    for line in [2, 12, 22, 32, 42, 52] {
+        source.sentences[line].text = "Pricing changed that year.".into();
+    }
+    let matches = super::candidates_for_brief(
+        &Material {
+            source_fingerprint: &format!("sha256:{}", "c".repeat(64)),
+            source: &source,
+            words: &words,
+            scores: None,
+            memory: None,
+            length: (15 * S, 60 * S),
+        },
+        "Every time they discuss pricing",
+    );
+    let montage = find(&matches, MindClipPlanForm::ThemeMontage);
+    assert_eq!(montage.plan.parts.len(), 6);
+    assert_eq!(montage.plan.evidence.len(), 6);
+    assert_eq!(montage.plan.evidence.last().unwrap().as_str(), "s52");
+}
+
+#[test]
+fn adjacent_mentions_retain_the_short_connective_between_them() {
+    let (mut source, words) = recording();
+    for line in [5, 30, 32] {
+        source.sentences[line].text = "Pricing changed that year.".into();
+    }
+    source.sentences[31].text = "And excluded the basic plan.".into();
+    let matches = super::candidates_for_brief(
+        &Material {
+            source_fingerprint: &format!("sha256:{}", "b".repeat(64)),
+            source: &source,
+            words: &words,
+            scores: None,
+            memory: None,
+            length: (15 * S, 60 * S),
+        },
+        "Every time they discuss pricing",
+    );
+    let montage = find(&matches, MindClipPlanForm::ThemeMontage);
+    assert_eq!(montage.plan.parts.len(), 2);
+    assert_eq!(montage.plan.joins.len(), 1);
+    assert!(
+        montage.plan.parts[1]
+            .units
+            .iter()
+            .any(|id| id.as_str() == "s31")
+    );
+    assert_eq!(montage.plan.parts[1].units.last().unwrap().as_str(), "s32");
+}
+
+#[test]
+fn a_montage_keeps_qualified_mentions_even_when_the_global_markup_would_trim_them() {
+    let (mut source, words) = recording();
+    // s13 and s14 were marked as tangents to the source overall. Together
+    // they contain one of the requested examples, including its qualifier.
+    source.sentences[13].text = "They cut the pricing".into();
+    source.sentences[14].text = "only for the first month.".into();
+    source.sentences[15].text = "But only if you signed up before launch.".into();
+    for line in [27, 50] {
+        source.sentences[line].text = "The pricing changed after the launch.".into();
+    }
+    let scores = scores();
+    let matches = super::candidates_for_brief(
+        &Material {
+            source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+            source: &source,
+            words: &words,
+            scores: Some(&scores),
+            memory: None,
+            length: (15 * S, 60 * S),
+        },
+        "Make a montage of every time the speaker talks about pricing.",
+    );
+    let montage = find(&matches, MindClipPlanForm::ThemeMontage);
+    assert_eq!(montage.plan.parts.len(), 3);
+    let quoted: Vec<_> = montage.plan.parts[0]
+        .units
+        .iter()
+        .map(|u| u.as_str())
+        .collect();
+    assert!(quoted.windows(3).any(|ids| ids == ["s13", "s14", "s15"]));
+    assert!(
+        montage
+            .plan
+            .parts
+            .iter()
+            .all(|part| part.removed.is_empty())
+    );
+}
+
+#[test]
+fn the_reaction_scout_requires_a_nearby_spoken_line() {
+    let (mut source, words) = recording();
+    source.cues.push(crate::script::Cue {
+        kind: "laughter".into(),
+        start_ticks: 50 * S,
+        end_ticks: 52 * S,
+        label: None,
+    });
+    let found = candidates(&Material {
+        source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+        source: &source,
+        words: &words,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    });
+    assert!(found.iter().any(|row| row.scout == Scout::Reaction));
+}
+
+#[test]
+fn edits_with_the_same_outer_edges_have_distinct_identities() {
+    let (source, words) = recording();
+    let edits = scores();
+    let material = Material {
+        source_fingerprint: "recording",
+        source: &source,
+        words: &words,
+        scores: Some(&edits),
+        memory: None,
+        length: (15 * S, 60 * S),
+    };
+    let table = super::Table::new(&material);
+    let untrimmed = super::Table::new(&Material {
+        scores: None,
+        ..material
+    });
+    let body = super::Piece {
+        a: 10,
+        b: 16,
+        role: "body",
+        why: String::new(),
+    };
+    let hook = super::Piece {
+        a: 10,
+        b: 16,
+        role: "hook",
+        why: String::new(),
+    };
+    let id = |pieces: &[super::Piece], table: &super::Table| {
+        super::plan_id("recording", "tightened", pieces, table)
+    };
+    assert_ne!(
+        id(std::slice::from_ref(&body), &table),
+        id(std::slice::from_ref(&body), &untrimmed)
+    );
+    assert_ne!(
+        id(std::slice::from_ref(&body), &table),
+        id(std::slice::from_ref(&hook), &table)
+    );
 }

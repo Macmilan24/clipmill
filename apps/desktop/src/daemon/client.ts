@@ -161,6 +161,7 @@ export interface AnalysisSettings {
   readonly maxTicks: number;
   readonly count: number;
   readonly localEditorial: boolean;
+  readonly editorialPrompt?: string;
 }
 
 /** The identity of an export, as its job carries it. */
@@ -417,6 +418,7 @@ export interface AnalyzeRequest {
   /** Zero leaves the daemon's default. */
   readonly count: number;
   readonly localEditorial?: boolean;
+  readonly editorialPrompt?: string;
   readonly contentProfile?: 'interview' | 'scripted';
   readonly cloudEditorial?: {
     readonly transcriptConsent: boolean;
@@ -944,6 +946,9 @@ export interface PreviewWord {
  * to the recording's opening instead.
  */
 export interface PreviewSegment {
+  readonly fadeInTicks?: number;
+  readonly fadeOutTicks?: number;
+  readonly roomToneStartTicks?: number | null;
   readonly segmentId: string;
   readonly sourceFingerprint: string;
   /** Source ticks the segment plays, half-open. */
@@ -977,6 +982,9 @@ export interface PreviewSource {
 
 /** The proxy a source is previewed from. Proxy second zero is `coverageStartTicks`. */
 export interface PreviewProxy {
+  readonly audioArtifactId?: string;
+  readonly audioFile?: string;
+  readonly audioStartTicks?: number;
   readonly sourceFingerprint: string;
   readonly artifactId: string;
   readonly file: string;

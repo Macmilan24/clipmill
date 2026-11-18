@@ -84,7 +84,21 @@
         },
         "job": {
           "type": "string",
-          "enum": ["propose", "review", "look"]
+          "enum": [
+            "propose",
+            "review",
+            "look",
+            "memory.read",
+            "memory.link",
+            "score",
+            "plan",
+            "critic",
+            "critic.edge",
+            "critic.source",
+            "critic.copy",
+            "critic.omission",
+            "compare"
+          ]
         },
         "window_index": {
           "description": "The window a propose call was over.",
@@ -170,6 +184,11 @@
               "minimum": 0
             },
             "output": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cached_input": {
+              "description": "Input tokens served from a prompt checkpoint when the backend reports them.",
               "type": "integer",
               "minimum": 0
             }
