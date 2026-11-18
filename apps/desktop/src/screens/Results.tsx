@@ -68,6 +68,9 @@ export interface ResultsProps {
   readonly onManualClip?: () => void;
   /** The mind's clips, plans of parts, best first. */
   readonly plans?: readonly PlannedClip[];
+  readonly brief?: React.ReactNode;
+  readonly editorialCount?: number;
+  readonly cutoff?: string | null;
   /** The recording's length, to place a plan's parts on it. */
   readonly sourceDurationTicks?: number | null;
   /** Make an edit from a plan and open it. */
@@ -115,6 +118,9 @@ export function Results({
   notice,
   onManualClip,
   plans = [],
+  brief,
+  editorialCount,
+  cutoff,
   sourceDurationTicks = null,
   onEditPlan,
 }: ResultsProps) {
@@ -183,7 +189,9 @@ export function Results({
             <h1 className="text-[length:var(--cm-type-page-title)] font-semibold tracking-tight text-[var(--cm-text-primary)]">
               {problem
                 ? 'Results'
-                : `${rows.length} clip ${rows.length === 1 ? 'candidate' : 'candidates'}`}
+                : editorialCount !== undefined
+                  ? `${editorialCount} planned ${editorialCount === 1 ? 'clip' : 'clips'}`
+                  : `${rows.length} clip ${rows.length === 1 ? 'candidate' : 'candidates'}`}
             </h1>
             {badge && !problem && (
               <span
@@ -296,7 +304,7 @@ export function Results({
         </Empty>
       )}
 
-      {!problem && summary && (
+      {!problem && summary && editorialCount === undefined && (
         <StatStrip
           summary={summary}
           tallies={tallies}
@@ -308,12 +316,15 @@ export function Results({
         />
       )}
 
+      {!problem && brief}
+      {!problem && cutoff && <p className="text-xs text-[var(--cm-text-secondary)]">{cutoff}</p>}
       {!problem && plans.length > 0 && onEditPlan && (
         <MindPlans
           plans={plans}
           sourceDurationTicks={sourceDurationTicks}
           busy={busy}
           onEdit={onEditPlan}
+          onInspect={(plan) => onInspect(plan.planId)}
         />
       )}
 
@@ -325,15 +336,17 @@ export function Results({
           onInspect={onInspect}
         />
       )}
-      {!problem && rows.length === 0 && declined.length === 0 && (
+      {!problem && rows.length === 0 && declined.length === 0 && plans.length === 0 && (
         <Empty className="workspace-panel min-h-0 flex-1 rounded-[var(--cm-radius-card)]">
           <EmptyHeader>
             <Scissors className="mx-auto size-6 text-[var(--cm-text-muted)]" aria-hidden />
             <EmptyTitle>No clips are ready for review</EmptyTitle>
             <EmptyDescription>
-              {incomplete
-                ? 'No clips are ready from this partial analysis. Unassessed sections may still contain worthwhile moments.'
-                : 'This run returned no clip candidates. You can choose a source interval and make your own edit.'}
+              {editorialCount === 0
+                ? (cutoff ?? 'The review found no cuts to keep for this brief.')
+                : incomplete
+                  ? 'No clips are ready from this partial analysis. Unassessed sections may still contain worthwhile moments.'
+                  : 'This run returned no clip candidates. You can choose a source interval and make your own edit.'}
             </EmptyDescription>
           </EmptyHeader>
           {onManualClip && (

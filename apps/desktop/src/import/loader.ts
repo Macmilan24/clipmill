@@ -135,6 +135,9 @@ export class ImportLoader {
       count: settings.count,
       contentProfile: settings.contentProfile ?? 'interview',
       localEditorial: (settings.editorialRoute ?? 'local') === 'local',
+      ...((settings.editorialRoute ?? 'local') === 'local' && settings.editorialPrompt?.trim()
+        ? { editorialPrompt: settings.editorialPrompt.trim() }
+        : {}),
       ...(settings.editorialRoute === 'cloud'
         ? {
             cloudEditorial: {

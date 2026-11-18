@@ -48,6 +48,30 @@ fn with(mut base: Value, extra: &Value) -> Value {
     base
 }
 
+fn proposal_args() -> Value {
+    let args = with(
+        run_args(),
+        &json!({
+            "prompt": {"type":"string","minLength":1,"maxLength":1000,"description":"What should the clips focus on?"},
+            "count": {"type":"integer","minimum":1,"maximum":30},
+            "min_seconds": {"type":"number","minimum":0},
+            "max_seconds": {"type":"number","exclusiveMinimum":0}
+        }),
+    );
+    object(&args, &["project_id", "source_id", "prompt"])
+}
+
+fn edit_args() -> Value {
+    json!({"doc_id":string("The edit document from clipmill_create_clip or clipmill_create_clip_from_plan.")})
+}
+
+fn revision_args() -> Value {
+    with(
+        edit_args(),
+        &json!({"expected_revision":{"type":"integer","minimum":0,"description":"The revision returned by clipmill_get_edit."}}),
+    )
+}
+
 pub const TOOLS: &[Tool] = &[
     Tool {
         name: "clipmill_status",
@@ -127,7 +151,9 @@ pub const TOOLS: &[Tool] = &[
                     "min_seconds": { "type": "number", "description": "Optional: the shortest clip wanted." },
                     "max_seconds": { "type": "number", "description": "Optional: the longest clip wanted." },
                     "language": string("Optional: the spoken language as a BCP 47 code, such as en."),
-                    "editorial": {"type": "string", "enum": ["local", "none"], "description": "Use local editorial inference or skip it."},
+                    "editorial": {"type":"string","enum":["local","none"],"description":"Use the on-device editorial model or skip it."},
+                    "prompt": {"type":"string","maxLength":1000,"description":"An editorial brief for the clips."},
+                    "count": {"type":"integer","minimum":1,"maximum":30},
                 }),
                 &["project_id", "source_id"],
             )
@@ -235,6 +261,45 @@ pub const TOOLS: &[Tool] = &[
         input: || object(&run_args(), &["project_id", "source_id"]),
     },
     Tool {
+        name: "clipmill_propose_clips",
+        title: "Propose clips for a brief",
+        description: "Ask for finished clip plans from an analyzed recording. Give a concrete brief such as every time a topic comes up. Returns a job you can follow.",
+        op: "propose_clips",
+        read_only: false,
+        destructive: false,
+        input: proposal_args,
+    },
+    Tool {
+        name: "clipmill_reprompt",
+        title: "Refine a recording's clips",
+        description: "Give an existing analysis a new brief or duration. Reuses the recording's observations and preserves the earlier run. Returns a job.",
+        op: "reprompt",
+        read_only: false,
+        destructive: false,
+        input: proposal_args,
+    },
+    Tool {
+        name: "clipmill_create_clip_from_plan",
+        title: "Create an edit from a plan",
+        description: "Open a ranked plan by clip_id, or supply a complete clipmill.mind.clip_plan.v1 plan drawn from this recording's legal source boundaries. Returns the edit and its revision.",
+        op: "create_clip_from_plan",
+        read_only: false,
+        destructive: false,
+        input: || {
+            let args = with(
+                run_args(),
+                &json!({
+                    "clip_id": string("A plan id from clipmill_list_clips."),
+                    "plan": {"type":"object","description":"A complete clipmill.mind.clip_plan.v1 document."},
+                    "shape": {"type":"string","enum":["vertical","square","portrait","landscape"]}
+                }),
+            );
+            let mut schema = object(&args, &["project_id", "source_id"]);
+            schema["anyOf"] = json!([{"required":["clip_id"]},{"required":["plan"]}]);
+            schema
+        },
+    },
+    Tool {
         name: "clipmill_list_clips",
         title: "List clips",
         description: "The clips an analysis found, best first: plans built by ClipMill's editorial mind (kind \"plan\": a question stitched to its answer, a story with its tangents cut, a strong line moved to the front, a montage) and ranked continuous moments (kind \"moment\"), each with any decision already made.",
@@ -273,6 +338,7 @@ pub const TOOLS: &[Tool] = &[
                     run_args(),
                     &json!({
                         "clip_id": string("The clip."),
+                        "reason": {"type":"string","maxLength":240,"description":"Optional reason to remember for future clips in this project."},
                         "decision": { "type": "string", "enum": ["approved", "kept", "rejected", "undecided"] },
                     }),
                 ),
@@ -318,6 +384,112 @@ pub const TOOLS: &[Tool] = &[
                 &["doc_id", "destination_dir", "rights"],
             )
         },
+    },
+    Tool {
+        name: "clipmill_audit_log",
+        title: "Read the call log",
+        description: "Read this client's recent engine operations and outcomes.",
+        op: "audit_log",
+        read_only: true,
+        destructive: false,
+        input: || {
+            object(
+                &json!({"limit":{"type":"integer","minimum":1,"maximum":2000}}),
+                &[],
+            )
+        },
+    },
+    Tool {
+        name: "clipmill_get_source",
+        title: "Get recording details",
+        description: "Return the registered recording and its measured streams, duration and source map.",
+        op: "get_source",
+        read_only: true,
+        destructive: false,
+        input: || {
+            object(
+                &json!({"source_id":string("The recording."),"project_id":string("Optional project containing the recording.")}),
+                &["source_id"],
+            )
+        },
+    },
+    Tool {
+        name: "clipmill_get_timeline",
+        title: "Inspect timeline layers",
+        description: "List the source-aligned transcript, memory and index artifacts in a finished analysis.",
+        op: "get_timeline",
+        read_only: true,
+        destructive: false,
+        input: || object(&run_args(), &["project_id", "source_id"]),
+    },
+    Tool {
+        name: "clipmill_job_events",
+        title: "Read job progress events",
+        description: "Read an ordered page of durable task transitions. Pass the resulting cursor as after for the next page.",
+        op: "job_events",
+        read_only: true,
+        destructive: false,
+        input: || {
+            object(
+                &json!({"job_id":string("The job."),"after":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":500}}),
+                &["job_id"],
+            )
+        },
+    },
+    Tool {
+        name: "clipmill_get_edit",
+        title: "Read an edit",
+        description: "Read an editable clip, its source analysis and current revision.",
+        op: "get_edit",
+        read_only: true,
+        destructive: false,
+        input: || object(&edit_args(), &["doc_id"]),
+    },
+    Tool {
+        name: "clipmill_apply_edits",
+        title: "Apply edit commands",
+        description: "Apply a batch of ClipMill edit commands together at an observed revision. A stale revision produces a conflict.",
+        op: "apply_edits",
+        read_only: false,
+        destructive: false,
+        input: || {
+            object(
+                &with(
+                    revision_args(),
+                    &json!({
+                        "commands":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","required":["op"],"properties":{"op":{"type":"string"}}}}
+                    }),
+                ),
+                &["doc_id", "expected_revision", "commands"],
+            )
+        },
+    },
+    Tool {
+        name: "clipmill_undo_edit",
+        title: "Undo the latest edit",
+        description: "Apply the durable inverse of the latest command to the revision you just viewed.",
+        op: "undo_edit",
+        read_only: false,
+        destructive: false,
+        input: || object(&revision_args(), &["doc_id", "expected_revision"]),
+    },
+    Tool {
+        name: "clipmill_edit_log",
+        title: "Read edit history",
+        description: "Read the sequence of editing commands, inverse commands and document revisions.",
+        op: "edit_log",
+        read_only: true,
+        destructive: false,
+        input: || object(&edit_args(), &["doc_id"]),
+    },
+    Tool {
+        name: "clipmill_render_preview",
+        title: "Render a local working preview",
+        description: "Render a frozen edit in the local artifact store for review. Returns a job and the frozen revision.",
+        op: "render_preview",
+        read_only: false,
+        destructive: false,
+        input: || object(&revision_args(), &["doc_id", "expected_revision"]),
     },
     Tool {
         name: "clipmill_list_models",

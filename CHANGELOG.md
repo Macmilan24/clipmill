@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Plan clips against an editable brief. The local planner can combine distant
+  passages, tighten a section or build a montage. A critic checks cuts against
+  their original context before the plans are ranked.
+- Search the recording, review plans with their evidence, give a reason for
+  keeping or rejecting one, and try a new brief without transcribing again.
+- Open multi-part plans in Studio. Restore source ranges, adjust a join, and
+  preview the room tone and fades that will be used in the render.
+
 - Search an analyzed recording from the CLI, local API, or MCP. Results include
   timestamps, transcript text, and matches from chapters, people and memory
   links. Installed local embeddings also find related wording.

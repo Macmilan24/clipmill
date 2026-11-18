@@ -89,6 +89,7 @@ export interface ImportSettings {
   readonly minSeconds: number;
   readonly maxSeconds: number;
   readonly count: number;
+  readonly editorialPrompt?: string;
   readonly editorialRoute?: 'local' | 'cloud' | 'heuristic';
   readonly contentProfile?: 'interview' | 'scripted';
   readonly cloudBudgetUsd?: number;

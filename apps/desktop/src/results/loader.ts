@@ -4,6 +4,8 @@
  * derive presentation values in `model.ts`.
  */
 import type {
+  AnalysisManifest,
+  MediaIngestManifest,
   DiscoveryCandidates,
   IndexTranscript,
   MediaAudioPeaks,
@@ -17,9 +19,16 @@ import type {
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
 import type { ClipDecisionRecord, Job, Source } from '../daemon/client.js';
-import { publishedArtifact } from '../library/model.js';
+import { REPROMPT_KIND, publishedArtifact } from '../library/model.js';
 import { type ClipRow, type Summary, clipRows, summarize } from './model.js';
-import { MIND_CANDIDATES_KIND, type PlannedClip, readPlans } from './plans.js';
+import {
+  MIND_CANDIDATES_KIND,
+  MIND_RANKING_KIND,
+  type PlannedClip,
+  type PlanRanking,
+  readPlanRanking,
+  readPlans,
+} from './plans.js';
 import { type Transcript, readTranscript } from './transcript.js';
 import { type Voices, readVoices } from './voices.js';
 
@@ -115,6 +124,9 @@ export interface ResultsSnapshot {
    * local editorial, or one that found nothing to build.
    */
   readonly plans?: readonly PlannedClip[];
+  readonly editorialRanking?: PlanRanking | null;
+  readonly searchable?: boolean;
+  readonly requestedCount?: number;
   readonly problem: ResultsProblem | null;
 }
 
@@ -148,7 +160,8 @@ function analyzed(jobs: readonly Job[], sourceId: string, jobId: string | null):
   return newest(
     jobs.filter(
       (job) =>
-        publishedArtifact(job, RANKING_KIND) !== null &&
+        (publishedArtifact(job, MIND_RANKING_KIND) !== null ||
+          publishedArtifact(job, RANKING_KIND) !== null) &&
         (job.sourceId === '' || job.sourceId === sourceId),
     ),
   );
@@ -184,14 +197,22 @@ export class ResultsLoader {
     }
 
     const job = analyzed(jobs, source.sourceId, jobId);
-    const ranking = publishedArtifact(job, RANKING_KIND);
-    const candidates = publishedArtifact(job, CANDIDATES_KIND);
-    if (!job || !ranking || !candidates) {
+    if (!job || (job.sourceId && job.sourceId !== source.sourceId)) {
       return { ...EMPTY_SNAPSHOT, source, problem: { kind: 'not-analyzed' } };
     }
 
     try {
-      const filmstripId = publishedArtifact(job, FILMSTRIP_KIND);
+      const inherited =
+        job.kind === REPROMPT_KIND
+          ? await this.inheritedArtifacts(projectId, job, source.sourceFingerprint)
+          : null;
+      const find = (kind: string) => publishedArtifact(job, kind) ?? inherited?.get(kind) ?? null;
+      const ranking = find(RANKING_KIND);
+      const candidates = find(CANDIDATES_KIND);
+      const editorial = find(MIND_RANKING_KIND);
+      if (!editorial && (!ranking || !candidates))
+        return { ...EMPTY_SNAPSHOT, source, problem: { kind: 'not-analyzed' } };
+      const filmstripId = find(FILMSTRIP_KIND);
       const [
         rankingDoc,
         candidateDoc,
@@ -202,39 +223,49 @@ export class ResultsLoader {
         documents,
         sourceMapDoc,
         plansDoc,
+        editorialDoc,
       ] = await Promise.all([
-        this.api.readDocument(projectId, ranking),
-        this.api.readDocument(projectId, candidates),
-        this.readOptional(projectId, publishedArtifact(job, INDEX_KIND)),
+        !editorial && ranking ? this.api.readDocument(projectId, ranking) : null,
+        !editorial && candidates ? this.api.readDocument(projectId, candidates) : null,
+        this.readOptional(projectId, find(INDEX_KIND)),
         this.api.listClipDecisions(projectId, source.sourceId).catch(() => []),
         this.readOptional(projectId, filmstripId),
-        this.readOptional(projectId, publishedArtifact(job, PEAKS_KIND)),
+        this.readOptional(projectId, find(PEAKS_KIND)),
         // Which clips already have an edit. A failure here loses a badge,
         // not the board, so it is read like the optional documents.
         this.api.listEditDocs(projectId).catch(() => []),
         this.readOptional(
           projectId,
-          publishedArtifact(job, 'evidence.source_map.v1') ?? (source.sourceMapArtifactId || null),
+          find('evidence.source_map.v1') ?? (source.sourceMapArtifactId || null),
         ),
         // The mind's clips, when the run had a local editorial model. A
         // failure here costs the plans, never the board.
-        this.readOptional(projectId, publishedArtifact(job, MIND_CANDIDATES_KIND)),
+        !editorial ? this.readOptional(projectId, find(MIND_CANDIDATES_KIND)) : null,
+        editorial ? this.api.readDocument(projectId, editorial) : null,
       ]);
-      const rankingSet = JSON.parse(rankingDoc.json) as RankingSet;
+      const editorialRanking = editorialDoc
+        ? readPlanRanking(JSON.parse(editorialDoc.json), source.sourceFingerprint)
+        : null;
+      const rankingSet = rankingDoc ? (JSON.parse(rankingDoc.json) as RankingSet) : null;
       // The ranking names the recording it ranked. Showing another source's
       // clips under this one's name would be worse than showing none.
-      if (rankingSet.source_fingerprint !== source.sourceFingerprint) {
+      if (rankingSet && rankingSet.source_fingerprint !== source.sourceFingerprint) {
         return { ...EMPTY_SNAPSHOT, source, problem: { kind: 'not-analyzed' } };
       }
-      const candidateSet = JSON.parse(candidateDoc.json) as DiscoveryCandidates;
+      const candidateSet = candidateDoc
+        ? (JSON.parse(candidateDoc.json) as DiscoveryCandidates)
+        : null;
       const index = indexDoc ? (JSON.parse(indexDoc) as IndexTranscript) : null;
-      const rows = clipRows(
-        rankingSet,
-        candidateSet,
-        index,
-        decisions as readonly ClipDecisionRecord[],
-        documents.filter((document) => document.sourceId === source.sourceId),
-      );
+      const rows =
+        rankingSet && candidateSet
+          ? clipRows(
+              rankingSet,
+              candidateSet,
+              index,
+              decisions as readonly ClipDecisionRecord[],
+              documents.filter((document) => document.sourceId === source.sourceId),
+            )
+          : [];
       const filmstrip: MediaFilmstrip | null = filmstripDoc ? JSON.parse(filmstripDoc) : null;
       const peaks: MediaAudioPeaks | null = peaksDoc ? JSON.parse(peaksDoc) : null;
       let sourceDurationTicks: number | null = null;
@@ -256,9 +287,9 @@ export class ResultsLoader {
         source,
         rows,
         sourceDurationTicks,
-        summary: summarize(rankingSet),
-        proxyArtifactId: publishedArtifact(job, PROXY_KIND),
-        faceTrackArtifactId: publishedArtifact(job, FACES_KIND),
+        summary: rankingSet ? summarize(rankingSet) : null,
+        proxyArtifactId: find(PROXY_KIND),
+        faceTrackArtifactId: find(FACES_KIND),
         run: { jobId: job.jobId, state: job.state, completedUnixMillis: job.updatedUnixMillis },
         filmstrip:
           filmstrip &&
@@ -276,20 +307,24 @@ export class ResultsLoader {
               values: peaks.peaks.map((bucket) => [bucket.min, bucket.max] as const),
             }
           : null,
-        durationTarget: candidateSet.duration_target
+        durationTarget: candidateSet?.duration_target
           ? {
               minTicks: candidateSet.duration_target.min_ticks,
               maxTicks: candidateSet.duration_target.max_ticks,
             }
-          : null,
+          : job.analysis && job.analysis.maxTicks > 0
+            ? { minTicks: job.analysis.minTicks, maxTicks: job.analysis.maxTicks }
+            : null,
+        requestedCount: editorialRanking?.requestedCount || job.analysis?.count || 5,
         // The index names the transcript its word positions refer to, which
         // is the one to read; the job's own is the fallback for a run that
         // published no index.
-        transcriptArtifactId:
-          index?.inputs?.transcript_artifact_id ?? publishedArtifact(job, TRANSCRIPT_KIND),
-        speakersArtifactId: publishedArtifact(job, SPEAKERS_KIND),
+        transcriptArtifactId: index?.inputs?.transcript_artifact_id ?? find(TRANSCRIPT_KIND),
+        speakersArtifactId: find(SPEAKERS_KIND),
         index,
-        plans: plansOf(plansDoc, source.sourceFingerprint),
+        plans: editorialRanking?.clips ?? plansOf(plansDoc, source.sourceFingerprint),
+        editorialRanking,
+        searchable: Boolean(find(INDEX_KIND)),
         problem: null,
       };
     } catch (error) {
@@ -376,6 +411,40 @@ export class ResultsLoader {
     } catch {
       return null;
     }
+  }
+
+  /** A fresh brief reuses a frozen analysis and its proxy, waveform and filmstrip. */
+  private async inheritedArtifacts(
+    projectId: string,
+    job: Job,
+    fingerprint: string,
+  ): Promise<ReadonlyMap<string, string>> {
+    const stages = new Map<string, string>();
+    const id = publishedArtifact(job, 'analysis.manifest.v1');
+    if (!id) return stages;
+    const raw = await this.api.readDocument(projectId, id);
+    const manifest = JSON.parse(raw.json) as AnalysisManifest;
+    if (
+      manifest.schema_version !== 'clipmill.analysis.manifest.v1' ||
+      manifest.source_fingerprint !== fingerprint
+    ) {
+      throw new Error('This brief refers to another recording.');
+    }
+    for (const stage of manifest.stages) stages.set(stage.kind, stage.artifact_id);
+    const ingest = await this.readOptional(
+      projectId,
+      stages.get('media.ingest_manifest.v1') ?? null,
+    );
+    if (ingest) {
+      const media = JSON.parse(ingest) as MediaIngestManifest;
+      if (
+        media.schema_version === 'clipmill.media.ingest_manifest.v1' &&
+        media.source_fingerprint === fingerprint
+      ) {
+        for (const child of media.children) stages.set(child.kind, child.artifact_id);
+      }
+    }
+    return stages;
   }
 
   /**

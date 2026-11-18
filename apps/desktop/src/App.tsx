@@ -306,6 +306,8 @@ export function App(): JSX.Element {
                   },
                 },
                 analysis: {
+                  onViewResults: (projectId, sourceId, jobId) =>
+                    setRoute({ kind: 'section', sectionId: 'results', projectId, sourceId, jobId }),
                   profile,
                   onRestarted: (projectId, jobId) => {
                     analysisActivity.markStarted(jobId);
@@ -317,6 +319,10 @@ export function App(): JSX.Element {
                   onNavigate: navigate,
                 },
                 results: {
+                  onStarted: (projectId, jobId) => {
+                    analysisActivity.markStarted(jobId);
+                    openAnalysis(projectId, jobId, 'results');
+                  },
                   onInspect: (projectId, sourceId, candidateId, labels, jobId) => {
                     setRoute(inspectorRoute(projectId, sourceId, candidateId, labels, jobId));
                   },

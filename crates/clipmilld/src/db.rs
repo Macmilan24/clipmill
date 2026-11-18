@@ -43,10 +43,10 @@ pub(crate) use edit_store::{
     ClipIdentity, DirectOptions, DocumentOrigin, EditCommandRecord, EditDocRecord,
 };
 mod decision_store;
-pub(crate) use decision_store::{Decision, DecisionRecord};
+pub(crate) use decision_store::{Decision, DecisionRecord, Review};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 16;
+const SCHEMA_VERSION: i64 = 17;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -246,7 +246,20 @@ impl DbActor {
                                     let _result =
                                         reply.send(job_store::list_jobs(&connection, &project_id));
                                 }
+                                Command::SaveReview { review, reply } => {
+                                    let _result = reply.send(decision_store::save_review(
+                                        &mut connection,
+                                        &review,
+                                    ));
+                                }
+                                Command::Taste { project_id, reply } => {
+                                    let _result = reply.send(
+                                        decision_store::taste(&connection, &project_id)
+                                            .map_err(StoreError::from),
+                                    );
+                                }
                                 Command::SetClipDecision {
+                                    reason,
                                     project_id,
                                     source_id,
                                     candidate_id,
@@ -255,13 +268,14 @@ impl DbActor {
                                     reply,
                                 } => {
                                     let _result = reply.send(
-                                        decision_store::set(
+                                        decision_store::set_with_reason(
                                             &connection,
                                             &project_id,
                                             &source_id,
                                             &candidate_id,
                                             decision,
                                             now_unix_millis,
+                                            &reason,
                                         )
                                         .map_err(StoreError::from),
                                     );
@@ -445,6 +459,7 @@ impl DbActor {
                                         reply.send(job_store::current_event_id(&connection));
                                 }
                                 Command::ListEvents {
+                                    limit,
                                     after_event_id,
                                     filter,
                                     reply,
@@ -453,6 +468,7 @@ impl DbActor {
                                         &connection,
                                         after_event_id,
                                         &filter,
+                                        limit,
                                     ));
                                 }
                                 Command::FindSourceObservation {
@@ -1000,6 +1016,27 @@ impl DbHandle {
 
     /// Record what somebody decided about a clip. Durable before it is
     /// acknowledged, which is the whole reason it is not renderer state.
+    pub(crate) async fn save_review(&self, review: Review) -> Result<Vec<u8>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::SaveReview { review, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn editorial_taste(
+        &self,
+        project_id: String,
+    ) -> Result<Vec<String>, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Taste { project_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn set_clip_decision(
         &self,
         project_id: String,
@@ -1007,10 +1044,12 @@ impl DbHandle {
         candidate_id: String,
         decision: Decision,
         now_unix_millis: u64,
+        reason: String,
     ) -> Result<(), StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::SetClipDecision {
+                reason,
                 project_id,
                 source_id,
                 candidate_id,
@@ -1293,9 +1332,19 @@ impl DbHandle {
         after_event_id: u64,
         filter: EventFilter,
     ) -> Result<Vec<TaskEventRecord>, StoreError> {
+        self.list_events_page(after_event_id, filter, -1).await
+    }
+
+    pub(crate) async fn list_events_page(
+        &self,
+        after_event_id: u64,
+        filter: EventFilter,
+        limit: i64,
+    ) -> Result<Vec<TaskEventRecord>, StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::ListEvents {
+                limit,
                 after_event_id,
                 filter,
                 reply,
@@ -1814,7 +1863,16 @@ enum Command {
         project_id: String,
         reply: oneshot::Sender<Result<Vec<JobRecord>, StoreError>>,
     },
+    SaveReview {
+        review: Review,
+        reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
+    },
+    Taste {
+        project_id: String,
+        reply: oneshot::Sender<Result<Vec<String>, StoreError>>,
+    },
     SetClipDecision {
+        reason: String,
         project_id: String,
         source_id: String,
         candidate_id: String,
@@ -1910,6 +1968,7 @@ enum Command {
         reply: oneshot::Sender<Result<u64, StoreError>>,
     },
     ListEvents {
+        limit: i64,
         after_event_id: u64,
         filter: EventFilter,
         reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
@@ -2137,8 +2196,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
         transaction.execute_batch(agent_store::CREATE_V15_TABLES)?;
         transaction.execute_batch(agent_store::CREATE_V16_TABLES)?;
+        transaction.execute_batch(decision_store::CREATE_V17_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 16;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 17;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -2195,7 +2255,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 16 {
             transaction.execute_batch(agent_store::CREATE_V16_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 16;")?;
+        if version < 17 {
+            transaction.execute_batch(decision_store::CREATE_V17_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 17;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -3195,6 +3258,66 @@ mod tests {
     /// The claim the Inspector's gate rests on: a decision outlives the process
     /// that took it.
     ///
+    #[test]
+    fn review_retries_preserve_later_choices_and_taste_is_project_scoped() {
+        use super::Review;
+
+        let temp = TempDir::new().expect("test directory");
+        let (path, mut db) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Choices", 1);
+        create_project(&mut db, "make-project", &[0; 32], &project).expect("create project");
+        let mut review = Review {
+            request_id: "review-1".to_owned(),
+            hash: [1; 32],
+            project_id: project.project_id.clone(),
+            source_id: "src_1".to_owned(),
+            candidate_id: "cand_a".to_owned(),
+            clip_id: "plan_a".to_owned(),
+            decision: Some(Decision::Kept),
+            subject: "stitch “A useful answer”".to_owned(),
+            reason: "Lead with the question".to_owned(),
+            now: 4,
+        };
+        let first = decision_store::save_review(&mut db, &review).expect("keep");
+        assert!(
+            decision_store::taste(&db, &project.project_id).unwrap()[0].contains(&review.reason)
+        );
+        let next = Review {
+            request_id: "review-2".to_owned(),
+            hash: [2; 32],
+            decision: Some(Decision::Rejected),
+            reason: "Needs the qualification".to_owned(),
+            now: 5,
+            project_id: project.project_id.clone(),
+            source_id: review.source_id.clone(),
+            candidate_id: review.candidate_id.clone(),
+            subject: review.subject.clone(),
+            clip_id: review.clip_id.clone(),
+        };
+        decision_store::save_review(&mut db, &next).expect("later decision");
+        drop(db);
+        let mut db = open_database(&path, &temp.path().join("backups")).expect("reopen");
+        assert_eq!(
+            decision_store::save_review(&mut db, &review).unwrap(),
+            first
+        );
+        let example = decision_store::taste(&db, &project.project_id).unwrap();
+        assert_eq!(
+            example,
+            ["rejected stitch “A useful answer” — Needs the qualification"]
+        );
+        assert!(
+            decision_store::taste(&db, "other-project")
+                .unwrap()
+                .is_empty()
+        );
+        review.hash = [3; 32];
+        assert!(matches!(
+            decision_store::save_review(&mut db, &review),
+            Err(StoreError::Conflict)
+        ));
+    }
+
     /// Written against a database that is opened, written, closed, and opened
     /// again rather than against a live handle, because "survives a kill" is a
     /// statement about what reached the disk and nothing held in memory can

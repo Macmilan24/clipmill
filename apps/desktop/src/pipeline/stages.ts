@@ -108,9 +108,24 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'Stitched, tightened and cold-opened clips built from the memory',
   },
   {
+    kind: 'mind.plans.v1',
+    label: 'Plan the edits',
+    detail: 'Choose the titles, openings and sequence of parts',
+  },
+  {
+    kind: 'mind.quality_report.v1',
+    label: 'Check the joins',
+    detail: 'Read each edit against its original context',
+  },
+  {
+    kind: 'ranking.set.v2',
+    label: 'Choose the strongest edits',
+    detail: 'Compare approved cuts and keep distinct moments',
+  },
+  {
     kind: 'text.embeddings.v1',
-    label: 'Index meaning',
-    detail: 'Local search vectors for passages and remembered events',
+    label: 'Index related moments',
+    detail: 'Make the recording searchable by meaning',
   },
   {
     kind: 'editorial.windows.v1',

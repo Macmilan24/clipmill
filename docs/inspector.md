@@ -140,3 +140,32 @@ clip, which is what it is.
   and the read; and the board's joins, checked without mounting anything.
 
 It needs no pinned media, so it runs in the plain `inspector` CI job.
+
+## Reviewing a planned clip
+
+With local editorial enabled, an analysis can assemble a clip from several
+parts of the recording. In New Project, enter an **Editorial brief** to name the
+subject or moments you want. The length and count controls apply to that brief.
+
+Results lists the reviewed cuts in their published order. Each one shows its
+form, playback length and keep score. A shortfall is explained below the brief.
+Choose **Review** to play the parts in programme order with their framing and
+captions. The Inspector shows the source time of each part, the lines it plays,
+the passages removed, and the findings on its joins. **Keep** and **Reject**
+record a decision. Select the same decision again to clear it.
+
+In Results, **Find moments** searches the recording and shows excerpts with
+source times. **Make clips from brief** starts a new run using the recording's
+existing analysis. You can change the length and count before submitting it.
+**More like this, shorter** uses the reviewed clip as a reference for a new brief.
+
+Choose **Edit clip**, then open **Parts**. Move a part earlier or later with
+the arrows, remove it, or restore an omitted passage with its original picture
+and captions. A part may contain several camera shots. Moving the part moves
+all of those shots and the programme content attached to them. Each change
+is one step in the editor's undo history.
+
+A directed join can blend a short, verified pause from the recording under
+the cut. The draft player and export use the same fade lengths. When a recording
+has no suitable pause, the director keeps the speech fades. The optional reason
+beside **Keep** and **Reject** is saved with the decision.

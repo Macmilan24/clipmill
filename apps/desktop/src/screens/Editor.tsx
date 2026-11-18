@@ -102,6 +102,7 @@ export interface EditorProps {
    * The proxy for each source the plan names, by fingerprint, as a URL the
    * media protocol serves. A source with no entry has nothing to play.
    */
+  readonly audioUrls?: ReadonlyMap<string, string>;
   readonly proxyUrls: ReadonlyMap<string, string>;
   readonly docId: string | null;
   /** What the clip is called — the project and the clip — when the route knew. */
@@ -210,6 +211,7 @@ export function Editor({
   peaks = null,
   filmstripUrl = () => '',
   proxyUrls,
+  audioUrls,
   docId,
   labels,
   focus = null,
@@ -325,6 +327,7 @@ export function Editor({
     video,
     plan ? gainAt(plan, frame) : 0,
     plan?.gain.some((point) => point.gainDb > 0) ?? false,
+    { plan, frame, audioUrls },
   );
   const range =
     marks.in !== null && marks.out !== null && marks.out > marks.in

@@ -475,6 +475,10 @@ message EditorialStagePayloadV1 {
   EditorialCloudV1 cloud = 6;
   // interview or scripted; empty reads as interview for older runs.
   string content_profile = 7;
+  // Only local planning, critique/repair and ranking use this brief.
+  string editorial_prompt = 8;
+  repeated string editorial_taste = 9;
+  uint64 requested_count = 10;
 }
 
 // Versioned payload for discovery (book ch. 15). The request names a source;
@@ -591,6 +595,10 @@ message AnalyzeSourcePayloadV1 {
   EditorialCloudV1 cloud_editorial = 8;
   // Persisted editorial rubric; interview (default) or scripted.
   string content_profile = 9;
+  // A person's optional brief for the local mind, at most 1000 characters.
+  string editorial_prompt = 10;
+  // Local decision and edit examples resolved by the daemon at submission.
+  repeated string editorial_taste = 11;
 }
 
 // Explicit consent applies only to this run. Credentials never enter the request.
@@ -740,6 +748,8 @@ message AnalysisSettingsV1 {
   uint64 max_ticks = 3;
   uint64 count = 4;
   bool local_editorial = 5;
+  // Restore the original brief when retrying this analysis.
+  string editorial_prompt = 6;
 }
 
 // The identity of an export, as its job carries it.
@@ -1315,6 +1325,8 @@ message SetClipDecisionRequest {
   string source_id = 2;
   string candidate_id = 3;
   ClipDecisionV1 decision = 4;
+  // Optional local editorial feedback, limited to 240 characters.
+  string reason = 5;
 }
 
 message SetClipDecisionResponse {
@@ -1331,6 +1343,7 @@ message ClipDecisionRecordV1 {
   string candidate_id = 1;
   ClipDecisionV1 decision = 2;
   uint64 decided_unix_millis = 3;
+  string reason = 4;
 }
 
 message ListClipDecisionsResponse {
@@ -1606,6 +1619,12 @@ message PreviewSegmentV1 {
   string background_colour = 16;
   // A fitted picture's zoom past fitting, in percent; 100 fits.
   uint32 zoom_percent = 17;
+  // Quarter-sine fades at the two edges of this source interval.
+  int64 fade_in_ticks = 18;
+  int64 fade_out_ticks = 19;
+  // First sample of the recording's verified quiet interval underneath the
+  // join before this segment, starting at the preceding fade-out.
+  optional int64 room_tone_start_ticks = 20;
 }
 
 // A source the program draws from, as the crops are measured against it.
@@ -1632,6 +1651,10 @@ message PreviewProxyV1 {
   int64 height = 7;
   uint32 rate_num = 8;
   uint32 rate_den = 9;
+  // Stereo PCM derivative, present when a join uses the recording's room tone.
+  string audio_artifact_id = 10;
+  string audio_file = 11;
+  int64 audio_start_ticks = 12;
 }
 
 // Resolved export preset. Colours are CSS #RRGGBBAA, dimensions in output pixels.

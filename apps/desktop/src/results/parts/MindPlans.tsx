@@ -21,16 +21,24 @@ function PartStrip({
       aria-hidden
       className="relative mt-2 h-1.5 w-full max-w-[420px] overflow-hidden rounded-full bg-[var(--cm-recessed)]"
     >
-      {parts.map((part) => (
-        <span
-          key={part.id}
-          className="absolute inset-y-0 rounded-full bg-[var(--cm-accent)]"
-          style={{
-            left: at(part.startTicks),
-            width: `max(3px, calc(${at(part.endTicks)} - ${at(part.startTicks)}))`,
-          }}
-        />
-      ))}
+      {parts.flatMap((part) => {
+        const edges = [
+          part.startTicks,
+          ...part.removed.flatMap((cut) => [cut.start_ticks, cut.end_ticks]),
+          part.endTicks,
+        ];
+        return edges.flatMap((start, index) => {
+          const end = edges[index + 1];
+          if (index % 2 !== 0 || end === undefined) return [];
+          return (
+            <span
+              key={`${part.id}-${start}`}
+              className="absolute inset-y-0 rounded-full bg-[var(--cm-accent)]"
+              style={{ left: at(start), width: `max(2px, calc(${at(end)} - ${at(start)}))` }}
+            />
+          );
+        });
+      })}
     </div>
   );
 }
@@ -52,11 +60,13 @@ export function MindPlans({
   sourceDurationTicks,
   busy,
   onEdit,
+  onInspect,
 }: {
   readonly plans: readonly PlannedClip[];
   readonly sourceDurationTicks: number | null;
   readonly busy: boolean;
   readonly onEdit: (plan: PlannedClip) => void;
+  readonly onInspect?: ((plan: PlannedClip) => void) | undefined;
 }) {
   return (
     <details open className="group workspace-panel shrink-0 overflow-hidden">
@@ -85,6 +95,11 @@ export function MindPlans({
                 <span className="rounded-full border border-[var(--cm-glass-border)] px-2 py-0.5 text-[10px] font-medium text-[var(--cm-accent-ink)]">
                   {plan.formLabel}
                 </span>
+                {plan.assessment && (
+                  <span className="font-mono text-[11px] text-[var(--cm-text-secondary)]">
+                    Keep score {plan.assessment.keepScore}/100
+                  </span>
+                )}
                 <h3 className="truncate text-xs font-medium">{plan.title}</h3>
                 <span className="font-mono text-[10px] text-[var(--cm-text-muted)]">
                   {duration(plan.durationSeconds)}
@@ -109,17 +124,30 @@ export function MindPlans({
                 </p>
               )}
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              disabled={busy}
-              onClick={() => onEdit(plan)}
-              aria-label={`Edit: ${plan.title}`}
-            >
-              Edit
-              <SquarePen />
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {onInspect && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => onInspect(plan)}
+                  aria-label={`Review ${plan.title}`}
+                >
+                  Review
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                disabled={busy}
+                onClick={() => onEdit(plan)}
+                aria-label={`Edit: ${plan.title}`}
+              >
+                Edit
+                <SquarePen />
+              </Button>
+            </div>
           </li>
         ))}
       </ul>

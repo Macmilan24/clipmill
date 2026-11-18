@@ -11,6 +11,11 @@ import { type AnalysisStage, stageFor } from '../pipeline/stages.js';
 
 /** The job kind that produces an analysis. */
 export const ANALYZE_KIND = 'analyze-source';
+export const REPROMPT_KIND = 'reprompt';
+
+export function isAnalysisKind(kind: string): boolean {
+  return kind === ANALYZE_KIND || kind === REPROMPT_KIND;
+}
 
 const TICKS_PER_SECOND = 90_000;
 
@@ -50,7 +55,7 @@ export interface LibraryProject {
 export function newestAnalysis(jobs: readonly Job[]): Job | null {
   let newest: Job | null = null;
   for (const job of jobs) {
-    if (job.kind !== ANALYZE_KIND) {
+    if (!isAnalysisKind(job.kind)) {
       continue;
     }
     if (newest === null || job.createdUnixMillis > newest.createdUnixMillis) {

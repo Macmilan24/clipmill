@@ -644,6 +644,7 @@ mod tests {
         let decisions = vec![(
             "src_1".to_owned(),
             crate::db::DecisionRecord {
+                reason: String::new(),
                 candidate_id: "cand_1".to_owned(),
                 decision: crate::db::Decision::Approved,
                 decided_unix_millis: 1_700_000_050_000,

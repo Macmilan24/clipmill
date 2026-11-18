@@ -27,7 +27,7 @@
 /// Ordered by where a shell meets them: the source it imported, what ingest
 /// derived, the transcript, the structure over it, the nominations, the ranking,
 /// the analysis that roots them all, then the edit and its render.
-const DOCUMENTS: [(&str, &str); 20] = [
+const DOCUMENTS: [(&str, &str); 23] = [
     ("evidence.source_map.v1", "source-map.json"),
     ("media.ingest_manifest.v1", "ingest-manifest.json"),
     // Results needs exact source ticks to choose the nearest thumbnail. Only
@@ -49,6 +49,9 @@ const DOCUMENTS: [(&str, &str); 20] = [
     ("mind.memory.v1", "memory.json"),
     ("mind.unit_scores.v1", "unit_scores.json"),
     ("mind.candidates.v1", "candidates.json"),
+    ("mind.plans.v1", "plans.json"),
+    ("mind.quality_report.v1", "quality.json"),
+    ("ranking.set.v2", "ranking.json"),
     ("text.embeddings.v1", "embeddings.json"),
     ("discovery.candidates.v1", "candidates.json"),
     ("ranking.set.v1", "ranking.json"),
@@ -88,7 +91,12 @@ pub(crate) enum MediaLayout {
 /// The protocol reads the descriptor, then serves only a file the descriptor
 /// named — so this table covers the payload without having to know how many
 /// files there are or what they are called.
-const MEDIA: [(&str, &str, MediaLayout); 4] = [
+const MEDIA: [(&str, &str, MediaLayout); 5] = [
+    (
+        "media.audio_48k.v1",
+        "audio.json",
+        MediaLayout::One { key: "file" },
+    ),
     (
         "media.proxy.v1",
         "proxy.json",
@@ -117,7 +125,8 @@ const MEDIA: [(&str, &str, MediaLayout); 4] = [
 /// rather than served as `application/octet-stream`. A browser told the wrong
 /// type does something creative with the bytes, and "creative" is the opposite
 /// of what a media surface wants.
-const MEDIA_TYPES: [(&str, &str); 4] = [
+const MEDIA_TYPES: [(&str, &str); 5] = [
+    ("wav", "audio/wav"),
     ("mp4", "video/mp4"),
     ("jpg", "image/jpeg"),
     ("vtt", "text/vtt"),
@@ -228,6 +237,9 @@ mod tests {
                 "media.filmstrip.v1",
                 "media.ingest_manifest.v1",
                 "mind.candidates.v1",
+                "mind.plans.v1",
+                "mind.quality_report.v1",
+                "ranking.set.v2",
                 "mind.memory.v1",
                 "mind.script.v1",
                 "mind.unit_scores.v1",
@@ -244,6 +256,7 @@ mod tests {
                 .map(|(kind, _, _)| *kind)
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from([
+                "media.audio_48k.v1",
                 "media.filmstrip.v1",
                 "media.frames.v1",
                 "media.proxy.v1",
@@ -258,6 +271,11 @@ mod tests {
     #[test]
     fn every_media_layout_matches_the_schema_it_reads() {
         for (kind, _, layout) in MEDIA {
+            let kind = if kind == "media.audio_48k.v1" {
+                "media.audio.v1"
+            } else {
+                kind
+            };
             let schema: serde_json::Value = serde_json::from_str(
                 &std::fs::read_to_string(format!(
                     "{}/../../contracts/schemas/clipmill.{kind}.json",
@@ -346,6 +364,7 @@ mod tests {
     #[test]
     fn only_listed_extensions_get_a_media_type() {
         assert_eq!(media_type_for("proxy.mp4"), Some("video/mp4"));
+        assert_eq!(media_type_for("audio.wav"), Some("audio/wav"));
         assert_eq!(media_type_for("strip_00001.jpg"), Some("image/jpeg"));
         for path in ["weights.bin", "notes.txt", "proxy", "", ".", "proxy.MP4"] {
             assert!(media_type_for(path).is_none(), "{path} was given a type");
@@ -409,6 +428,10 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert_eq!(media.len(), MEDIA.len(), "a kind is listed twice");
         assert_eq!(document_for("ranking.set.v1"), Some("ranking.json"));
+        assert_eq!(
+            media_descriptor_for("media.audio_48k.v1"),
+            Some(("audio.json", MediaLayout::One { key: "file" }))
+        );
         assert_eq!(
             media_descriptor_for("media.proxy.v1"),
             Some(("proxy.json", MediaLayout::One { key: "file" }))

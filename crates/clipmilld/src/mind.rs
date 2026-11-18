@@ -30,7 +30,7 @@ use crate::{
 pub(crate) const KIND_SCRIPT: &str = "mind-script";
 pub(crate) const KIND_CUT: &str = "mind-cut";
 pub(crate) const SCRIPT_IMPLEMENTATION: &str = "clipmill-mind-script@1.0.0";
-pub(crate) const CUT_IMPLEMENTATION: &str = "clipmill-mind-cut@1.1.0";
+pub(crate) const CUT_IMPLEMENTATION: &str = "clipmill-mind-cut@1.2.0";
 /// Key version every mind stage payload carries.
 pub(crate) const MIND_STAGE_KEY_VERSION: &str = "clipmill.mind-stage.v1";
 /// About how much script one call reads: room for a 4B model's prompt, the
@@ -289,6 +289,8 @@ const fn scout_name(scout: Scout) -> &'static str {
         Scout::ColdOpen => "cold_open",
         Scout::Theme => "theme",
         Scout::Span => "span",
+        Scout::Brief => "brief",
+        Scout::Reaction => "reaction",
     }
 }
 
@@ -345,7 +347,7 @@ pub(crate) async fn execute_cut_task(
     let Indexed {
         words,
         source_fingerprint,
-        ..
+        source: indexed_source,
     } = open_index(&resolved).await?;
     if script.source_fingerprint.as_str() != source_fingerprint
         || memory
@@ -365,7 +367,8 @@ pub(crate) async fn execute_cut_task(
         .duration
         .filter(|range| range.min_ticks > 0 && range.max_ticks >= range.min_ticks)
         .map_or(DEFAULT_LENGTH, |range| (range.min_ticks, range.max_ticks));
-    let source = script_source(&script);
+    let mut source = script_source(&script);
+    source.cues = indexed_source.cues;
     if let Some(memory) = &memory {
         let problems = clipmill_mind::memory::check(memory, &source);
         if !problems.is_empty() {
@@ -388,7 +391,11 @@ pub(crate) async fn execute_cut_task(
     let mut config = Map::new();
     config.insert("min_ticks".to_owned(), json!(length.0));
     config.insert("max_ticks".to_owned(), json!(length.1));
-    config.insert("algorithm".to_owned(), json!("clipmill.mind.cutter.v2"));
+    config.insert("algorithm".to_owned(), json!("clipmill.mind.cutter.v3"));
+    config.insert(
+        "editorial_prompt".to_owned(),
+        json!(payload.editorial_prompt),
+    );
     progress.set("stages", 2, 3);
     let published = publish(
         artifacts,
@@ -402,20 +409,24 @@ pub(crate) async fn execute_cut_task(
         ),
         "candidates.json",
         || {
-            let found = cutter::candidates(&Material {
-                source_fingerprint: &source_fingerprint,
-                source: &source,
-                words: &words,
-                scores: scores.as_ref(),
-                memory: memory.as_ref(),
-                length,
-            });
+            let found = cutter::candidates_for_brief(
+                &Material {
+                    source_fingerprint: &source_fingerprint,
+                    source: &source,
+                    words: &words,
+                    scores: scores.as_ref(),
+                    memory: memory.as_ref(),
+                    length,
+                },
+                &payload.editorial_prompt,
+            );
             let candidates = found
                 .into_iter()
                 .map(|candidate| {
                     Ok(json!({
                         "scout": scout_name(candidate.scout),
                         "score": candidate.score,
+                        "alternatives": candidate.alternatives,
                         "plan": serde_json::to_value(&candidate.plan).map_err(|error| {
                             TaskExecutionError::deterministic(error.to_string())
                         })?,

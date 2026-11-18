@@ -1677,6 +1677,20 @@ pub(super) fn run_task_artifacts(
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })?;
     let mut by_task_kind = BTreeMap::new();
+    // A reprompt's root pins the exact parent artifacts. Resolve only those
+    // addresses within this source, never the newest output of another run.
+    let mut pinned = connection.prepare("SELECT DISTINCT original.kind, i.artifact_id
+        FROM jobs r JOIN tasks root ON root.job_id=r.job_id AND root.is_final=1
+        JOIN task_input_artifacts i ON i.task_id=root.task_id
+        JOIN tasks original ON original.output_artifact_id=i.artifact_id
+        JOIN jobs source ON source.job_id=original.job_id AND source.project_id=r.project_id AND source.source_id=r.source_id
+        WHERE r.job_id=?1 AND r.kind='reprompt' AND root.state=?2 AND original.state=?2")?;
+    for row in pinned.query_map(params![job_id, TaskState::Succeeded as i32], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })? {
+        let (kind, address) = row?;
+        by_task_kind.insert(kind, address);
+    }
     for row in rows {
         let (kind, artifact_id) = row?;
         by_task_kind.insert(kind, artifact_id);
@@ -1735,6 +1749,7 @@ pub(super) fn list_events(
     connection: &Connection,
     after_event_id: u64,
     filter: &EventFilter,
+    limit: i64,
 ) -> Result<Vec<TaskEventRecord>, StoreError> {
     let after = sqlite_u64(after_event_id, "event cursor")?;
     let mut statement = connection.prepare(
@@ -1745,10 +1760,10 @@ pub(super) fn list_events(
          WHERE event_id > ?1
            AND (?2 IS NULL OR project_id = ?2)
            AND (?3 IS NULL OR job_id = ?3)
-         ORDER BY event_id ASC",
+         ORDER BY event_id ASC LIMIT ?4",
     )?;
     let rows = statement.query_map(
-        params![after, filter.project_id, filter.job_id],
+        params![after, filter.project_id, filter.job_id, limit],
         event_from_row,
     )?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -2106,7 +2121,7 @@ fn complete_job_record(
                 destination_dir: request.destination_dir,
             })
         });
-    let analyzed = (header.kind == "analyze-source")
+    let analyzed = matches!(header.kind.as_str(), "analyze-source" | "reprompt")
         .then(|| {
             clipmill_contracts::proto::ipc::v1::AnalyzeSourcePayloadV1::decode(
                 header.payload.as_slice(),
@@ -2122,6 +2137,7 @@ fn complete_job_record(
                 max_ticks: payload.duration.map_or(0, |duration| duration.max_ticks),
                 count: payload.count,
                 local_editorial: payload.local_editorial,
+                editorial_prompt: payload.editorial_prompt.clone(),
             },
         );
     let content_profile = analyzed

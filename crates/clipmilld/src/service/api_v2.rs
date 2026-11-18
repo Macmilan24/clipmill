@@ -15,13 +15,13 @@ use clipmill_contracts::proto::ipc::v1::{
     EngineCallRequest, EngineCallResponse, ErrorCode, ExportClipRequest, ExportRequestV1,
     GetJobRequest, HealthRequest, Job, JobState, ListClipDecisionsRequest, ListJobsRequest,
     ListModelsRequest, ListProjectsRequest, ListSourcesRequest, ReadArtifactRequest,
-    RegisterSourceRequest, Request, Response, SetClipDecisionRequest, SubmitJobRequest, TaskState,
-    request, response,
+    RegisterSourceRequest, Request, Response, SubmitJobRequest, TaskState, request, response,
 };
 use prost::Message;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 use super::{Reply, Service, error_reply, response_reply, unix_millis};
 use crate::db::{AgentClient, AgentCommand, AgentReply, AuditEntry};
@@ -36,13 +36,22 @@ const TOKEN_PREFIX: &str = "cmt_";
 const READ_CHUNK: u64 = 4 * 1024 * 1024;
 
 /// Every operation and the scope it needs.
-pub(crate) const OPERATIONS: [(&str, &str); 21] = [
+pub(crate) const OPERATIONS: [(&str, &str); 33] = [
     ("whoami", "authenticated"),
+    ("audit_log", "read"),
     ("status", "read"),
     ("list_projects", "read"),
     ("create_project", "edit"),
     ("add_source", "edit"),
     ("list_sources", "read"),
+    ("get_source", "read"),
+    ("get_timeline", "read"),
+    ("job_events", "read"),
+    ("get_edit", "read"),
+    ("apply_edits", "edit"),
+    ("undo_edit", "edit"),
+    ("edit_log", "read"),
+    ("render_preview", "render"),
     ("start_analysis", "edit"),
     ("get_job", "read"),
     ("get_owned_job", "read"),
@@ -53,6 +62,9 @@ pub(crate) const OPERATIONS: [(&str, &str); 21] = [
     ("list_clips", "read"),
     ("describe_clip", "read"),
     ("find_moments", "read"),
+    ("propose_clips", "edit"),
+    ("reprompt", "edit"),
+    ("create_clip_from_plan", "edit"),
     ("memory_overview", "read"),
     ("set_decision", "edit"),
     ("create_clip", "edit"),
@@ -79,7 +91,7 @@ pub(super) struct ApiError {
 }
 
 impl ApiError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(super) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -91,7 +103,7 @@ impl ApiError {
         Self::new("invalid_argument", message)
     }
 
-    fn not_found(message: impl Into<String>) -> Self {
+    pub(super) fn not_found(message: impl Into<String>) -> Self {
         Self::new("not_found", message)
     }
 }
@@ -140,10 +152,33 @@ pub(super) fn arg_str<'a>(args: &'a Value, name: &str) -> Result<&'a str, ApiErr
         .ok_or_else(|| ApiError::invalid(format!("`{name}` is required")))
 }
 
-fn opt_str<'a>(args: &'a Value, name: &str) -> Option<&'a str> {
+pub(super) fn opt_str<'a>(args: &'a Value, name: &str) -> Option<&'a str> {
     args.get(name)
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
+}
+
+pub(super) fn requested_duration(args: &Value) -> Result<Option<ClipDurationV1>, ApiError> {
+    if args.get("min_seconds").is_none() && args.get("max_seconds").is_none() {
+        return Ok(None);
+    }
+    let min = args["min_seconds"].as_f64();
+    let max = args["max_seconds"].as_f64();
+    let (Some(min), Some(max)) = (min, max) else {
+        return Err(ApiError::invalid(
+            "give both min_seconds and max_seconds as numbers",
+        ));
+    };
+    let range = ClipDurationV1 {
+        min_ticks: ticks(min)?,
+        max_ticks: ticks(max)?,
+    };
+    if range.min_ticks >= range.max_ticks {
+        return Err(ApiError::invalid(
+            "min_seconds must be shorter than max_seconds",
+        ));
+    }
+    Ok(Some(range))
 }
 
 fn job_state(state: i32) -> &'static str {
@@ -158,7 +193,7 @@ fn job_state(state: i32) -> &'static str {
     }
 }
 
-fn job_json(job: &Job) -> Value {
+pub(super) fn job_json(job: &Job) -> Value {
     let done = job
         .tasks
         .iter()
@@ -170,6 +205,7 @@ fn job_json(job: &Job) -> Value {
         .map(|task| {
             json!({
                 "stage": task.output_kind,
+                "artifact_id": (!task.output_artifact_id.is_empty()).then_some(task.output_artifact_id.as_str()),
                 "state": TaskState::try_from(task.state)
                     .map(|state| state.as_str_name().trim_start_matches("TASK_STATE_").to_lowercase())
                     .unwrap_or_default(),
@@ -185,6 +221,7 @@ fn job_json(job: &Job) -> Value {
         "state": job_state(job.state),
         "progress": { "done": done, "total": job.tasks.len() },
         "stages": stages,
+        "artifacts":job.output_artifact_ids,
     });
     if !job.source_id.is_empty() {
         value["source_id"] = json!(job.source_id);
@@ -208,12 +245,18 @@ fn client_v1(client: AgentClient) -> AgentClientV1 {
 
 /// The candidate id the daemon gives a planned clip, so a decision on a plan
 /// lands where the Studio's would.
-fn plan_candidate_id(source_id: &str, job_id: &str, plan_json: &str) -> String {
+pub(super) fn plan_candidate_id(source_id: &str, job_id: &str, plan_json: &str) -> String {
     let identity = format!("plan:{source_id}:{job_id}:{plan_json}");
     format!(
         "cand_{}",
         &hex::encode(Sha256::digest(identity.as_bytes()))[..16]
     )
+}
+
+pub(super) fn canonical_json(value: &Value) -> String {
+    let mut sorted = value.clone();
+    sorted.sort_all_objects();
+    sorted.to_string()
 }
 
 /// The analysis an answer is read from: the run named, or the newest
@@ -222,6 +265,7 @@ pub(super) struct Run {
     pub(super) job: Job,
     pub(super) project_id: String,
     pub(super) source_id: String,
+    inherited: BTreeMap<String, String>,
 }
 
 impl Run {
@@ -231,6 +275,7 @@ impl Run {
             .iter()
             .find(|task| task.output_kind == kind && !task.output_artifact_id.is_empty())
             .map(|task| task.output_artifact_id.as_str())
+            .or_else(|| self.inherited.get(kind).map(String::as_str))
     }
 }
 
@@ -270,6 +315,15 @@ impl Service {
                     .collect::<Vec<_>>()
                     .join(", ")
             ))),
+            Some(_)
+                if parsed.request_id.as_ref().is_some_and(|key| {
+                    key.is_empty() || key.len() > 255 || key.chars().any(char::is_control)
+                }) =>
+            {
+                Err(ApiError::invalid(
+                    "request_id must contain 1 to 255 bytes and no control characters",
+                ))
+            }
             Some((_, scope))
                 if *scope != "authenticated"
                     && !caller.scopes.iter().any(|held| held == scope)
@@ -483,6 +537,34 @@ impl Service {
                     "source_id": s.source_id, "path": s.absolute_path, "bytes": s.byte_size, "missing": s.missing,
                 })).collect::<Vec<_>>() }))
             }
+            "audit_log" => {
+                let limit = args
+                    .get("limit")
+                    .map_or(Some(100), Value::as_u64)
+                    .filter(|n| (1..=2000).contains(n))
+                    .ok_or_else(|| ApiError::invalid("limit must be from 1 to 2000"))?;
+                let client_id = (caller.client_id != "local").then(|| caller.client_id.clone());
+                let log = self
+                    .database
+                    .agents(AgentCommand::Log {
+                        limit: u32::try_from(limit).unwrap_or(2000),
+                        client_id,
+                    })
+                    .await
+                    .map_err(|e| ApiError::new("unavailable", e.to_string()))?;
+                let AgentReply::Log(log) = log else {
+                    return Err(ApiError::new("internal", "unexpected audit result"));
+                };
+                let entries:Vec<_>=log.into_iter().map(|e|json!({"at_unix_millis":e.at_unix_millis,"client":e.client_name,"op":e.operation,"target":e.target,"outcome":e.outcome,"detail":e.detail})).collect();
+                Ok(json!({"entries":entries}))
+            }
+            "get_source" => self.get_api_source(args).await,
+            "get_timeline" => self.timeline(args).await,
+            "job_events" => self.job_events(args).await,
+            "get_edit" => self.get_api_edit(args).await,
+            "apply_edits" | "undo_edit" => self.change_edit(args, id, op == "undo_edit").await,
+            "edit_log" => self.api_edit_log(args).await,
+            "render_preview" => self.preview_render(args, id).await,
             "start_analysis" => self.start_analysis(args, id).await,
             "get_owned_job" | "cancel_owned_job" => {
                 let job_id = arg_str(args, "job_id")?;
@@ -568,6 +650,8 @@ impl Service {
                     "links":memory["links"], "entities":memory["entities"]}),
                 )
             }
+            "propose_clips" | "reprompt" => self.reprompt(args, id).await,
+            "create_clip_from_plan" => self.create_from_plan(args, id).await,
             "find_moments" => self.find_moments(args).await,
             "set_decision" => self.set_decision(args, id).await,
             "create_clip" => self.create_clip(args, id).await,
@@ -609,29 +693,25 @@ impl Service {
     async fn start_analysis(&self, args: &Value, id: Option<String>) -> ApiResult {
         let project_id = arg_str(args, "project_id")?;
         let source_id = arg_str(args, "source_id")?;
-        let duration = match (
-            args.get("min_seconds").and_then(Value::as_f64),
-            args.get("max_seconds").and_then(Value::as_f64),
-        ) {
-            (Some(min), Some(max)) if min < max => Some(ClipDurationV1 {
-                min_ticks: ticks(min)?,
-                max_ticks: ticks(max)?,
-            }),
-            (None, None) => None,
-            _ => {
-                return Err(ApiError::invalid(
-                    "give both `min_seconds` and `max_seconds`, with the minimum below the maximum",
-                ));
-            }
-        };
+        let duration = requested_duration(args)?;
         // The editorial model and the mind run unless asked not to: they are
         // what make clips worth an agent's time, and they stay on this computer.
-        let local_editorial = args.get("editorial").and_then(Value::as_str) != Some("none");
+        let local_editorial = match args.get("editorial") {
+            None => true,
+            Some(value) if value == "local" => true,
+            Some(value) if value == "none" => false,
+            Some(_) => return Err(ApiError::invalid("editorial must be local or none")),
+        };
         let payload = AnalyzeSourcePayloadV1 {
             key_version: "clipmill.analyze-source.v1".to_owned(),
             source_id: source_id.to_owned(),
             language: opt_str(args, "language").unwrap_or_default().to_owned(),
             duration,
+            editorial_prompt: opt_str(args, "prompt")
+                .unwrap_or_default()
+                .trim()
+                .to_owned(),
+            count: super::briefs::requested_count(args)?.unwrap_or_default(),
             local_editorial,
             ..AnalyzeSourcePayloadV1::default()
         };
@@ -673,7 +753,7 @@ impl Service {
                 .jobs
                 .into_iter()
                 .filter(|job| {
-                    job.kind == "analyze-source"
+                    matches!(job.kind.as_str(), "analyze-source" | "reprompt")
                         && job.source_id == source_id
                         && job.state == JobState::Succeeded as i32
                 })
@@ -687,7 +767,7 @@ impl Service {
         };
         if job.project_id != project_id
             || job.source_id != source_id
-            || job.kind != "analyze-source"
+            || !matches!(job.kind.as_str(), "analyze-source" | "reprompt")
         {
             return Err(ApiError::not_found(
                 "this run does not belong to the requested recording",
@@ -696,11 +776,16 @@ impl Service {
         if job.state != JobState::Succeeded as i32 {
             return Err(ApiError::new("conflict", "this analysis has not finished"));
         }
-        Ok(Run {
+        let mut run = Run {
             job,
             project_id,
             source_id,
-        })
+            inherited: BTreeMap::new(),
+        };
+        if run.job.kind == "reprompt" {
+            run.inherited = self.run_manifest(&run).await?.0;
+        }
+        Ok(run)
     }
 
     pub(super) async fn document(&self, project_id: &str, artifact_id: &str) -> ApiResult {
@@ -802,7 +887,7 @@ impl Service {
     async fn decisions(
         &self,
         run: &Run,
-    ) -> Result<std::collections::BTreeMap<String, &'static str>, ApiError> {
+    ) -> Result<BTreeMap<String, (&'static str, String)>, ApiError> {
         let body = self
             .v1(
                 request::Body::ListClipDecisions(ListClipDecisionsRequest {
@@ -825,7 +910,7 @@ impl Service {
                     Ok(ClipDecisionV1::Approved) => "approved",
                     _ => "undecided",
                 };
-                (record.candidate_id, decision)
+                (record.candidate_id, (decision, record.reason))
             })
             .collect())
     }
@@ -834,12 +919,12 @@ impl Service {
     async fn clips(&self, run: &Run) -> Result<Vec<Value>, ApiError> {
         let decisions = self.decisions(run).await?;
         let mut clips = Vec::new();
-        if let Some(candidates) = self.optional_document(run, "mind.candidates.v1").await? {
-            for candidate in candidates["candidates"].as_array().into_iter().flatten() {
-                let plan = &candidate["plan"];
-                let plan_json = plan.to_string();
-                let decided = plan_candidate_id(&run.source_id, &run.job.job_id, &plan_json);
-                let parts: Vec<Value> = plan["parts"]
+        let (plans, final_ranking) = self.plan_rows(run).await?;
+        for candidate in plans {
+            let plan = &candidate["plan"];
+            let plan_json = canonical_json(plan);
+            let decided = plan_candidate_id(&run.source_id, &run.job.job_id, &plan_json);
+            let parts: Vec<Value> = plan["parts"]
                     .as_array()
                     .into_iter()
                     .flatten()
@@ -849,20 +934,29 @@ impl Service {
                             "start": seconds(part["start_ticks"].as_u64().unwrap_or(0)),
                             "end": seconds(part["end_ticks"].as_u64().unwrap_or(0)),
                             "removed": part["removed"].as_array().map_or(0, Vec::len),
+                            "removed_ranges":part["removed"].as_array().into_iter().flatten().map(|span| json!({
+                                "start":seconds(span["start_ticks"].as_u64().unwrap_or_default()),
+                                "end":seconds(span["end_ticks"].as_u64().unwrap_or_default()),
+                                "reason":span["reason"]})).collect::<Vec<_>>(),
                         })
                     })
                     .collect();
-                clips.push(json!({
+            clips.push(json!({
                     "clip_id": plan["plan_id"],
-                    "kind": "plan",
+                    "kind": "plan", "candidate_id":decided,
+                    "keep_score":candidate["keep_score"],"reasons":candidate["reasons"],"chapter":candidate["chapter"],
+                    "quality":candidate["quality"],"joins":plan["joins"],"evidence":plan["evidence"],
                     "form": plan["form"],
                     "title": plan.get("title").or_else(|| plan.get("hook_text")).cloned().unwrap_or(Value::Null),
                     "duration": seconds(plan["duration_ticks"].as_u64().unwrap_or(0)),
                     "parts": parts,
                     "found_by": candidate["scout"],
-                    "decision": decisions.get(&decided).copied().unwrap_or("undecided"),
+                    "decision": decisions.get(&decided).map_or("undecided", |d| d.0),
+                    "reason": decisions.get(&decided).map_or("", |d| d.1.as_str()),
                 }));
-            }
+        }
+        if final_ranking {
+            return Ok(clips);
         }
         if let Some(ranking) = self.optional_document(run, "ranking.set.v1").await? {
             let selected: std::collections::BTreeSet<&str> = ranking["selected"]
@@ -882,11 +976,27 @@ impl Service {
                     "end": seconds(chosen["end_ticks"].as_u64().unwrap_or(0)),
                     "score": row["display_score"],
                     "recommended": selected.contains(id),
-                    "decision": decisions.get(id).copied().unwrap_or("undecided"),
+                    "decision": decisions.get(id).map_or("undecided", |d| d.0),
+                    "reason": decisions.get(id).map_or("", |d| d.1.as_str()),
                 }));
             }
         }
         Ok(clips)
+    }
+
+    async fn plan_rows(&self, run: &Run) -> Result<(Vec<Value>, bool), ApiError> {
+        let (kind, rows, ranked) = if run.artifact("ranking.set.v2").is_some() {
+            ("ranking.set.v2", "clips", true)
+        } else {
+            ("mind.candidates.v1", "candidates", false)
+        };
+        let Some(mut doc) = self.optional_document(run, kind).await? else {
+            return Ok((Vec::new(), false));
+        };
+        let values = doc[rows]
+            .as_array_mut()
+            .ok_or_else(|| ApiError::new("internal", "invalid editorial results"))?;
+        Ok((std::mem::take(values), ranked))
     }
 
     async fn list_clips(&self, args: &Value) -> ApiResult {
@@ -905,7 +1015,7 @@ impl Service {
             .ok_or_else(|| ApiError::not_found(format!("this analysis has no clip {clip_id}")))?;
         let index = self.optional_document(&run, "index.transcript.v1").await?;
         let sentences = index.as_ref().and_then(|i| i["sentences"].as_array());
-        let text_between = |start: f64, end: f64| -> String {
+        let text_between = |start: f64, end: f64, removed: &Value| -> String {
             sentences
                 .into_iter()
                 .flatten()
@@ -914,7 +1024,12 @@ impl Service {
                         seconds(s["start_ticks"].as_u64().unwrap_or(0)),
                         seconds(s["end_ticks"].as_u64().unwrap_or(0)),
                     );
-                    b > start && a < end
+                    b > start
+                        && a < end
+                        && !removed.as_array().into_iter().flatten().any(|cut| {
+                            a >= cut["start"].as_f64().unwrap_or(f64::INFINITY)
+                                && b <= cut["end"].as_f64().unwrap_or_default()
+                        })
                 })
                 .filter_map(|s| s["text"].as_str())
                 .collect::<Vec<_>>()
@@ -925,6 +1040,7 @@ impl Service {
                 let text = text_between(
                     part["start"].as_f64().unwrap_or(0.0),
                     part["end"].as_f64().unwrap_or(0.0),
+                    &part["removed_ranges"],
                 );
                 part["text"] = json!(text);
             }
@@ -932,6 +1048,7 @@ impl Service {
             let text = text_between(
                 clip["start"].as_f64().unwrap_or(0.0),
                 clip["end"].as_f64().unwrap_or(0.0),
+                &Value::Null,
             );
             clip["text"] = json!(text);
         }
@@ -943,55 +1060,88 @@ impl Service {
         if !clip_id.starts_with("plan_") {
             return Ok(None);
         }
-        let candidates = self
-            .optional_document(run, "mind.candidates.v1")
-            .await?
-            .ok_or_else(|| ApiError::not_found("this analysis has no plans"))?;
-        candidates["candidates"]
-            .as_array()
-            .into_iter()
-            .flatten()
+        let (plans, _) = self.plan_rows(run).await?;
+        plans
+            .iter()
             .map(|candidate| &candidate["plan"])
             .find(|plan| plan["plan_id"] == clip_id)
-            .map(|plan| Some(plan.to_string()))
+            .map(|plan| Some(canonical_json(plan)))
             .ok_or_else(|| ApiError::not_found(format!("this analysis has no plan {clip_id}")))
     }
 
     async fn set_decision(&self, args: &Value, id: Option<String>) -> ApiResult {
-        let run = self.run(args).await?;
-        let clip_id = arg_str(args, "clip_id")?;
-        let decision = match arg_str(args, "decision")? {
-            "approved" => ClipDecisionV1::Approved,
-            "kept" => ClipDecisionV1::Kept,
-            "rejected" => ClipDecisionV1::Rejected,
-            "undecided" => ClipDecisionV1::Unspecified,
-            other => {
-                return Err(ApiError::invalid(format!(
-                    "`decision` is approved, kept, rejected or undecided, not {other}"
-                )));
+        let id = id.unwrap_or_else(|| format!("v2_{}", ulid::Ulid::new()));
+        let hash = Sha256::digest(canonical_json(args).as_bytes()).into();
+        let result = if let Some(saved) = self
+            .database
+            .replay_request(id.clone(), hash)
+            .await
+            .map_err(|e| super::briefs::store_error(&e))?
+        {
+            saved
+        } else {
+            let run = self.run(args).await?;
+            let clip_id = arg_str(args, "clip_id")?;
+            let decision = match arg_str(args, "decision")? {
+                "undecided" => None,
+                value => Some(crate::db::Decision::parse(value).ok_or_else(|| {
+                    ApiError::invalid("decision must be approved, kept, rejected or undecided")
+                })?),
+            };
+            let reason = opt_str(args, "reason").unwrap_or_default().trim();
+            if reason.chars().count() > 240 {
+                return Err(ApiError::invalid(
+                    "A decision reason is limited to 240 characters",
+                ));
             }
+            let clip = self
+                .clips(&run)
+                .await?
+                .into_iter()
+                .find(|c| c["clip_id"] == clip_id)
+                .ok_or_else(|| ApiError::not_found("unknown clip in this analysis"))?;
+            let subject = format!(
+                "{} “{}”",
+                clip["form"].as_str().unwrap_or("moment"),
+                clip["title"].as_str().unwrap_or_default()
+            );
+            let review = crate::db::Review {
+                request_id: id,
+                hash,
+                project_id: run.project_id,
+                source_id: run.source_id,
+                candidate_id: clip["candidate_id"].as_str().unwrap_or(clip_id).to_owned(),
+                clip_id: clip_id.to_owned(),
+                decision,
+                reason: reason.to_owned(),
+                subject: subject.chars().take(200).collect(),
+                now: unix_millis().map_err(|e| ApiError::new("internal", e))?,
+            };
+            self.database
+                .save_review(review)
+                .await
+                .map_err(|e| super::briefs::store_error(&e))?
         };
-        let candidate_id = match self.plan(&run, clip_id).await? {
-            Some(plan_json) => plan_candidate_id(&run.source_id, &run.job.job_id, &plan_json),
-            None => clip_id.to_owned(),
-        };
-        self.v1(
-            request::Body::SetClipDecision(SetClipDecisionRequest {
-                project_id: run.project_id.clone(),
-                source_id: run.source_id.clone(),
-                candidate_id,
-                decision: decision as i32,
-            }),
-            id,
-        )
-        .await?;
-        Ok(json!({ "clip_id": clip_id, "decision": arg_str(args, "decision")? }))
+        serde_json::from_slice(&result)
+            .map_err(|_| ApiError::new("internal", "invalid saved review result"))
     }
 
-    async fn create_clip(&self, args: &Value, id: Option<String>) -> ApiResult {
+    pub(super) async fn create_clip(&self, args: &Value, id: Option<String>) -> ApiResult {
         let run = self.run(args).await?;
         let clip_id = arg_str(args, "clip_id")?;
         let plan_json = self.plan(&run, clip_id).await?.unwrap_or_default();
+        self.direct_api_plan(&run, args, clip_id, plan_json, id)
+            .await
+    }
+
+    pub(super) async fn direct_api_plan(
+        &self,
+        run: &Run,
+        args: &Value,
+        clip_id: &str,
+        plan_json: String,
+        id: Option<String>,
+    ) -> ApiResult {
         let body = self
             .v1(
                 request::Body::DirectClip(DirectClipRequest {
@@ -1141,7 +1291,14 @@ impl Service {
         } else {
             limit.min(2_000)
         };
-        match self.database.agents(AgentCommand::Log { limit }).await {
+        match self
+            .database
+            .agents(AgentCommand::Log {
+                limit,
+                client_id: None,
+            })
+            .await
+        {
             Ok(AgentReply::Log(entries)) => response_reply(
                 request_id,
                 response::Body::EngineAudit(EngineAuditResponse {
@@ -1191,6 +1348,24 @@ mod tests {
         assert!((seconds(135_000) - 1.5).abs() < f64::EPSILON);
         assert_eq!(ticks(1.5).ok(), Some(135_000));
         assert!(ticks(-1.0).is_err());
+    }
+
+    #[test]
+    fn a_supplied_duration_has_two_ordered_numeric_endpoints() {
+        assert!(matches!(requested_duration(&json!({})), Ok(None)));
+        for args in [
+            json!({"min_seconds":"12","max_seconds":"15"}),
+            json!({"min_seconds":5}),
+            json!({"min_seconds":-1,"max_seconds":30}),
+            json!({"min_seconds":18,"max_seconds":12}),
+        ] {
+            assert!(requested_duration(&args).is_err());
+        }
+        let span = requested_duration(&json!({"min_seconds":12.25,"max_seconds":30}))
+            .ok()
+            .flatten()
+            .expect("valid duration range");
+        assert_eq!((span.min_ticks, span.max_ticks), (1_102_500, 2_700_000));
     }
 
     #[test]

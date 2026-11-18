@@ -15,7 +15,7 @@ import type { Components } from '../daemon/components.js';
 import type { ModelLibrary } from '../daemon/models.js';
 import type { YoutubeUpload } from '../daemon/publishing.js';
 import { formatBytes } from '../deviceProfile.js';
-import { ANALYZE_KIND, formatProgress } from '../library/model.js';
+import { isAnalysisKind, formatProgress } from '../library/model.js';
 import { isDownloading, percentOf, progressText } from '../models/describe.js';
 
 export type ActivityKind = 'analysis' | 'export' | 'download' | 'install' | 'import' | 'upload';
@@ -44,7 +44,7 @@ export function runItems(
 ): readonly ActivityItem[] {
   return runs.map((job) => {
     const project = projectNames.get(job.projectId) ?? 'a project';
-    if (job.kind === ANALYZE_KIND) {
+    if (isAnalysisKind(job.kind)) {
       const rows = stageRows(job);
       const counts = stageCounts(rows);
       const stage = currentStage(rows);

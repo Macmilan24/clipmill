@@ -81,6 +81,7 @@ export interface AnalysisProgressProps {
   readonly onBack: () => void;
   readonly onRestarted?: (projectId: string, jobId: string) => void;
   readonly onNavigate: (sectionId: string) => void;
+  readonly onViewResults?: (projectId: string, sourceId: string, jobId: string) => void;
   /** Injected by tests, which drive the screen through a fake daemon. */
   readonly loader?: AnalysisLoader;
 }
@@ -337,6 +338,7 @@ export function retryRequest(job: Job, sourceId: string): AnalyzeRequest {
     maxTicks: settings.maxTicks,
     count: settings.count,
     localEditorial: true,
+    ...(settings.editorialPrompt ? { editorialPrompt: settings.editorialPrompt } : {}),
     contentProfile: job.contentProfile === 'scripted' ? 'scripted' : 'interview',
   };
 }
@@ -376,6 +378,7 @@ export function AnalysisProgress({
   onBack,
   onRestarted,
   onNavigate,
+  onViewResults,
   loader,
 }: AnalysisProgressProps): JSX.Element {
   const { job, projectName, source, sourceMap, thumbnail, events, error, loading } = useAnalysis(
@@ -605,7 +608,8 @@ export function AnalysisProgress({
             className="w-full"
             disabled={status.kind !== 'analyzed'}
             onClick={() => {
-              onNavigate('results');
+              if (onViewResults && job?.sourceId) onViewResults(projectId, job.sourceId, jobId);
+              else onNavigate('results');
             }}
           >
             {status.kind === 'analyzed' ? 'View results' : 'View results when ready'}

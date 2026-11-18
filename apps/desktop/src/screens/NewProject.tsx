@@ -520,6 +520,26 @@ export function NewProject({
                   <SelectItem value="heuristic">Heuristic baseline · no editorial model</SelectItem>
                 </SelectContent>
               </Select>
+              {route === 'local' && (
+                <div className="space-y-2">
+                  <Label htmlFor="editorial-prompt">Editorial brief (optional)</Label>
+                  <textarea
+                    id="editorial-prompt"
+                    className="w-full rounded-md border border-[var(--cm-glass-border)] bg-transparent p-2 text-sm"
+                    rows={2}
+                    maxLength={1000}
+                    disabled={busy}
+                    placeholder="e.g. Bring together every time the guests discuss pricing"
+                    value={settings.editorialPrompt ?? ''}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        editorialPrompt: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              )}
               {route === 'cloud' && (
                 <div className="space-y-3 rounded-lg border border-[color-mix(in_srgb,var(--color-outbound)_30%,transparent)] bg-[var(--cm-recessed)] p-3 text-xs leading-relaxed text-[var(--cm-text-secondary)]">
                   <p>

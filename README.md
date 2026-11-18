@@ -6,10 +6,10 @@ video ready to upload.
 
 ClipMill runs on **macOS 14 or later on Apple silicon**, on **64-bit Linux**,
 and, as a beta, on **64-bit Windows 10 and 11**. The import-to-export workflow is
-complete; clip selection still benefits from your editorial judgment. A local
-Qwen model proposes and reviews moments: through MLX on Apple silicon, and
-through llama.cpp on Linux and Windows, on the graphics card or the processor.
-Without it, a built-in picker proposes them.
+complete. A local Qwen model plans clips, reviews each edit against the source,
+and ranks the cuts that pass. It runs through MLX on Apple silicon and through
+llama.cpp on Linux and Windows, on the graphics card or the processor. A
+built-in picker is available on machines without an editorial model.
 
 ## Install
 
@@ -23,16 +23,21 @@ that, analysis works without a connection.
 
 - Import a local video or download a single YouTube video you have permission to
   use, with a choice of download quality.
-- Analyze English podcasts, interviews, and scripted scenes. Local speech models
-  build a timed transcript; Qwen proposes moments and reviews their completeness,
-  with visual checks when needed.
-- Review ranked candidates, inspect their source context, and keep or reject
-  suggestions. You can also select a clip directly.
+- Analyze English podcasts, interviews, and scripted scenes. Give the local
+  editor a brief for a topic or a montage. It can tighten a passage, lift an
+  opening, or join a question to its answer elsewhere in the recording.
+- Review ranked clips, inspect the source at each join, and keep or reject
+  suggestions. A new brief reuses the same recording analysis.
 - Edit trims, caption wording and line breaks, framing, crop movement,
   transitions, and audio. Saved edits support undo and redo within an editing
   session.
 - Export rendered video with burned-in captions and SRT/VTT sidecars, individually
   or in batches. Export jobs and saved document revisions survive restarts.
+
+For a local editorial run, ClipMill checks the complete played transcript and the
+original lines around each cut. A failed check gets one repair attempt. The
+ranker compares eligible clips in both presentation orders and balances chapters
+and forms. Results explains when fewer clips meet the brief than you requested.
 
 YouTube **channel connection and publishing are still in development**. YouTube
 source import is available; publishing is not part of the merged application yet.
