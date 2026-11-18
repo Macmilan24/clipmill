@@ -85,6 +85,14 @@ pub mod mind_clip_plan;
 pub mod mind_memory;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_script.rs"]
+pub mod mind_script;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_candidates.rs"]
+pub mod mind_candidates;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/mind_unit_scores.rs"]
 pub mod mind_unit_scores;
 

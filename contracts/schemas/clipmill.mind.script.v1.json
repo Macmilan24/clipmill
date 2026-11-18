@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.mind.script.v1.json",
+  "title": "MindScript",
+  "description": "A recording's annotated script cut into the windows an editorial model reads one at a time (architecture §4.3, tier 1), with the sentences behind it. Written by the daemon from the Timeline Index: each window is the script text of its stretch of the recording and the sentences the model may cite from it, and every sentence belongs to exactly one window. Speakers are the script's letters. The digest is of the whole recording's script at this level, so what a model read can be traced to exact text.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_fingerprint",
+    "level",
+    "digest",
+    "duration_ticks",
+    "units",
+    "windows"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.mind.script.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "level": {
+      "enum": ["full", "compact", "outline"]
+    },
+    "digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "duration_ticks": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "units": {
+      "description": "Every sentence, in recording order.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index", "start_ticks", "end_ticks", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "start_ticks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end_ticks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "speaker": {
+            "type": "string",
+            "pattern": "^[A-Z][0-9]{0,3}$"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "windows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "units", "tokens"],
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "units": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "tokens": {
+            "description": "The script module's pessimistic token estimate for the text.",
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

@@ -24,6 +24,7 @@ mod jobs;
 mod library;
 mod lock;
 mod media;
+mod mind;
 mod models;
 mod platform;
 mod policy;

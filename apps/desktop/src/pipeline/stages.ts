@@ -88,6 +88,26 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'Words, voices, pauses, shots and reactions in one searchable record',
   },
   {
+    kind: 'mind.script.v1',
+    label: 'Write the script',
+    detail: 'The recording as an annotated script a model can read',
+  },
+  {
+    kind: 'mind.memory.v1',
+    label: 'Remember the recording',
+    detail: 'Chapters, people, stories and the links between distant moments',
+  },
+  {
+    kind: 'mind.unit_scores.v1',
+    label: 'Mark up every line',
+    detail: 'Strong openings, clean landings, and what a tight cut can leave out',
+  },
+  {
+    kind: 'mind.candidates.v1',
+    label: 'Cut the clips',
+    detail: 'Stitched, tightened and cold-opened clips built from the memory',
+  },
+  {
     kind: 'editorial.windows.v1',
     label: 'Cut windows',
     detail: 'The transcript in overlapping pieces an editorial model reads',

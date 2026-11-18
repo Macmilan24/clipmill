@@ -229,13 +229,20 @@ struct View<'a> {
     hi: u64,
 }
 
+/// The letter the script gives each voice, by speaker id: A, B, … in order
+/// of first appearance, the same in every range of the recording.
+pub fn speaker_letters(source: &Source) -> BTreeMap<&str, String> {
+    let mut letters = BTreeMap::new();
+    for speaker in source.sentences.iter().filter_map(|s| s.speaker.as_deref()) {
+        let next = letters.len();
+        letters.entry(speaker).or_insert_with(|| letter(next));
+    }
+    letters
+}
+
 impl<'a> View<'a> {
     fn new(source: &'a Source, lo: u64, hi: u64) -> Self {
-        let mut letters = BTreeMap::new();
-        for speaker in source.sentences.iter().filter_map(|s| s.speaker.as_deref()) {
-            let next = letters.len();
-            letters.entry(speaker).or_insert_with(|| letter(next));
-        }
+        let letters = speaker_letters(source);
         let mut cues: Vec<&Cue> = source
             .cues
             .iter()

@@ -40,7 +40,7 @@ use crate::{
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
     discovery, editorial, evidence,
     media::{self, MediaRunner, ProgressSlot},
-    ranking,
+    mind, ranking,
     render::{self, RenderContext},
     sources::{SourceInspector, SourceProbeError},
     speech, timeline,
@@ -1796,7 +1796,20 @@ impl JobPlan {
                         ram_mib: 256,
                     },
                 ));
-                stages.push(("timeline.index.v1".to_owned(), timeline_id));
+                stages.push(("timeline.index.v1".to_owned(), timeline_id.clone()));
+
+                // The mind (architecture §4.3–4.6): the script, the memory and
+                // the markup a local model writes from it, and the cutter's
+                // plans of parts. Local only, like looking at frames.
+                if request.local_editorial {
+                    tasks.extend(mind_tasks(
+                        &timeline_id,
+                        request,
+                        models,
+                        bindings,
+                        &mut stages,
+                    )?);
+                }
 
                 // The windows an editorial model reads.
                 // Cut here so the model's stages, when they arrive, read a
@@ -2216,6 +2229,71 @@ fn editorial_duration(request: &AnalyzeSourcePayloadV1) -> ClipDurationV1 {
     }
 }
 
+/// The mind's stages over one Timeline Index: script, memory and markup in
+/// parallel on the editorial model, then the cutter.
+fn mind_tasks(
+    timeline_id: &str,
+    request: &AnalyzeSourcePayloadV1,
+    models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
+    stages: &mut Vec<(String, String)>,
+) -> Result<Vec<TaskSpec>, &'static str> {
+    let payload = |stage: &str| {
+        EditorialStagePayloadV1 {
+            key_version: mind::MIND_STAGE_KEY_VERSION.to_owned(),
+            stage: stage.to_owned(),
+            duration: (stage == mind::KIND_CUT).then(|| editorial_duration(request)),
+            ..Default::default()
+        }
+        .encode_to_vec()
+    };
+    let script = TaskId::new().to_string();
+    let mut tasks = vec![builtin_task(
+        script.clone(),
+        Builtin {
+            kind: mind::KIND_SCRIPT,
+            output_kind: "mind.script.v1",
+            implementation: mind::SCRIPT_IMPLEMENTATION,
+            input_kinds: vec!["timeline.index.v1".to_owned()],
+            dependencies: vec![timeline_id.to_owned()],
+            payload: payload(mind::KIND_SCRIPT),
+            ram_mib: 256,
+        },
+    )];
+    stages.push(("mind.script.v1".to_owned(), script.clone()));
+    let mut cut_dependencies = vec![timeline_id.to_owned(), script.clone()];
+    let mut cut_kinds = vec!["timeline.index.v1".to_owned(), "mind.script.v1".to_owned()];
+    for operation in ["memory", "score"] {
+        let task = editorial_worker_task(
+            operation,
+            vec![script.clone()],
+            vec!["mind.script.v1".to_owned()],
+            request,
+            models,
+            bindings,
+        )?;
+        stages.push((task.output_kind.clone(), task.task_id.clone()));
+        cut_dependencies.push(task.task_id.clone());
+        cut_kinds.push(task.output_kind.clone());
+        tasks.push(task);
+    }
+    let cut = TaskId::new().to_string();
+    tasks.push(builtin_task(
+        cut.clone(),
+        Builtin {
+            kind: mind::KIND_CUT,
+            output_kind: "mind.candidates.v1",
+            implementation: mind::CUT_IMPLEMENTATION,
+            input_kinds: cut_kinds,
+            dependencies: cut_dependencies,
+            payload: payload(mind::KIND_CUT),
+            ram_mib: 256,
+        },
+    ));
+    stages.push(("mind.candidates.v1".to_owned(), cut));
+    Ok(tasks)
+}
+
 fn editorial_worker_task(
     operation: &str,
     dependencies: Vec<String>,
@@ -2225,7 +2303,9 @@ fn editorial_worker_task(
     bindings: &crate::selection::Bindings,
 ) -> Result<TaskSpec, &'static str> {
     use sha2::{Digest, Sha256};
-    let cloud = if operation == "look" {
+    // Looking at frames, and the mind's memory and markup, run on this
+    // computer only.
+    let cloud = if matches!(operation, "look" | "memory" | "score") {
         None
     } else {
         request.cloud_editorial.clone()
@@ -2254,13 +2334,28 @@ fn editorial_worker_task(
         "look" => include_str!(
             "../../../workers/editorial/src/clipmill_worker_editorial/prompts/look.v1.txt"
         ),
+        "memory" => concat!(
+            include_str!(
+                "../../../workers/editorial/src/clipmill_worker_editorial/prompts/memory.read.v1.txt"
+            ),
+            include_str!(
+                "../../../workers/editorial/src/clipmill_worker_editorial/prompts/memory.link.v1.txt"
+            ),
+        ),
+        "score" => include_str!(
+            "../../../workers/editorial/src/clipmill_worker_editorial/prompts/score.v1.txt"
+        ),
         _ => return Err("unknown editorial operation"),
     };
     let output_kind = match operation {
         "propose" => "editorial.proposals.v1",
         "look" => "editorial.looks.v1",
+        "memory" => "mind.memory.v1",
+        "score" => "mind.unit_scores.v1",
         _ => "editorial.judgments.v1",
     };
+    // The link pass lists chapters and links for a whole recording at once.
+    let max_output_tokens = if operation == "memory" { 4096 } else { 2048 };
     Ok(TaskSpec {
         task_id: TaskId::new().to_string(),
         ordinal: 0,
@@ -2272,7 +2367,7 @@ fn editorial_worker_task(
             stage: kind,
             duration: Some(editorial_duration(request)),
             prompt_digest: format!("sha256:{}", hex::encode(Sha256::digest(prompt.as_bytes()))),
-            max_output_tokens: 2048,
+            max_output_tokens,
             cloud: cloud.clone(),
             content_profile: editorial_profile(request).to_owned(),
         }
@@ -3031,6 +3126,8 @@ impl BuiltinExecutors {
             timeline::KIND_TIMELINE => {
                 timeline::execute_timeline_task(&self.artifacts, task, progress).await
             }
+            mind::KIND_SCRIPT => mind::execute_script_task(&self.artifacts, task, progress).await,
+            mind::KIND_CUT => mind::execute_cut_task(&self.artifacts, task, progress).await,
             editorial::KIND_VALIDATE => {
                 editorial::execute_validate_task(&self.artifacts, task, progress).await
             }
@@ -3533,8 +3630,8 @@ pub(crate) fn is_terminal_job(state: i32) -> bool {
 mod builtin_tests {
     use super::builtin_capabilities;
     use crate::{
-        analysis, captions, discovery, editorial, evidence, export, media, ranking, render, speech,
-        timeline,
+        analysis, captions, discovery, editorial, evidence, export, media, mind, ranking, render,
+        speech, timeline,
     };
 
     /// Every stage this runner has an executor for is claimed, which is to
@@ -3551,6 +3648,8 @@ mod builtin_tests {
             speech::KIND_TRANSCRIPT,
             evidence::KIND_INDEX,
             timeline::KIND_TIMELINE,
+            mind::KIND_SCRIPT,
+            mind::KIND_CUT,
             editorial::KIND_WINDOWS,
             editorial::KIND_VALIDATE,
             discovery::KIND_DISCOVER,

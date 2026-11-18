@@ -80,6 +80,8 @@ pub(crate) const JOBS: &[Job] = &[
             "editorial-propose",
             "editorial-review",
             "editorial-look",
+            "editorial-memory",
+            "editorial-score",
             "youtube-metadata",
         ],
     },

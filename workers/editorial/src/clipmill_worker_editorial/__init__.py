@@ -31,10 +31,15 @@ from .runtime import implementation_suffix
 
 CAPABILITIES = (
     "editorial-look",
+    "editorial-memory",
     "editorial-propose",
     "editorial-review",
+    "editorial-score",
     "youtube-metadata",
 )
+# The mind's stages: local only, and keyed on their own output budgets.
+MIND_OPERATIONS = ("memory", "score")
+MAX_OUTPUT_TOKENS = {"memory": 4096}
 
 
 def execute(context: TaskContext) -> tuple[str, ...]:
@@ -62,14 +67,20 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
         raise DeterministicTaskError("cloud permission does not match the task route")
     if cloud and cloud_runtime is None:
         raise DeterministicTaskError("this worker does not execute cloud tasks")
-    if payload.prompt_digest != prompt_digest(operation) or payload.max_output_tokens != 2048:
+    if payload.prompt_digest != prompt_digest(
+        operation
+    ) or payload.max_output_tokens != MAX_OUTPUT_TOKENS.get(operation, 2048):
         raise DeterministicTaskError(
             "editorial prompt or decoding policy differs from the planned recipe; update the worker"
         )
+    if cloud and operation in MIND_OPERATIONS:
+        raise DeterministicTaskError("the mind's stages run on this computer only")
     model = None if cloud else require_model(context.lease, "editorial")
     inputs = LeaseInputs(context)
     if operation == "look":
         return execute_look(context, inputs, model, payload)
+    if operation in MIND_OPERATIONS:
+        return execute_mind(context, inputs, model, payload, operation)
     windows_input = inputs.require("editorial.windows.v1")
     windows = json.loads(context.artifact_file(windows_input.artifact, "windows.json").read_text())
     if content_profile(windows.get("content_profile", "")) != profile:
@@ -177,6 +188,66 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
     finally:
         if runtime is not None:
             runtime.close()
+
+
+def execute_mind(context, inputs, model, payload, operation):
+    """The Recording Memory or the sentence markup, from the annotated script."""
+    from clipmill_worker_sdk.gen.schemas.mind_memory import MindMemory
+    from clipmill_worker_sdk.gen.schemas.mind_script import MindScript
+    from clipmill_worker_sdk.gen.schemas.mind_unit_scores import MindUnitScores
+
+    from .memory import build_memory
+    from .runtime import open_runtime
+    from .score import score_units
+
+    script_input = inputs.require("mind.script.v1")
+    script = json.loads(context.artifact_file(script_input.artifact, "script.json").read_text())
+    MindScript.model_validate(script)
+    identity = {"route": "local", "model": {"name": model.name, "digest": model.digest}}
+    implementation = f"clipmill-worker-editorial@0.2.0/{operation}{implementation_suffix(model)}"
+    traces = []
+    runtime = open_runtime(model, context.cancellation) if script["windows"] else None
+    try:
+        build, schema, output = (
+            (build_memory, MindMemory, "memory.json")
+            if operation == "memory"
+            else (score_units, MindUnitScores, "unit_scores.json")
+        )
+        document = build(
+            runtime,
+            script,
+            source_fingerprint=script["source_fingerprint"],
+            implementation=implementation,
+            model=model.name,
+            max_tokens=payload.max_output_tokens,
+            identity=identity,
+            traces=traces,
+            cancellation=context.cancellation,
+            progress=context.report_progress,
+        )
+    finally:
+        if runtime is not None:
+            runtime.close()
+    # A document this worker wrote and its own contract refuses is a bug here,
+    # not something a retry fixes.
+    try:
+        schema.model_validate(document)
+    except ValueError as error:
+        raise DeterministicTaskError(f"{output} does not meet its contract: {error}") from error
+    if script["windows"] and traces and all(t.get("outcome") != "answered" for t in traces):
+        detail = next((t.get("detail") for t in traces if t.get("detail")), "no answer")
+        raise RetryableTaskError(f"the model answered none of the {operation} calls: {detail}")
+    trace = {
+        "schema_version": "clipmill.editorial.trace.v1",
+        "content_profile": "interview",
+        "source_fingerprint": script["source_fingerprint"],
+        "producer": {"stage": payload.stage, "implementation": implementation},
+        "calls": traces,
+    }
+    context.staging.write_bytes(output, canonical_bytes(document))
+    context.staging.write_bytes("trace.json", canonical_bytes(trace))
+    context.report_progress("editorial_calls", len(traces), len(traces))
+    return (output, "trace.json")
 
 
 def content_profile(value):

@@ -585,6 +585,44 @@ impl TimelineIndex {
         Ok(events)
     }
 
+    /// Where each topic starts and the words that name it, in time order.
+    pub fn topics(&self) -> Result<Vec<(u64, Vec<String>)>, TimelineError> {
+        let mut statement = self
+            .connection
+            .prepare_cached("SELECT start_ticks, keywords FROM topics ORDER BY start_ticks, id")?;
+        let rows = statement.query_map([], |row| {
+            let keywords: String = row.get(1)?;
+            Ok((
+                unsigned(row.get(0)?),
+                keywords.split_whitespace().map(str::to_owned).collect(),
+            ))
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Every word as `(start, end)`, in time order: the edges a cut may use.
+    pub fn word_times(&self) -> Result<Vec<(u64, u64)>, TimelineError> {
+        let mut statement = self
+            .connection
+            .prepare_cached("SELECT start_ticks, end_ticks FROM words ORDER BY start_ticks, id")?;
+        let rows =
+            statement.query_map([], |row| Ok((unsigned(row.get(0)?), unsigned(row.get(1)?))))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// The latest end of anything indexed: how far into the recording the
+    /// index reaches.
+    pub fn end_ticks(&self) -> Result<u64, TimelineError> {
+        let end: Option<i64> = self.connection.query_row(
+            "SELECT MAX(end_ticks) FROM (
+                 SELECT end_ticks FROM sentences UNION ALL SELECT end_ticks FROM words
+                 UNION ALL SELECT end_ticks FROM shots UNION ALL SELECT end_ticks FROM events)",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(end.map_or(0, unsigned))
+    }
+
     /// The shots overlapping `[start, end)`, in time order.
     pub fn shots_between(
         &self,

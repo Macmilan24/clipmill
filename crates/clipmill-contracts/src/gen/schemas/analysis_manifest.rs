@@ -433,6 +433,10 @@ impl ::std::convert::TryFrom<::std::string::String> for SkippedStageReason {
 #[doc = "        \"vision.face_track.v1\","]
 #[doc = "        \"index.transcript.v1\","]
 #[doc = "        \"timeline.index.v1\","]
+#[doc = "        \"mind.script.v1\","]
+#[doc = "        \"mind.memory.v1\","]
+#[doc = "        \"mind.unit_scores.v1\","]
+#[doc = "        \"mind.candidates.v1\","]
 #[doc = "        \"editorial.windows.v1\","]
 #[doc = "        \"editorial.proposals.v1\","]
 #[doc = "        \"discovery.candidates.v1\","]
@@ -477,6 +481,10 @@ impl Stage {
 #[doc = "    \"vision.face_track.v1\","]
 #[doc = "    \"index.transcript.v1\","]
 #[doc = "    \"timeline.index.v1\","]
+#[doc = "    \"mind.script.v1\","]
+#[doc = "    \"mind.memory.v1\","]
+#[doc = "    \"mind.unit_scores.v1\","]
+#[doc = "    \"mind.candidates.v1\","]
 #[doc = "    \"editorial.windows.v1\","]
 #[doc = "    \"editorial.proposals.v1\","]
 #[doc = "    \"discovery.candidates.v1\","]
@@ -524,6 +532,14 @@ pub enum StageKind {
     IndexTranscriptV1,
     #[serde(rename = "timeline.index.v1")]
     TimelineIndexV1,
+    #[serde(rename = "mind.script.v1")]
+    MindScriptV1,
+    #[serde(rename = "mind.memory.v1")]
+    MindMemoryV1,
+    #[serde(rename = "mind.unit_scores.v1")]
+    MindUnitScoresV1,
+    #[serde(rename = "mind.candidates.v1")]
+    MindCandidatesV1,
     #[serde(rename = "editorial.windows.v1")]
     EditorialWindowsV1,
     #[serde(rename = "editorial.proposals.v1")]
@@ -552,6 +568,10 @@ impl ::std::fmt::Display for StageKind {
             Self::VisionFaceTrackV1 => f.write_str("vision.face_track.v1"),
             Self::IndexTranscriptV1 => f.write_str("index.transcript.v1"),
             Self::TimelineIndexV1 => f.write_str("timeline.index.v1"),
+            Self::MindScriptV1 => f.write_str("mind.script.v1"),
+            Self::MindMemoryV1 => f.write_str("mind.memory.v1"),
+            Self::MindUnitScoresV1 => f.write_str("mind.unit_scores.v1"),
+            Self::MindCandidatesV1 => f.write_str("mind.candidates.v1"),
             Self::EditorialWindowsV1 => f.write_str("editorial.windows.v1"),
             Self::EditorialProposalsV1 => f.write_str("editorial.proposals.v1"),
             Self::DiscoveryCandidatesV1 => f.write_str("discovery.candidates.v1"),
@@ -577,6 +597,10 @@ impl ::std::str::FromStr for StageKind {
             "vision.face_track.v1" => Ok(Self::VisionFaceTrackV1),
             "index.transcript.v1" => Ok(Self::IndexTranscriptV1),
             "timeline.index.v1" => Ok(Self::TimelineIndexV1),
+            "mind.script.v1" => Ok(Self::MindScriptV1),
+            "mind.memory.v1" => Ok(Self::MindMemoryV1),
+            "mind.unit_scores.v1" => Ok(Self::MindUnitScoresV1),
+            "mind.candidates.v1" => Ok(Self::MindCandidatesV1),
             "editorial.windows.v1" => Ok(Self::EditorialWindowsV1),
             "editorial.proposals.v1" => Ok(Self::EditorialProposalsV1),
             "discovery.candidates.v1" => Ok(Self::DiscoveryCandidatesV1),
