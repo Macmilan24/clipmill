@@ -183,6 +183,21 @@ Residual: a process running as the same user can read the server's
 environment, and so its key, as it can read the endpoint secrets (R68). A
 graphics driver's Vulkan implementation runs inside the server process.
 
+## Worker memory reservations
+
+A registered local editorial worker reports whether it holds a model between
+leases. The scheduler accounts for the working set declared by the registered
+implementation. An unload request takes effect when the worker confirms the
+release on its next authenticated poll. Active leases and competing worker
+claims are evaluated in the same SQLite transaction. On reconnection, a warm
+worker whose previous reservation is unknown must unload before admission.
+
+These limits cover declared resource use by cooperating local workers. A worker
+that misreports physical allocations and memory used by other applications can
+still increase system pressure. The scheduler tests exercise a 12 GiB admission
+budget on a 16 GiB machine, with concurrent worker, built-in and idle-model
+claims.
+
 ## Update notice
 
 Once a day, while the person leaves "Say when a new version is out" on, the app

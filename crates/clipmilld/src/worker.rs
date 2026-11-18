@@ -201,7 +201,11 @@ impl WorkerService {
         )
         .await?;
         tracing::info!(worker_id, family = descriptor.family, "worker registered");
-        self.run_registered(&mut stream, &descriptor).await
+        let result = self.run_registered(&mut stream, &descriptor).await;
+        self.database
+            .worker_disconnected(worker_id, now_millis())
+            .await;
+        result
     }
 
     async fn run_registered(
@@ -228,8 +232,7 @@ impl WorkerService {
                             "worker requested another task while a lease is active",
                         ))
                     } else {
-                        self.pull_task(descriptor, request.max_wait_ms, &mut active)
-                            .await
+                        self.pull_task(descriptor, request, &mut active).await
                     }
                 }
                 worker_request::Body::LeaseAcceptance(acceptance) => {
@@ -285,17 +288,18 @@ impl WorkerService {
     async fn pull_task(
         &self,
         descriptor: &CapabilityDescriptor,
-        requested_wait_ms: u64,
+        request: clipmill_contracts::proto::worker::v1::WorkRequest,
         active: &mut Option<ActiveLease>,
     ) -> Result<WorkerResponse, WorkerError> {
         if !self.accepting_work.load(Ordering::Acquire) {
             return Ok(WorkerResponse {
                 body: Some(worker_response::Body::NoWork(NoWork {
                     retry_after_ms: duration_millis(NO_WORK_RETRY),
+                    ..Default::default()
                 })),
             });
         }
-        let wait = Duration::from_millis(requested_wait_ms).min(NO_WORK_MAX_WAIT);
+        let wait = Duration::from_millis(request.max_wait_ms).min(NO_WORK_MAX_WAIT);
         if !wait.is_zero() {
             sleep(wait).await;
         }
@@ -311,6 +315,7 @@ impl WorkerService {
                 return Ok(WorkerResponse {
                     body: Some(worker_response::Body::NoWork(NoWork {
                         retry_after_ms: duration_millis(NO_WORK_RETRY),
+                        ..Default::default()
                     })),
                 });
             }
@@ -326,6 +331,13 @@ impl WorkerService {
                     now_unix_millis: now,
                     expires_unix_millis: now.saturating_add(duration_millis(LEASE_TTL)),
                     capacity,
+                    machine: self.scheduler.machine_capacity(),
+                    residency: match (descriptor.family.as_str(), request.has_resident_model) {
+                        ("editorial", Some(true)) => crate::jobs::WorkerResidency::Warm,
+                        ("editorial", Some(false)) => crate::jobs::WorkerResidency::Cold,
+                        ("editorial", None) => crate::jobs::WorkerResidency::Legacy,
+                        _ => crate::jobs::WorkerResidency::Stateless,
+                    },
                     worker_id: descriptor.worker_id.clone(),
                     capabilities: descriptor.capabilities.clone(),
                     foreign_implementations: crate::implementations::foreign_to(
@@ -342,6 +354,7 @@ impl WorkerService {
                 return Ok(WorkerResponse {
                     body: Some(worker_response::Body::NoWork(NoWork {
                         retry_after_ms: duration_millis(NO_WORK_RETRY),
+                        release_resident_model: selection.release_resident_model,
                     })),
                 });
             };
@@ -479,6 +492,7 @@ impl WorkerService {
         Ok(WorkerResponse {
             body: Some(worker_response::Body::NoWork(NoWork {
                 retry_after_ms: duration_millis(NO_WORK_RETRY),
+                ..Default::default()
             })),
         })
     }
@@ -556,6 +570,7 @@ impl WorkerService {
             return Ok(WorkerResponse {
                 body: Some(worker_response::Body::NoWork(NoWork {
                     retry_after_ms: duration_millis(NO_WORK_RETRY),
+                    ..Default::default()
                 })),
             });
         }
@@ -740,6 +755,7 @@ impl WorkerService {
         Ok(WorkerResponse {
             body: Some(worker_response::Body::NoWork(NoWork {
                 retry_after_ms: duration_millis(NO_WORK_RETRY),
+                ..Default::default()
             })),
         })
     }
@@ -1635,7 +1651,10 @@ mod tests {
         let request = clipmill_contracts::proto::worker::v1::WorkerRequest {
             body: Some(
                 clipmill_contracts::proto::worker::v1::worker_request::Body::WorkRequest(
-                    clipmill_contracts::proto::worker::v1::WorkRequest { max_wait_ms: 10 },
+                    clipmill_contracts::proto::worker::v1::WorkRequest {
+                        max_wait_ms: 10,
+                        ..Default::default()
+                    },
                 ),
             ),
         };

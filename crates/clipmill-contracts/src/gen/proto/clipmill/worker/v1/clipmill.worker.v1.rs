@@ -246,11 +246,17 @@ pub struct RegistrationAck {
 pub struct WorkRequest {
     #[prost(uint64, tag = "1")]
     pub max_wait_ms: u64,
+    /// Sent by workers that retain a model between leases. False confirms its memory is free.
+    #[prost(bool, optional, tag = "2")]
+    pub has_resident_model: ::core::option::Option<bool>,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct NoWork {
     #[prost(uint64, tag = "1")]
     pub retry_after_ms: u64,
+    /// Unload the idle model, then acknowledge on the next work request.
+    #[prost(bool, tag = "2")]
+    pub release_resident_model: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct LeaseAcceptance {

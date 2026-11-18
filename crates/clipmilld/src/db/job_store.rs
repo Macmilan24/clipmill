@@ -1,3 +1,5 @@
+pub(super) mod governor;
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use clipmill_artifacts::NetworkPolicy;
@@ -40,6 +42,7 @@ struct SelectedTaskRow {
     determinism_class: String,
     checkpoint_support: bool,
     preemption_cost: i64,
+    interactive: bool,
 }
 
 type FailedTaskRow = (String, String, String, String, String, Vec<u8>, i64, i64);
@@ -663,14 +666,17 @@ pub(super) fn lease_next_task_for_worker(
     let capacity = request.capacity;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut events = fail_open_circuit_breakers(&transaction, now)?;
-    let selected: Option<SelectedTaskRow> = transaction
-        .query_row(
+    let admission = governor::Admission::read(&transaction, request)?;
+    let mut blocked = None;
+    let mut change_model = false;
+    let selected = {
+        let mut statement = transaction.prepare(
             "SELECT t.task_id, t.job_id, j.project_id, j.source_id,
                     t.kind, t.output_kind, t.payload,
                     t.implementation, t.attempt, t.cpu_threads, t.ram_bytes,
                     t.accelerator_class, t.vram_bytes, t.disk_bytes, t.network_policy,
                     t.thermal_class, t.determinism_class, t.checkpoint_support,
-                    t.preemption_cost
+                    t.preemption_cost, instr(?22, ',' || j.kind || ',') > 0
              FROM tasks t JOIN jobs j ON j.job_id = t.job_id
              WHERE t.state IN (?1, ?2)
                AND t.next_attempt_unix_millis <= ?3
@@ -724,8 +730,9 @@ pub(super) fn lease_next_task_for_worker(
              -- recording being added is served before background analysis,
              -- in the order asked within each.
              ORDER BY CASE WHEN instr(?22, ',' || j.kind || ',') > 0 THEN 0 ELSE 1 END,
-                      j.created_unix_millis, j.job_id, t.ordinal
-             LIMIT 1",
+                      j.created_unix_millis, j.job_id, t.ordinal",
+        )?;
+        let candidates = statement.query_map(
             params![
                 TaskState::Planned as i32,
                 TaskState::Retryable as i32,
@@ -771,13 +778,38 @@ pub(super) fn lease_next_task_for_worker(
                     determinism_class: row.get(16)?,
                     checkpoint_support: row.get(17)?,
                     preemption_cost: row.get(18)?,
+                    interactive: row.get(19)?,
                 })
             },
-        )
-        .optional()?;
+        )?;
+        let mut choice = None;
+        for candidate in candidates {
+            let task = candidate?;
+            if admission.fits(&task) {
+                change_model = admission.changing_model(request, &task);
+                if !change_model {
+                    choice = Some(task);
+                }
+                break;
+            }
+            if blocked.is_none() {
+                blocked = Some((task.task_id, task.interactive));
+            }
+            if task.interactive {
+                break;
+            }
+        }
+        choice
+    };
+    let release_resident_model =
+        admission.note(&transaction, request, blocked.as_ref(), selected.as_ref())? || change_model;
     let Some(selected) = selected else {
         transaction.commit()?;
-        return Ok(LeaseSelection { task: None, events });
+        return Ok(LeaseSelection {
+            task: None,
+            events,
+            release_resident_model,
+        });
     };
     let next_attempt = selected
         .attempt
@@ -896,6 +928,7 @@ pub(super) fn lease_next_task_for_worker(
     }
     transaction.commit()?;
     Ok(LeaseSelection {
+        release_resident_model: false,
         task: Some(LeasedTask {
             project_id: selected.project_id,
             job_id: selected.job_id,
@@ -942,6 +975,8 @@ pub(super) fn lease_next_task(
             now_unix_millis: now,
             expires_unix_millis: expires,
             capacity,
+            machine: capacity,
+            residency: crate::jobs::WorkerResidency::Stateless,
             worker_id: "builtin-fixture".to_owned(),
             capabilities: [
                 "probe-source",

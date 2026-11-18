@@ -222,16 +222,20 @@ class RegistrationAck(_message.Message):
     def __init__(self, accepted: _Optional[bool] = ..., session_id: _Optional[str] = ..., detail: _Optional[str] = ...) -> None: ...
 
 class WorkRequest(_message.Message):
-    __slots__ = ("max_wait_ms",)
+    __slots__ = ("max_wait_ms", "has_resident_model")
     MAX_WAIT_MS_FIELD_NUMBER: _ClassVar[int]
+    HAS_RESIDENT_MODEL_FIELD_NUMBER: _ClassVar[int]
     max_wait_ms: int
-    def __init__(self, max_wait_ms: _Optional[int] = ...) -> None: ...
+    has_resident_model: bool
+    def __init__(self, max_wait_ms: _Optional[int] = ..., has_resident_model: _Optional[bool] = ...) -> None: ...
 
 class NoWork(_message.Message):
-    __slots__ = ("retry_after_ms",)
+    __slots__ = ("retry_after_ms", "release_resident_model")
     RETRY_AFTER_MS_FIELD_NUMBER: _ClassVar[int]
+    RELEASE_RESIDENT_MODEL_FIELD_NUMBER: _ClassVar[int]
     retry_after_ms: int
-    def __init__(self, retry_after_ms: _Optional[int] = ...) -> None: ...
+    release_resident_model: bool
+    def __init__(self, retry_after_ms: _Optional[int] = ..., release_resident_model: _Optional[bool] = ...) -> None: ...
 
 class LeaseAcceptance(_message.Message):
     __slots__ = ("lease_id", "accepted", "reason", "detail")

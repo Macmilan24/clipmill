@@ -200,10 +200,14 @@ message RegistrationAck {
 
 message WorkRequest {
   uint64 max_wait_ms = 1;
+  // Sent by workers that retain a model between leases. False confirms its memory is free.
+  optional bool has_resident_model = 2;
 }
 
 message NoWork {
   uint64 retry_after_ms = 1;
+  // Unload the idle model, then acknowledge on the next work request.
+  bool release_resident_model = 2;
 }
 
 message LeaseAcceptance {

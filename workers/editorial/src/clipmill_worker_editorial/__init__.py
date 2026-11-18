@@ -431,6 +431,8 @@ def run_worker(executor, *, capabilities, description, backend, max_memory_bytes
 
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
+    from .runtime import RESIDENT
+
     client = WorkerClient(
         WorkerConfiguration(
             socket_path=worker_socket,
@@ -439,6 +441,8 @@ def run_worker(executor, *, capabilities, description, backend, max_memory_bytes
             family="editorial",
             backend=backend,
             cpu_threads=1,
+            has_resident_model=lambda: RESIDENT.resident is not None,
+            release_resident_model=RESIDENT.close,
             max_memory_bytes=max_memory_bytes,
             capabilities=capabilities,
         )
@@ -446,7 +450,5 @@ def run_worker(executor, *, capabilities, description, backend, max_memory_bytes
     try:
         client.run(executor, stop)
     finally:
-        from .runtime import RESIDENT
-
         RESIDENT.close()
     return 0

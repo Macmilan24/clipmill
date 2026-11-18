@@ -154,6 +154,8 @@ class WorkerConfiguration:
     # cannot hold it.
     cpu_threads: int = 1
     vram_bytes: int = 0
+    has_resident_model: Callable[[], bool] | None = None
+    release_resident_model: Callable[[], None] | None = None
 
 
 class WorkerClient:
@@ -174,8 +176,23 @@ class WorkerClient:
                 pass
             except (ConnectionError, OSError, TimeoutError, ValueError) as error:
                 LOGGER.warning("worker connection reset: %s", type(error).__name__)
+            finally:
+                if self.configuration.release_resident_model:
+                    self.configuration.release_resident_model()
             stopped.wait(backoff)
             backoff = min(backoff * 2, 5.0)
+
+    def _work_request(self, wait_ms: int) -> worker_pb2.WorkerRequest:
+        request = worker_pb2.WorkRequest(max_wait_ms=wait_ms)
+        if self.configuration.has_resident_model:
+            request.has_resident_model = self.configuration.has_resident_model()
+        return worker_pb2.WorkerRequest(work_request=request)
+
+    def _unload_requested(self, response: worker_pb2.NoWork) -> bool:
+        if response.release_resident_model and self.configuration.release_resident_model:
+            self.configuration.release_resident_model()
+            return True
+        return False
 
     def run_one(self, handler: TaskHandler, deadline_seconds: float = 30) -> bool:
         """Run at most one lease; useful for deterministic harnesses and tests."""
@@ -184,10 +201,11 @@ class WorkerClient:
             stream.settimeout(deadline_seconds)
             send_frame(
                 stream,
-                worker_pb2.WorkerRequest(work_request=worker_pb2.WorkRequest(max_wait_ms=0)),
+                self._work_request(0),
             )
             response = recv_frame(stream, worker_pb2.WorkerResponse)
             if response.WhichOneof("body") == "no_work":
+                self._unload_requested(response.no_work)
                 return False
             if response.WhichOneof("body") != "task_lease":
                 raise ValueError("daemon returned an unexpected work response")
@@ -203,11 +221,13 @@ class WorkerClient:
         while not stopped.is_set():
             send_frame(
                 stream,
-                worker_pb2.WorkerRequest(work_request=worker_pb2.WorkRequest(max_wait_ms=250)),
+                self._work_request(250),
             )
             response = recv_frame(stream, worker_pb2.WorkerResponse)
             kind = response.WhichOneof("body")
             if kind == "no_work":
+                if self._unload_requested(response.no_work):
+                    continue
                 stopped.wait(min(response.no_work.retry_after_ms / 1000, 1.0))
                 continue
             if kind == "error":
