@@ -6,7 +6,8 @@ on:
     branches: [release/verify-installer-downloads]
 
 permissions:
-  contents: read
+  # GitHub grants access to draft release assets to clients with push permission.
+  contents: write
   actions: read
 
 env:
