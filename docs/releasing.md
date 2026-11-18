@@ -28,7 +28,9 @@ decision R65 and [the threat model](threat-model.md).
 1. Update the version in three places, keeping them equal: `version` in the
    root `Cargo.toml` (every crate inherits it, and the shell compares it with
    the daemon's), `apps/desktop/src-tauri/tauri.conf.json` and
-   `apps/desktop/package.json`. Run `cargo check` so `Cargo.lock` follows.
+   `apps/desktop/package.json`. When the minor version changes, update the
+   path dependency versions for the ClipMill crates in `[workspace.dependencies]`
+   too. Run `cargo check` so `Cargo.lock` follows.
 2. Add the release to [`CHANGELOG.md`](../CHANGELOG.md).
 3. Merge to `main` with CI green.
 4. Tag the merge and push the tag:
