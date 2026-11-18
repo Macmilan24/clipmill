@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import Field
@@ -78,6 +79,25 @@ FAILURES = {
     "sponsorship": "The edit misrepresents sponsored material.",
 }
 UNRELATED_ENDING = "The clip continues into unrelated promotion after its conclusion."
+TITLE_ABSOLUTES = (
+    (
+        r"\b(?:only|sole|nothing else matters|all that matters)\b",
+        r"\b(?:only|sole|solely|alone|exclusively|nothing else matters|"
+        r"all (?:that matters|you need))\b",
+    ),
+    (r"\balways\b", r"\b(?:always|every (?:single )?time|without exception)\b"),
+    (r"\bnever\b", r"\b(?:never|not once|at no (?:point|time))\b"),
+    (r"\bguarantee(?:d|s)?\b", r"\b(?:guarantee(?:d|s)?|assured|certain(?:ly|ty)?)\b"),
+)
+
+
+def unsupported_absolute(title, playback):
+    text = " ".join(line["text"] for line in playback)
+    for absolute, support in TITLE_ABSOLUTES:
+        introduced = re.search(absolute, title, re.IGNORECASE)
+        if introduced and not re.search(support, text, re.IGNORECASE):
+            return introduced.group()
+    return None
 
 
 def join_note(value):
@@ -194,6 +214,13 @@ def judge(ctx, plan, transcript):
     for area, reason in FAILURES.items():
         if area in problem_areas or viewer.get(area) == "reject":
             issues.append(reason)
+    if absolute := unsupported_absolute(plan["title"], evidence["playback"]):
+        issues.extend(
+            [
+                FAILURES["title_accuracy"],
+                f"The title adds “{absolute}” without equivalent support in the spoken clip.",
+            ]
+        )
     if unrelated_signoff(evidence["playback"], ctx.brief) is not None:
         issues.append(UNRELATED_ENDING)
     if viewer["hook"] == "weak":
@@ -238,7 +265,7 @@ def review_batch(ctx, plans, candidates, script, chapters=()):
                     if area != "title_accuracy"
                 )
             ):
-                choices["retitle"] = plan
+                choices = {"retitle": plan}
             repaired = plan_one(ctx, choices, transcript, quality["issues"])
             if repaired:
                 plan, reasons = repaired

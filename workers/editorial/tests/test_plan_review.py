@@ -1,6 +1,6 @@
 """Behavior at the edit boundaries a span-based reviewer would never see."""
 
-from clipmill_worker_editorial.critique import join_note, judge, review_batch
+from clipmill_worker_editorial.critique import join_note, judge, review_batch, unsupported_absolute
 from clipmill_worker_editorial.planning import Transcript, covers_named_entity, plan_one, variants
 from clipmill_worker_editorial.rank_plans import rank_batch, strengths
 
@@ -266,7 +266,7 @@ def test_a_misleading_title_finding_requires_one_retitle_even_if_the_checkbox_pa
             assert any(choice["choice"] == "retitle" for choice in data["choices"])
             return {
                 "choice": "retitle",
-                "title": "An introductory price",
+                "title": "It cost five dollars in March",
                 "hook_text": "",
                 "reasons": ["The speaker clarifies the first-month price."],
                 "doubts": [],
@@ -307,6 +307,63 @@ def test_a_misleading_title_finding_requires_one_retitle_even_if_the_checkbox_pa
     ]
     assert row["quality"]["verdict"] == "accept" and row["quality"]["repaired"]
     assert row["plan"]["plan_id"] == draft["plan_id"]
+
+
+def test_an_unspoken_only_claim_is_repaired_with_a_source_title_on_the_exact_same_cut():
+    source = script()
+    source["units"][0].update(speaker="B", text="Memory is the core budget for this workload.")
+    source["units"][1]["text"] = "Bottom line, memory capacity is a floor, not a flex."
+    draft = plan([part("p1", 0, 2)])
+    draft["title"] = "Memory: The Only Budget That Matters"
+    alternate = plan([part("p1", 2, 5)], name="2")
+
+    def answer(job, data):
+        if job == "critic":
+            return approval()
+        if job == "critic.edge":
+            return source_approval()
+        assert [c["choice"] for c in data["choices"]] == ["retitle"]
+        title = "Memory capacity is a floor, not a flex"
+        assert title in data["source_titles"]
+        return {
+            "choice": "retitle",
+            "title": title,
+            "hook_text": "",
+            "reasons": ["Uses the speaker's actual conclusion."],
+            "doubts": [],
+            "joins": [],
+        }
+
+    ctx = Calls(answer)
+    (row,) = review_batch(
+        ctx,
+        {
+            "plans": [
+                {
+                    "candidate_id": draft["plan_id"],
+                    "plan": draft,
+                    "chapter": "Hardware",
+                    "reasons": [],
+                }
+            ]
+        },
+        {
+            "length": {"min_ticks": TICK, "max_ticks": 60 * TICK},
+            "candidates": [{"plan": draft, "alternatives": [alternate]}],
+        },
+        source,
+    )
+    assert row["quality"]["verdict"] == "accept" and row["quality"]["repaired"]
+    assert row["plan"]["plan_id"] == draft["plan_id"] and row["plan"]["parts"] == draft["parts"]
+    assert row["plan"]["title"] == "Memory capacity is a floor, not a flex"
+    source["units"][0]["text"] = "For this workload, memory is the only budget that matters."
+    assert judge(ctx, draft, Transcript(source))["verdict"] == "accept"
+    assert (
+        unsupported_absolute(
+            "It always costs five dollars", [{"text": "It costs five dollars every single time."}]
+        )
+        is None
+    )
 
 
 def test_position_only_votes_cancel_and_stronger_wins_raise_bradley_terry_strength():

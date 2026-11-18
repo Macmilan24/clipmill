@@ -57,19 +57,47 @@ class Transcript:
     def segment(self, start, end):
         return [self.line(i) for i in self.in_range(start, end)]
 
+    def spoken_sentences(self, plan):
+        """Keep ASR fragments together without forming a new sentence across a cut."""
+        for part in plan["parts"]:
+            start = part["start_ticks"]
+            cuts = [(r["start_ticks"], r["end_ticks"]) for r in part.get("removed", [])]
+            for end, resume in [*cuts, (part["end_ticks"], None)]:
+                words = []
+                speaker = None
+                for line in self.segment(start, end):
+                    if words and speaker != line["speaker"]:
+                        yield " ".join(words)
+                        words = []
+                    speaker = line["speaker"]
+                    words.append(line["text"].strip())
+                    if SENTENCE_END.search(words[-1]):
+                        yield " ".join(words)
+                        words = []
+                if words:
+                    yield " ".join(words)
+                start = resume
+
     def opening_quote(self, plan):
-        part = plan["parts"][0]
-        removed = part.get("removed", [])
-        end = removed[0]["start_ticks"] if removed else part["end_ticks"]
-        lines = self.segment(part["start_ticks"], end)
-        words = []
-        for line in lines:
-            if line["speaker"] != lines[0]["speaker"]:
-                break
-            words.append(line["text"].strip())
-            if SENTENCE_END.search(words[-1]):
-                break
-        return textwrap.shorten(" ".join(words), width=160, placeholder="")
+        return textwrap.shorten(next(self.spoken_sentences(plan), ""), width=160, placeholder="")
+
+    def grounded_titles(self, plan):
+        candidates = []
+        for sentence in self.spoken_sentences(plan):
+            # A discourse marker can precede the entire conclusion in one ASR line.
+            phrase = (
+                re.sub(
+                    r"^(?:bottom line|in short|in summary),\s*", "", sentence, flags=re.IGNORECASE
+                )
+                .strip()
+                .removesuffix(".")
+            )
+            if len(phrase.split()) >= 3 and len(phrase) <= 120:
+                candidates.append(phrase[0].upper() + phrase[1:])
+        unique = list(dict.fromkeys(candidates))
+        if len(unique) <= 32:
+            return unique
+        return [unique[i * (len(unique) - 1) // 31] for i in range(32)]
 
     def evidence(self, plan):
         """Played words, both source neighbours and every omitted word at a splice.
@@ -356,6 +384,12 @@ def plan_one(ctx, options, transcript, repair=None):
         )
     if not presentations:
         return None
+    choices = {"choice": (Literal[tuple([*options, "decline"])], ...)}
+    repair_titles = (
+        transcript.grounded_titles(options["retitle"]) if list(options) == ["retitle"] else []
+    )
+    if repair_titles:
+        choices["title"] = (Literal[tuple(repair_titles)], ...)
     answer, failure = ctx.ask(
         "plan",
         {
@@ -364,14 +398,17 @@ def plan_one(ctx, options, transcript, repair=None):
             "spoken_lines": list(lines.values()),
             "choices": presentations,
             "repair_findings": repair or [],
+            **({"source_titles": repair_titles} if repair_titles else {}),
         },
         create_model(
             "LegalPlanChoice",
             __base__=PlanReply,
-            choice=(Literal[tuple([*options, "decline"])], ...),
+            **choices,
         ),
     )
     if failure or answer["choice"] not in options or not answer["title"].strip():
+        return None
+    if repair_titles and answer["title"] not in repair_titles:
         return None
     plan = copy.deepcopy(options[answer["choice"]])
     plan["title"] = answer["title"].strip()
