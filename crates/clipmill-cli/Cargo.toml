@@ -1,0 +1,24 @@
+[package]
+name = "clipmill-cli"
+description = "The clipmill command: projects, analysis, clips and export from a shell, and an MCP server for agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "clipmill"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true, features = ["env"] }
+clipmill-contracts.workspace = true
+clipmilld.workspace = true
+prost.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["io-std"] }
+ulid.workspace = true
+
+[lints]
+workspace = true
