@@ -1171,3 +1171,141 @@ fn runnable_here(registry: &std::path::Path) -> usize {
         })
         .count()
 }
+
+/// The engine API v2 over the socket: a local process gets the local scopes,
+/// a connected agent gets what it was given, a revoked token gets nothing,
+/// and every call lands in the audit log.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_engine_api_checks_scopes_and_records_every_call() {
+    use clipmill_contracts::proto::ipc::v1::{
+        CreateAgentClientRequest, EngineCallRequest, ListEngineAuditRequest,
+        RevokeAgentClientRequest,
+    };
+
+    let temp = workspace_tempdir();
+    let (socket, shutdown, task) = running(config(&temp)).await;
+    let ask = |id: &str, body: request::Body| {
+        let socket = socket.clone();
+        let id = id.to_owned();
+        async move {
+            send(
+                &socket,
+                Request {
+                    request_id: id,
+                    body: Some(body),
+                },
+            )
+            .await
+            .expect("response")
+        }
+    };
+    let call = |id: &'static str, token: String, json: serde_json::Value| {
+        let ask = ask.clone();
+        async move {
+            let response = ask(
+                id,
+                request::Body::EngineCall(EngineCallRequest {
+                    token,
+                    call_json: json.to_string(),
+                }),
+            )
+            .await;
+            let Some(response::Body::EngineCall(answer)) = response.body else {
+                panic!("expected an engine answer, got {:?}", response.body);
+            };
+            serde_json::from_str::<serde_json::Value>(&answer.result_json).expect("json")
+        }
+    };
+
+    let made = call(
+        "v2-create",
+        String::new(),
+        serde_json::json!({"op": "create_project", "args": {"name": "From an agent"}}),
+    )
+    .await;
+    assert_eq!(made["ok"], true, "{made}");
+    let listed = call(
+        "v2-list",
+        String::new(),
+        serde_json::json!({"op": "list_projects"}),
+    )
+    .await;
+    assert_eq!(listed["result"]["projects"][0]["name"], "From an agent");
+    let unknown = call(
+        "v2-unknown",
+        String::new(),
+        serde_json::json!({"op": "delete_everything"}),
+    )
+    .await;
+    assert_eq!(unknown["error"]["code"], "invalid_argument");
+
+    let created = ask(
+        "agent",
+        request::Body::CreateAgentClient(CreateAgentClientRequest {
+            name: "Read-only agent".into(),
+            scopes: vec!["read".into()],
+        }),
+    )
+    .await;
+    let Some(response::Body::AgentClientCreated(agent)) = created.body else {
+        panic!("expected a client, got {:?}", created.body);
+    };
+    assert!(agent.token.starts_with("cmt_"));
+    let refused = call(
+        "v2-refused",
+        agent.token.clone(),
+        serde_json::json!({"op": "create_project", "args": {"name": "No"}}),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], "out_of_scope", "{refused}");
+    let read = call(
+        "v2-read",
+        agent.token.clone(),
+        serde_json::json!({"op": "list_projects"}),
+    )
+    .await;
+    assert_eq!(read["ok"], true);
+
+    let client_id = agent.client.expect("client").client_id;
+    ask(
+        "revoke",
+        request::Body::RevokeAgentClient(RevokeAgentClientRequest { client_id }),
+    )
+    .await;
+    let revoked = call(
+        "v2-revoked",
+        agent.token,
+        serde_json::json!({"op": "list_projects"}),
+    )
+    .await;
+    assert_eq!(revoked["error"]["code"], "unauthenticated");
+
+    let log = ask(
+        "audit",
+        request::Body::ListEngineAudit(ListEngineAuditRequest { limit: 0 }),
+    )
+    .await;
+    let Some(response::Body::EngineAudit(log)) = log.body else {
+        panic!("expected the audit log");
+    };
+    let outcomes: Vec<(&str, &str, &str)> = log
+        .entries
+        .iter()
+        .map(|e| {
+            (
+                e.client_name.as_str(),
+                e.operation.as_str(),
+                e.outcome.as_str(),
+            )
+        })
+        .collect();
+    assert!(
+        outcomes.contains(&("Read-only agent", "create_project", "refused")),
+        "{outcomes:?}"
+    );
+    assert!(
+        outcomes.contains(&("local", "create_project", "ok")),
+        "{outcomes:?}"
+    );
+    stop(shutdown, task).await;
+}

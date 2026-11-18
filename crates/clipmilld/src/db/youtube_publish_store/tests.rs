@@ -425,13 +425,13 @@ fn publication_targets_only_an_existing_remote_receipt() {
 #[test]
 fn schema_thirteen_migration_preserves_import_rows_and_projects() {
     let (temp, db) = setup();
-    db.execute_batch("DROP TABLE youtube_upload_roots; DROP TABLE youtube_uploads; DROP TABLE youtube_connections; PRAGMA user_version=13;").unwrap();
+    db.execute_batch("DROP TABLE engine_audit; DROP TABLE agent_clients; DROP TABLE youtube_upload_roots; DROP TABLE youtube_uploads; DROP TABLE youtube_connections; PRAGMA user_version=13;").unwrap();
     drop(db);
     let db = open_database(&temp.path().join("store.db"), &temp.path().join("backups")).unwrap();
     assert_eq!(
         db.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        14
+        super::super::SCHEMA_VERSION
     );
     assert_eq!(
         db.query_row(

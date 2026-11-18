@@ -1,0 +1,66 @@
+# Engine API v2
+
+The engine API is how anything other than the Studio uses ClipMill: the `clipmill` command, agents through MCP, and scripts through the local gateway. It is one set of operations over the same engine the Studio drives (decision R72), so an agent can do what a person can do in the app, and nothing it does is decided differently.
+
+## Calls
+
+A call is JSON:
+
+```json
+{"op": "start_analysis", "args": {"project_id": "prj_…", "source_id": "src_…"}, "request_id": "optional"}
+```
+
+The answer is `{"ok": true, "result": …}` or `{"ok": false, "error": {"code", "message", "retryable"}}`. Messages are written for people. Times are in seconds. A `request_id`, when given, makes a retried call safe: the same id and the same call return the first answer instead of doing the work twice.
+
+Over the daemon's socket a call travels in the v1 envelope as `EngineCallRequest { token, call_json }`.
+
+## Who is calling
+
+| Caller | How | Scopes |
+|---|---|---|
+| A process of this account on this computer | no token | `read`, `edit`, `render` |
+| A connected agent | the token created for it in Settings → Connected agents | what the person gave it |
+
+A token is shown once when it is created and stored only as its SHA-256. Revoking it stops it at once. Scopes are `read`, `edit`, `render`, `publish` and `delete`; publishing and deleting always need a token that was given them.
+
+Every call is written to the audit log with the client, the operation, the ids it named and how it ended (`ok`, `refused`, `failed`). Settings shows the log.
+
+## Operations
+
+| Operation | Scope | Arguments | Result |
+|---|---|---|---|
+| `status` | read | none | engine version, Local Lock, every operation and its scope |
+| `list_projects` | read | none | `projects` |
+| `create_project` | edit | `name` | `project_id` |
+| `add_source` | edit | `project_id`, `path` (absolute, on this computer) | `source_id` |
+| `list_sources` | read | `project_id` | `sources` |
+| `start_analysis` | edit | `project_id`, `source_id`, optional `min_seconds` and `max_seconds`, `language`, `editorial: "none"` | the job |
+| `get_job` | read | `job_id` | state (`queued`, `running`, `succeeded`, `failed`, `cancelled`), progress, stages |
+| `list_jobs` | read | `project_id` | `jobs` |
+| `cancel_job` | edit | `job_id` | the job |
+| `get_transcript` | read | `project_id`, `source_id`, optional `job_id`, `start_seconds`, `end_seconds` | `sentences` with unit ids, times, speakers and text |
+| `list_clips` | read | `project_id`, `source_id`, optional `job_id` | `clips`: the mind's plans (`kind: "plan"`, with form and parts) and the ranked moments (`kind: "moment"`) |
+| `describe_clip` | read | as `list_clips`, plus `clip_id` | the clip with the words of each part |
+| `set_decision` | edit | as `describe_clip`, plus `decision`: `approved`, `kept`, `rejected`, `undecided` | the decision |
+| `create_clip` | edit | as `describe_clip`, optional `shape` (`vertical`, `square`, `portrait`, `landscape`) | `doc_id` of the edit document |
+| `export_clip` | render | `doc_id`, `destination_dir`, `rights`, optional `title` | the export job |
+| `list_models` | read | none | `models` |
+
+Without a `job_id`, clip and transcript operations read the newest finished analysis of the source.
+
+`start_analysis` runs the local editorial model and the mind unless `editorial` is `"none"`; everything stays on this computer.
+
+`export_clip` needs `rights`: a rendered file states whether the person owns or may use the recording, and there is no honest default for that. An agent must ask the person and pass what they said.
+
+## Errors
+
+| Code | Meaning |
+|---|---|
+| `invalid_argument` | The call is malformed or an argument is missing; the message says which |
+| `not_found` | No such project, source, job or clip |
+| `out_of_scope` | The client was not given the scope this operation needs |
+| `unauthenticated` | The token is unknown or revoked |
+| `conflict` | The thing changed since it was read |
+| `unavailable`, `busy` | Try again shortly (`retryable` is true) |
+| `policy_denied` | The Local Lock or a setting forbids it |
+| `internal` | A fault in ClipMill |

@@ -28,6 +28,8 @@ mod youtube_publish_store;
 mod youtube_store;
 pub(crate) use youtube_publish_store::{Publication, PublishingCommand, PublishingReply};
 pub(crate) use youtube_store::YoutubeCommand;
+mod agent_store;
+pub(crate) use agent_store::{AgentClient, AgentCommand, AgentReply, AuditEntry};
 mod batch_store;
 pub(crate) use batch_store::BatchCommand;
 mod job_store;
@@ -44,7 +46,7 @@ mod decision_store;
 pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -127,6 +129,10 @@ impl DbActor {
                                 Command::Batch { command, reply } => {
                                     let _result =
                                         reply.send(batch_store::execute(&mut connection, command));
+                                }
+                                Command::Agent { command, reply } => {
+                                    let _result =
+                                        reply.send(agent_store::execute(&mut connection, command));
                                 }
                                 Command::ReplayRequest {
                                     request_id,
@@ -775,6 +781,16 @@ impl DbHandle {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::Batch { command, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// Connected agents and the engine API's audit log.
+    pub(crate) async fn agents(&self, command: AgentCommand) -> Result<AgentReply, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Agent { command, reply })
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
@@ -1661,6 +1677,10 @@ enum Command {
         >,
     },
 
+    Agent {
+        command: AgentCommand,
+        reply: oneshot::Sender<Result<AgentReply, StoreError>>,
+    },
     Batch {
         command: BatchCommand,
         reply: oneshot::Sender<
@@ -2094,8 +2114,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(batch_store::CREATE_V12_TABLES)?;
         transaction.execute_batch(youtube_store::CREATE_V13_TABLES)?;
         transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
+        transaction.execute_batch(agent_store::CREATE_V15_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 14;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 15;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -2146,7 +2167,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 14 {
             transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 14;")?;
+        if version < 15 {
+            transaction.execute_batch(agent_store::CREATE_V15_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 15;")?;
         transaction.commit()?;
     }
     Ok(())

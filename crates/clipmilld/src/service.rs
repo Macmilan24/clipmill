@@ -1,3 +1,4 @@
+mod api_v2;
 mod assets;
 mod batch;
 mod engine;
@@ -429,6 +430,25 @@ impl Service {
         };
 
         match body {
+            request::Body::EngineCall(call) => self.engine_call(request_id, call).await,
+            request::Body::CreateAgentClient(create) => {
+                self.create_agent_client(request_id, create).await
+            }
+            request::Body::ListAgentClients(_) => {
+                self.agent_clients(request_id, crate::db::AgentCommand::List)
+                    .await
+            }
+            request::Body::RevokeAgentClient(revoke) => {
+                self.agent_clients(
+                    request_id,
+                    crate::db::AgentCommand::Revoke {
+                        client_id: revoke.client_id,
+                        at_unix_millis: unix_millis().unwrap_or(0),
+                    },
+                )
+                .await
+            }
+            request::Body::ListEngineAudit(list) => self.engine_audit(request_id, list.limit).await,
             request::Body::Ping(ping) => response_reply(
                 request_id,
                 response::Body::Ping(PingResponse {
@@ -4070,6 +4090,11 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::CancelEngineInstall(_)) => "cancel_engine_install",
         Some(request::Body::Shutdown(_)) => "shutdown",
         Some(request::Body::CheckForUpdate(_)) => "check_for_update",
+        Some(request::Body::EngineCall(_)) => "engine_call",
+        Some(request::Body::CreateAgentClient(_)) => "create_agent_client",
+        Some(request::Body::ListAgentClients(_)) => "list_agent_clients",
+        Some(request::Body::RevokeAgentClient(_)) => "revoke_agent_client",
+        Some(request::Body::ListEngineAudit(_)) => "list_engine_audit",
         None => "missing_body",
     }
 }

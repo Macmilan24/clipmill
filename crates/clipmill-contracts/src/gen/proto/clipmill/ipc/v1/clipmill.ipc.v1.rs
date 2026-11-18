@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -175,6 +175,18 @@ pub mod request {
         Shutdown(super::ShutdownRequest),
         #[prost(message, tag = "83")]
         CheckForUpdate(super::CheckForUpdateRequest),
+        /// The engine API v2 that agents, the CLI and the gateway use.
+        #[prost(message, tag = "84")]
+        EngineCall(super::EngineCallRequest),
+        /// Connected agents, managed from the Studio.
+        #[prost(message, tag = "85")]
+        CreateAgentClient(super::CreateAgentClientRequest),
+        #[prost(message, tag = "86")]
+        ListAgentClients(super::ListAgentClientsRequest),
+        #[prost(message, tag = "87")]
+        RevokeAgentClient(super::RevokeAgentClientRequest),
+        #[prost(message, tag = "88")]
+        ListEngineAudit(super::ListEngineAuditRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -185,7 +197,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -313,6 +325,14 @@ pub mod response {
         Shutdown(super::ShutdownResponse),
         #[prost(message, tag = "67")]
         CheckForUpdate(super::CheckForUpdateResponse),
+        #[prost(message, tag = "68")]
+        EngineCall(super::EngineCallResponse),
+        #[prost(message, tag = "69")]
+        AgentClientCreated(super::AgentClientCreated),
+        #[prost(message, tag = "70")]
+        AgentClients(super::AgentClientsResponse),
+        #[prost(message, tag = "71")]
+        EngineAudit(super::EngineAuditResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -3401,6 +3421,101 @@ pub struct EngineResponse {
 pub struct ShutdownRequest {}
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ShutdownResponse {}
+/// One call to the engine API v2 (docs/engine-api.md), the surface agents, the
+/// `clipmill` command and the local gateway share. `call_json` is
+/// `{"op": "...", "args": {...}}`. The token names the connected agent making
+/// the call; a call without one comes from a process of this account on this
+/// computer and gets the local scopes. Every call is written to the audit log.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EngineCallRequest {
+    #[prost(string, tag = "1")]
+    pub token: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub call_json: ::prost::alloc::string::String,
+}
+/// `{"ok": true, "result": ...}`, or `{"ok": false, "error": {"code", "message",
+/// "retryable"}}` with a sentence a person can act on.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EngineCallResponse {
+    #[prost(string, tag = "1")]
+    pub result_json: ::prost::alloc::string::String,
+}
+/// An agent or tool a person connected, and what it may do.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AgentClientV1 {
+    #[prost(string, tag = "1")]
+    pub client_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    /// Any of read, edit, render, publish, delete.
+    #[prost(string, repeated, tag = "3")]
+    pub scopes: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(uint64, tag = "4")]
+    pub created_unix_millis: u64,
+    /// Zero while the token works.
+    #[prost(uint64, tag = "5")]
+    pub revoked_unix_millis: u64,
+    #[prost(uint64, tag = "6")]
+    pub last_used_unix_millis: u64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateAgentClientRequest {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "2")]
+    pub scopes: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// The token is shown here once and stored only as its hash.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AgentClientCreated {
+    #[prost(message, optional, tag = "1")]
+    pub client: ::core::option::Option<AgentClientV1>,
+    #[prost(string, tag = "2")]
+    pub token: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListAgentClientsRequest {}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AgentClientsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub clients: ::prost::alloc::vec::Vec<AgentClientV1>,
+}
+/// Answered with the clients as they now stand.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RevokeAgentClientRequest {
+    #[prost(string, tag = "1")]
+    pub client_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListEngineAuditRequest {
+    /// Newest first; zero means the default of 200.
+    #[prost(uint32, tag = "1")]
+    pub limit: u32,
+}
+/// One engine API call: who made it, what it asked for, and how it ended.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EngineAuditEntryV1 {
+    #[prost(uint64, tag = "1")]
+    pub at_unix_millis: u64,
+    #[prost(string, tag = "2")]
+    pub client_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub client_name: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub operation: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub target: ::prost::alloc::string::String,
+    /// ok, refused or failed.
+    #[prost(string, tag = "6")]
+    pub outcome: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub detail: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EngineAuditResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub entries: ::prost::alloc::vec::Vec<EngineAuditEntryV1>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum ErrorCode {
