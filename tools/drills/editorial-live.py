@@ -196,6 +196,31 @@ def ranking_v2(client, run, stages):
     return ranking
 
 
+def check_transcript_edit(client, run):
+    """Create a client-authored cut using only fields returned by the public API."""
+    transcript = engine(client, "get_transcript", **run)
+    sentences = transcript["sentences"][:3]
+    if not sentences:
+        return
+    start = sentences[0]["start_ticks"]
+    end = sentences[-1]["end_ticks"]
+    fingerprint = transcript["source_fingerprint"]
+    identity = hashlib.sha256(f"{fingerprint}:{start}:{end}".encode()).hexdigest()
+    plan = {
+        "schema_version": "clipmill.mind.clip_plan.v1",
+        "source_fingerprint": fingerprint,
+        "plan_id": f"plan_{identity[:24]}",
+        "form": "straight",
+        "parts": [{"part_id": "p1", "role": "body", "start_ticks": start, "end_ticks": end}],
+        "joins": [],
+        "duration_ticks": end - start,
+        "provenance": {"by": "agent"},
+    }
+    edit = engine(client, "create_clip_from_plan", **run, plan=plan)
+    reopened = engine(client, "create_clip_from_plan", **run, plan=plan)
+    assert reopened["reopened"] and reopened["doc_id"] == edit["doc_id"]
+
+
 def render_cut(client, work, out, label, run, transcript, direct):
     preview = client._call(
         ipc.Request(preview_direct=ipc.PreviewDirectRequest(direct=direct))
@@ -534,6 +559,7 @@ def main():
         assert not any(t.kind.endswith("-cloud") for t in job.tasks)
         stages = manifest(client, run, job)
         ranking = ranking_v2(client, run, stages)
+        check_transcript_edit(client, run)
         revised_job = engine(
             client, "reprompt", **run, prompt=args.reprompt, min_seconds=20, max_seconds=45, count=2
         )
