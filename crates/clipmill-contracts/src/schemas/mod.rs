@@ -167,3 +167,15 @@ pub mod text_embeddings;
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/text_query_vector.rs"]
 pub mod text_query_vector;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_plans.rs"]
+pub mod mind_plans;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_quality_report.rs"]
+pub mod mind_quality_report;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/ranking_set_v2.rs"]
+pub mod ranking_set_v2;

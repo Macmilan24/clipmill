@@ -32,7 +32,7 @@ export interface EditorialTrace {
 }
 export interface Call {
   index: number;
-  job: "propose" | "review" | "look";
+  job: "propose" | "review" | "look" | "memory.read" | "memory.link" | "score" | "plan" | "critic" | "compare";
   /**
    * The window a propose call was over.
    */
@@ -66,6 +66,10 @@ export interface Call {
   tokens: {
     input: number;
     output: number;
+    /**
+     * Input tokens served from a prompt checkpoint when the backend reports them.
+     */
+    cached_input?: number;
   };
   /**
    * What this call cost on the cloud route, from the provider's published prices at the time.

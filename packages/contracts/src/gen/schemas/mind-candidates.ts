@@ -28,13 +28,19 @@ export interface MindCandidates {
   };
   candidates: {
     /**
-     * What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span when there is no memory.
+     * What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span, a match to the brief, or a sound from the audience.
      */
-    scout: "event" | "link" | "cold_open" | "theme" | "span";
+    scout: "event" | "link" | "cold_open" | "theme" | "span" | "brief" | "reaction";
     score: number;
     /**
      * A clipmill.mind.clip_plan.v1 document.
      */
     plan: {};
+    /**
+     * Other validated forms of the same moment, available to the planner for comparison and one repair.
+     *
+     * @maxItems 3
+     */
+    alternatives?: [] | [{}] | [{}, {}] | [{}, {}, {}];
   }[];
 }

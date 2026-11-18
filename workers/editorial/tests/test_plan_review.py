@@ -1,0 +1,243 @@
+"""Behavior at the edit boundaries a span-based reviewer would never see."""
+
+from clipmill_worker_editorial.critique import judge, review_batch
+from clipmill_worker_editorial.planning import Transcript, plan_one, variants
+from clipmill_worker_editorial.rank_plans import rank_batch, strengths
+
+TICK = 90_000
+SOURCE = "sha256:" + "a" * 64
+
+
+class Calls:
+    def __init__(self, answer):
+        self.identity = {"model": {"name": "test-model"}}
+        self.brief = "pricing"
+        self.taste = ["Kept an example with a concrete price."]
+        self.answer = answer
+        self.calls = []
+
+    def ask(self, job, data, _schema):
+        self.calls.append((job, data))
+        return self.answer(job, data), None
+
+    def progress(self, *_args):
+        pass
+
+
+def script():
+    lines = [
+        ("A", "Did the service always cost five dollars?"),
+        ("B", "It cost five dollars in March."),
+        ("B", "But only for the first month."),
+        ("B", "The normal price was fifteen."),
+        ("A", "Was the new package profitable?"),
+        ("B", "Yes, after the first quarter."),
+    ]
+    return {
+        "units": [
+            {
+                "index": i,
+                "text": text,
+                "speaker": who,
+                "start_ticks": i * 5 * TICK,
+                "end_ticks": (i + 1) * 5 * TICK,
+            }
+            for i, (who, text) in enumerate(lines)
+        ]
+    }
+
+
+def part(id_, first, end):
+    return {
+        "part_id": id_,
+        "role": "body",
+        "start_ticks": first * 5 * TICK,
+        "end_ticks": end * 5 * TICK,
+    }
+
+
+def plan(parts, form="straight", name="1"):
+    return {
+        "plan_id": "plan_" + name * 16,
+        "source_fingerprint": SOURCE,
+        "schema_version": "clipmill.mind.clip_plan.v1",
+        "title": "The price in March",
+        "form": form,
+        "parts": parts,
+        "joins": [{"after": p["part_id"], "kind": "distant"} for p in parts[:-1]],
+        "duration_ticks": sum(
+            p["end_ticks"]
+            - p["start_ticks"]
+            - sum(r["end_ticks"] - r["start_ticks"] for r in p.get("removed", []))
+            for p in parts
+        ),
+        "provenance": {"by": "mind"},
+    }
+
+
+def approval(boundaries=()):
+    return {
+        "comprehension": "pass",
+        "landing": "pass",
+        "sponsorship": "pass",
+        "title_accuracy": "pass",
+        "hook": "strong",
+        "summary": "The speaker gives the price and its condition.",
+        "issues": [],
+        "joins": {b["after"]: {"verdict": "pass", "note": "Meaning holds."} for b in boundaries},
+    }
+
+
+def test_wrong_question_is_checked_against_original_question_without_planner_reasons():
+    draft = plan([part("p1", 0, 1), part("p2", 5, 6)], "stitch")
+    draft["parts"][0]["why"] = "Private planner justification must never reach the critic."
+    draft["evidence"] = ["An authoritative but incorrect claim that these lines belong together"]
+
+    def answer(_job, evidence):
+        (boundary,) = evidence["splices"]
+        assert "profitable" in boundary["right_source"]["before"][-1]["text"]
+        assert "five dollars" in boundary["left_source"]["line"]["text"]
+        assert "Private planner" not in str(evidence) and "authoritative" not in str(evidence)
+        response = approval([boundary])
+        response["joins"][boundary["after"]].update(
+            verdict="reject", note="The answer belonged to a different question."
+        )
+        return response
+
+    result = judge(Calls(answer), draft, Transcript(script()))
+    assert result["verdict"] == "reject" and "different question" in result["issues"][0]
+
+
+def test_removed_qualification_can_be_restored_once_and_independently_rechecked():
+    piece = part("p1", 1, 4)
+    piece["removed"] = [{"start_ticks": 10 * TICK, "end_ticks": 15 * TICK, "reason": "tangent"}]
+    draft = plan([piece], "tightened")
+
+    def answer(job, data):
+        if job == "plan":
+            assert "qualification" in str(data["repair_findings"])
+            return {
+                "choice": "part_1_uncut",
+                "title": "The introductory price",
+                "hook_text": "INVENTED",
+                "reasons": ["Includes the price condition."],
+                "doubts": [],
+                "joins": [],
+            }
+        if data["splices"]:
+            (join,) = data["splices"]
+            assert join["after"] == "p1.cut1" and "first month" in join["removed"][0]["text"]
+            issue = approval([join])
+            issue["joins"][join["after"]].update(
+                verdict="reject", note="A price qualification was removed."
+            )
+            return issue
+        assert any("first month" in line["text"] for line in data["playback"])
+        return approval()
+
+    ctx = Calls(answer)
+    rows = review_batch(
+        ctx,
+        {
+            "plans": [
+                {"candidate_id": draft["plan_id"], "plan": draft, "chapter": "Price", "reasons": []}
+            ]
+        },
+        {
+            "length": {"min_ticks": 5 * TICK, "max_ticks": 20 * TICK},
+            "candidates": [{"plan": draft}],
+        },
+        script(),
+    )
+    assert [name for name, _ in ctx.calls] == ["critic", "plan", "critic"]
+    assert rows[0]["quality"]["repaired"] and rows[0]["quality"]["verdict"] == "accept"
+    assert rows[0]["plan"]["hook_text"] == "It cost five dollars in March."
+    assert rows[0]["plan"]["plan_id"] != draft["plan_id"]
+
+
+def test_missing_boundary_fails_closed_and_no_rejected_plan_is_ranked():
+    draft = plan([part("p1", 0, 1), part("p2", 5, 6)], "stitch")
+    ctx = Calls(lambda *_: approval())
+    quality = judge(ctx, draft, Transcript(script()))
+    assert quality["verdict"] == "reject"
+    result = rank_batch(ctx, {"reviews": [{"plan": draft, "quality": quality}]}, script(), 4)
+    assert result["clips"] == [] and result["cutoff_reason"]
+
+
+def test_a_misleading_title_finding_requires_one_retitle_even_if_the_checkbox_passed():
+    draft = plan([part("p1", 1, 4)])
+
+    def answer(job, data):
+        if job == "plan":
+            assert any(choice["choice"] == "retitle" for choice in data["choices"])
+            return {
+                "choice": "retitle",
+                "title": "An introductory price",
+                "hook_text": "",
+                "reasons": ["The speaker clarifies the first-month price."],
+                "doubts": [],
+                "joins": [],
+            }
+        result = approval()
+        if data["public_title"] == draft["title"]:
+            result["issues"] = [
+                {
+                    "aspect": "title_accuracy",
+                    "detail": "The title omits the introductory condition.",
+                }
+            ]
+        return result
+
+    ctx = Calls(answer)
+    (row,) = review_batch(
+        ctx,
+        {
+            "plans": [
+                {
+                    "candidate_id": draft["plan_id"],
+                    "plan": draft,
+                    "chapter": "Pricing",
+                    "reasons": [],
+                }
+            ]
+        },
+        {"length": {"min_ticks": TICK, "max_ticks": 60 * TICK}, "candidates": [{"plan": draft}]},
+        script(),
+    )
+    assert [job for job, _ in ctx.calls] == ["critic", "plan", "critic"]
+    assert row["quality"]["verdict"] == "accept" and row["quality"]["repaired"]
+    assert row["plan"]["plan_id"] == draft["plan_id"]
+
+
+def test_position_only_votes_cancel_and_stronger_wins_raise_bradley_terry_strength():
+    drafts = [plan([part("p1", 0, 2)], name="1"), plan([part("p1", 3, 5)], name="2")]
+    ctx = Calls(lambda *_: {"winner": "A", "reason": "First one."})
+    rows = [
+        {
+            "plan": draft,
+            "chapter": str(i),
+            "reasons": ["Specific."],
+            "quality": {"verdict": "accept", "hook": "strong", "summary": "Complete."},
+        }
+        for i, draft in enumerate(drafts)
+    ]
+    ranked = rank_batch(ctx, {"reviews": rows}, script(), 2)
+    assert len(ctx.calls) == 2
+    assert ctx.calls[0][1]["A"] == ctx.calls[1][1]["B"]
+    assert ranked["comparisons"][0]["share_a"] == 0.5
+    assert ranked["clips"][0]["strength"] == ranked["clips"][1]["strength"]
+    a, b, c = strengths(3, [(0, 1, 1), (1, 2, 1), (0, 2, 1)])
+    assert a > b > c > 0
+
+
+def test_planner_cannot_invent_source_ranges_and_declines_unsupplied_choice():
+    draft = plan([part("p1", 1, 4)])
+    ctx = Calls(lambda *_: {"choice": "fabricated", "title": "New range"})
+    transcript = Transcript(script())
+    assert (
+        plan_one(
+            ctx, variants(draft, transcript, {"min_ticks": 1, "max_ticks": 20 * TICK}), transcript
+        )
+        is None
+    )
+    assert ctx.calls[0][1]["previous_decisions"] == ctx.taste

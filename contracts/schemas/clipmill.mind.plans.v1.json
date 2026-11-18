@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.mind.plans.v1.json",
+  "title": "MindPlans",
+  "description": "Word-safe cuts chosen for the brief, pending independent review. Each plan is tied to its original cutter candidate.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "inputs", "plans"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.mind.plans.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/sha256"
+      }
+    },
+    "plans": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/planned"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "plan_id": {
+      "type": "string",
+      "pattern": "^plan_[0-9a-f]{16,64}$"
+    },
+    "planned": {
+      "type": "object",
+      "required": ["candidate_id", "plan", "chapter", "reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "$ref": "#/$defs/plan_id"
+        },
+        "plan": {
+          "description": "A clipmill.mind.clip_plan.v1 document with its validated source geometry.",
+          "type": "object"
+        },
+        "chapter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

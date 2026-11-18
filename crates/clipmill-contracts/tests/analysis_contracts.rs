@@ -219,6 +219,8 @@ fn the_analyze_job_payload_names_a_source_and_a_request() {
     let message = AnalyzeSourcePayloadV1 {
         content_profile: "scripted".to_owned(),
         local_editorial: false,
+        editorial_prompt: String::new(),
+        editorial_taste: Vec::new(),
         cloud_editorial: None,
         key_version: "clipmill.analyze-source.v1".to_owned(),
         source_id: "src_0123456789abcdef".to_owned(),

@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.mind.quality_report.v1.json",
+  "title": "MindQualityReport",
+  "description": "Independent review of each proposed cut, including internal removals and the verdict after at most one repair.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "inputs", "reviews"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.mind.quality_report.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/sha256"
+      }
+    },
+    "reviews": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/review"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "plan_id": {
+      "type": "string",
+      "pattern": "^plan_[0-9a-f]{16,64}$"
+    },
+    "review": {
+      "type": "object",
+      "required": ["candidate_id", "plan", "chapter", "reasons", "quality"],
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "$ref": "#/$defs/plan_id"
+        },
+        "plan": {
+          "description": "A clipmill.mind.clip_plan.v1 document with its validated source geometry.",
+          "type": "object"
+        },
+        "chapter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "quality": {
+          "$ref": "#/$defs/quality"
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "required": ["verdict", "hook", "summary", "joins", "issues", "repaired"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {
+          "enum": ["accept", "reject"]
+        },
+        "hook": {
+          "enum": ["strong", "adequate", "weak"]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "joins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/join_review"
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "repaired": {
+          "type": "boolean"
+        }
+      }
+    },
+    "join_review": {
+      "type": "object",
+      "required": ["after", "verdict", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verdict": {
+          "enum": ["pass", "reject"]
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

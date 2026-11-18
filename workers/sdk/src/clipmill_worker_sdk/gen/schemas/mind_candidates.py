@@ -23,6 +23,8 @@ class Scout(Enum):
     cold_open = 'cold_open'
     theme = 'theme'
     span = 'span'
+    brief = 'brief'
+    reaction = 'reaction'
 
 
 class Candidate(BaseModel):
@@ -31,11 +33,16 @@ class Candidate(BaseModel):
     )
     scout: Scout = Field(
         ...,
-        description='What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span when there is no memory.',
+        description='What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span, a match to the brief, or a sound from the audience.',
     )
     score: int
     plan: dict[str, Any] = Field(
         ..., description='A clipmill.mind.clip_plan.v1 document.'
+    )
+    alternatives: list[dict[str, Any]] | None = Field(
+        None,
+        description='Other validated forms of the same moment, available to the planner for comparison and one repair.',
+        max_length=3,
     )
 
 

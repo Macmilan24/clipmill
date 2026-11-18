@@ -27,6 +27,7 @@ use clipmill_contracts::schemas::mind_clip_plan::MindClipPlan;
 use clipmill_contracts::schemas::mind_memory::{EventKind, EventMood, LinkKind, MindMemory};
 use clipmill_contracts::schemas::mind_unit_scores::{Level, MindUnitScores, RowTrim};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 use crate::script::Source;
 use crate::{ADJACENT_GAP_TICKS, Bounds, MIN_MONTAGE_PARTS, MIN_PART_TICKS, SECOND, check};
@@ -71,12 +72,16 @@ pub enum Scout {
     ColdOpen,
     Theme,
     Span,
+    Brief,
+    Reaction,
 }
 
 /// A plan the cutter proposes, with a provisional score for ordering.
 #[derive(Clone, Debug)]
 pub struct Candidate {
     pub plan: MindClipPlan,
+    /// Other validated forms of the same moment the planner can choose instead.
+    pub alternatives: Vec<MindClipPlan>,
     pub scout: Scout,
     pub score: i64,
 }
@@ -161,6 +166,21 @@ impl Table {
             unit.landing = level(row.landing);
             unit.cut = removal_reason(row.trim);
             unit.needs = needs;
+        }
+        // Older scorers occasionally called an entire passage a false start.
+        // Do not remove a run of completed thoughts under a disfluency label.
+        for run in units.chunk_by_mut(|a, b| a.cut == b.cut) {
+            if run.len() > 2 && matches!(run[0].cut, Some("false_start" | "filler" | "repetition"))
+            {
+                for unit in run {
+                    unit.cut = None;
+                }
+            }
+        }
+        for unit in &mut units {
+            if unit.hook >= 2 || unit.landing >= 2 {
+                unit.cut = None;
+            }
         }
         Self { units, position }
     }
@@ -289,22 +309,22 @@ struct Piece {
     why: String,
 }
 
-/// A stable id from what a plan plays: FNV-1a over its form and ranges.
-fn plan_id(form: &str, pieces: &[Piece], table: &Table) -> String {
-    let mut text = form.to_owned();
+/// Identify the playable edit across analyses, independent of its title or rating.
+/// Roles, order and every omitted interval distinguish different cuts of the same moment.
+fn plan_id(source: &str, form: &str, pieces: &[Piece], table: &Table) -> String {
+    let mut key = format!("{source}|{form}");
     for piece in pieces {
         let _ = write!(
-            text,
-            "|{}-{}",
-            table.units[piece.a].index, table.units[piece.b].index
+            key,
+            "|{}:{}:{}",
+            piece.role, table.units[piece.a].start, table.units[piece.b].end
         );
+        for (start, end, _) in table.removals(piece.a, piece.b) {
+            let _ = write!(key, "|cut:{start}:{end}");
+        }
     }
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in text.bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0100_0000_01b3);
-    }
-    format!("plan_{hash:016x}")
+    let digest = Sha256::digest(key.as_bytes());
+    format!("plan_{}", hex::encode(&digest[..12]))
 }
 
 fn clipped(text: &str, limit: usize) -> String {
@@ -384,7 +404,7 @@ fn assemble(material: &Material<'_>, table: &Table, draft: &Draft<'_>) -> Option
     let mut plan = json!({
         "schema_version": "clipmill.mind.clip_plan.v1",
         "source_fingerprint": material.source_fingerprint,
-        "plan_id": plan_id(draft.form, &draft.pieces, table),
+        "plan_id": plan_id(material.source_fingerprint, draft.form, &draft.pieces, table),
         "form": draft.form,
         "hook_text": clipped(&first.text, 160),
         "parts": parts,
@@ -454,6 +474,11 @@ const fn roles(kind: LinkKind) -> Option<(&'static str, &'static str)> {
 
 /// Every candidate the scouts find, checked, without duplicates, best first.
 pub fn candidates(material: &Material<'_>) -> Vec<Candidate> {
+    candidates_for_brief(material, "")
+}
+
+/// Search the entire script for a requested topic before limiting the candidate pool.
+pub fn candidates_for_brief(material: &Material<'_>, prompt: &str) -> Vec<Candidate> {
     let table = Table::new(material);
     if table.units.is_empty() {
         return Vec::new();
@@ -464,18 +489,20 @@ pub fn candidates(material: &Material<'_>) -> Vec<Candidate> {
         links(material, &table, memory, &mut found);
         themes(material, &table, memory, &mut found);
     }
+    reactions(material, &table, &mut found);
+    brief_scout(material, &table, prompt, &mut found);
     if found.is_empty() {
         spans(material, &table, &mut found);
     }
     cold_opens(material, &table, &mut found);
 
-    let mut seen = BTreeSet::new();
-    found.retain(|candidate: &Candidate| seen.insert(candidate.plan.plan_id.to_string()));
     found.sort_by(|x, y| {
         y.score
             .cmp(&x.score)
             .then_with(|| x.plan.plan_id.as_str().cmp(y.plan.plan_id.as_str()))
     });
+    let mut seen = BTreeSet::new();
+    found.retain(|candidate| seen.insert(candidate.plan.plan_id.to_string()));
     distinct(found)
 }
 
@@ -506,21 +533,34 @@ fn shared(a: &[(u64, u64)], b: &[(u64, u64)]) -> u64 {
 
 /// The best candidates that are not the same clip again, at most
 /// [`MAX_CANDIDATES`]: one that shares half of what it plays with a better
-/// one is left out.
+/// one becomes an alternative if it tells the same moment in a different form.
 fn distinct(found: Vec<Candidate>) -> Vec<Candidate> {
     let mut kept: Vec<(Candidate, Vec<(u64, u64)>)> = Vec::new();
     for candidate in found {
-        if kept.len() == MAX_CANDIDATES {
-            break;
-        }
         let ranges = played(&candidate.plan);
         let length: u64 = ranges.iter().map(|(a, b)| b - a).sum();
-        let repeats = kept.iter().any(|(_, other)| {
+        let repeat = kept.iter_mut().find(|(primary, other)| {
             let other_length: u64 = other.iter().map(|(a, b)| b - a).sum();
-            shared(&ranges, other) * 100
-                >= DUPLICATE_SHARE_PERCENT * length.min(other_length).max(1)
+            // A theme montage is a different editorial proposition from any of
+            // its individual stories, even if a long item accounts for most of it.
+            let montage =
+                clipmill_contracts::schemas::mind_clip_plan::MindClipPlanForm::ThemeMontage;
+            (primary.plan.form == montage) == (candidate.plan.form == montage)
+                && shared(&ranges, other) * 100
+                    >= DUPLICATE_SHARE_PERCENT * length.min(other_length).max(1)
         });
-        if !repeats {
+        if let Some((primary, _)) = repeat {
+            let alternate = candidate.plan;
+            if primary.plan.form != alternate.form
+                && primary.alternatives.len() < 3
+                && !primary
+                    .alternatives
+                    .iter()
+                    .any(|p| p.form == alternate.form)
+            {
+                primary.alternatives.push(alternate);
+            }
+        } else if kept.len() < MAX_CANDIDATES {
             kept.push((candidate, ranges));
         }
     }
@@ -555,6 +595,7 @@ fn events(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &m
         if let Some(plan) = assemble(material, table, &draft) {
             found.push(Candidate {
                 plan,
+                alternatives: Vec::new(),
                 scout: Scout::Event,
                 score: table.edges(a, b) + mood_bonus(event.mood) + i64::from(form == "tightened"),
             });
@@ -645,6 +686,7 @@ fn joined(
     )?;
     Some(Candidate {
         plan,
+        alternatives: Vec::new(),
         scout: Scout::Link,
         score: table.edges(a, b) + 2,
     })
@@ -703,6 +745,7 @@ fn stitched(
     )?;
     Some(Candidate {
         plan,
+        alternatives: Vec::new(),
         scout: Scout::Link,
         score: table.edges(fa, tb) + 4,
     })
@@ -798,14 +841,207 @@ fn themes(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &m
             title: Some(&title),
             evidence,
         };
-        if let Some(plan) = assemble(material, table, &draft) {
-            found.push(Candidate {
-                plan,
-                scout: Scout::Theme,
-                score,
-            });
+        found.extend(montage_candidate(
+            material,
+            table,
+            draft,
+            Scout::Theme,
+            score,
+        ));
+    }
+}
+
+/// Offer a complete thought around a sentence, keeping the requested line in playback.
+fn around(
+    material: &Material<'_>,
+    table: &Table,
+    line: usize,
+    scout: Scout,
+    reason: &str,
+    bonus: i64,
+) -> Option<Candidate> {
+    let first = line.saturating_sub(EXTEND_UNITS);
+    let (a, b) = table.fit(first, line, material.length)?;
+    if b < line || table.units[line].cut.is_some() {
+        return None;
+    }
+    let evidence = format!("s{}", table.units[line].index);
+    let draft = Draft {
+        form: single_form(table, a, b),
+        pieces: vec![Piece {
+            a,
+            b,
+            role: "body",
+            why: reason.to_owned(),
+        }],
+        links: Vec::new(),
+        title: None,
+        evidence: vec![evidence],
+    };
+    assemble(material, table, &draft).map(|plan| Candidate {
+        plan,
+        alternatives: Vec::new(),
+        scout,
+        score: table.edges(a, b) + bonus,
+    })
+}
+
+fn reactions(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>) {
+    for cue in &material.source.cues {
+        if !matches!(
+            cue.kind.as_str(),
+            "laughter" | "applause" | "cheering" | "gasp"
+        ) {
+            continue;
+        }
+        let Some(line) = table
+            .units
+            .partition_point(|u| u.start <= cue.start_ticks)
+            .checked_sub(1)
+        else {
+            continue;
+        };
+        if cue.start_ticks.saturating_sub(table.units[line].end) > 5 * SECOND {
+            continue;
+        }
+        let reason = format!(
+            "The recording contains {} at the end of this line",
+            cue.kind
+        );
+        found.extend(around(material, table, line, Scout::Reaction, &reason, 2));
+    }
+}
+
+fn brief_terms(prompt: &str) -> BTreeSet<String> {
+    // These common editing directions describe the desired cut rather than its subject.
+    const DIRECTIONS: &[&str] = &[
+        "about", "again", "another", "around", "clips", "could", "every", "find", "from", "give",
+        "like", "make", "mention", "mentions", "moment", "moments", "montage", "more", "only",
+        "part", "parts", "please", "short", "shorter", "show", "talk", "talks", "talking", "that",
+        "them", "they", "this", "time", "times", "when", "where", "with", "would",
+    ];
+    prompt
+        .split(|c: char| !c.is_alphanumeric())
+        .map(str::to_lowercase)
+        .filter(|word| word.chars().count() >= 3 && !DIRECTIONS.contains(&word.as_str()))
+        .take(20)
+        .collect()
+}
+
+fn brief_scout(material: &Material<'_>, table: &Table, prompt: &str, found: &mut Vec<Candidate>) {
+    let terms = brief_terms(prompt);
+    if terms.is_empty() {
+        return;
+    }
+    let matches = table
+        .units
+        .iter()
+        .enumerate()
+        .filter_map(|(line, u)| {
+            let words = u
+                .text
+                .split(|c: char| !c.is_alphanumeric())
+                .map(str::to_lowercase)
+                .collect::<BTreeSet<_>>();
+            let count = terms.intersection(&words).count();
+            (count != 0 && u.cut.is_none()).then_some((line, count))
+        })
+        .collect::<Vec<_>>();
+    let reason = "A sentence in this cut matches the requested topic";
+    // More matching words provide a stronger lead; ties retain source order.
+    let mut best = matches.clone();
+    best.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+    for (line, n) in best.into_iter().take(MAX_CANDIDATES * 2) {
+        found.extend(around(
+            material,
+            table,
+            line,
+            Scout::Brief,
+            reason,
+            15 + i64::try_from(n).unwrap_or(0),
+        ));
+    }
+    let lower = prompt.to_lowercase();
+    if lower.contains("every time") || lower.contains("all the") || lower.contains("montage") {
+        let lines = matches.iter().map(|(line, _)| *line).collect::<Vec<_>>();
+        brief_montage(material, table, &lines, &terms, found);
+    }
+}
+
+fn brief_montage(
+    material: &Material<'_>,
+    table: &Table,
+    matches: &[usize],
+    terms: &BTreeSet<String>,
+    found: &mut Vec<Candidate>,
+) {
+    let count = matches.len().min(MAX_MONTAGE_PARTS);
+    if count < MIN_MONTAGE_PARTS {
+        return;
+    }
+    let n = u64::try_from(count).unwrap_or(1);
+    let per_item = (
+        material.length.0.div_ceil(n).max(MIN_MONTAGE_ITEM_TICKS),
+        material.length.1 / n,
+    );
+    let mut pieces: Vec<Piece> = Vec::new();
+    let mut evidence = Vec::new();
+    for &line in matches {
+        let Some((a, b)) = table.fit(line, line, per_item) else {
+            continue;
+        };
+        if a > line || pieces.last().is_some_and(|last| a <= last.b + 1) {
+            continue;
+        }
+        pieces.push(Piece {
+            a,
+            b,
+            role: "item",
+            why: "This mention matches the requested theme".to_owned(),
+        });
+        evidence.push(format!("s{}", table.units[line].index));
+        if pieces.len() == count {
+            break;
         }
     }
+    if pieces.len() < MIN_MONTAGE_PARTS {
+        return;
+    }
+    let theme = terms.iter().cloned().collect::<Vec<_>>().join(" ");
+    let links = vec![Some(format!("theme:{theme}")); pieces.len() - 1];
+    let draft = Draft {
+        form: "theme_montage",
+        pieces,
+        links,
+        title: Some(&theme),
+        evidence,
+    };
+    found.extend(montage_candidate(material, table, draft, Scout::Brief, 50));
+}
+
+/// Let the planner choose which sighting opens a montage. Every offered ordering
+/// has the same common theme, cited source passages and verified word boundaries.
+fn montage_candidate(
+    material: &Material<'_>,
+    table: &Table,
+    mut draft: Draft<'_>,
+    scout: Scout,
+    score: i64,
+) -> Option<Candidate> {
+    let plan = assemble(material, table, &draft)?;
+    let mut alternatives = Vec::new();
+    for _ in 1..draft.pieces.len().min(4) {
+        draft.pieces.rotate_left(1);
+        if let Some(reordered) = assemble(material, table, &draft) {
+            alternatives.push(reordered);
+        }
+    }
+    Some(Candidate {
+        plan,
+        alternatives,
+        scout,
+        score,
+    })
 }
 
 /// Without a memory: moments that open on a hook and close on a landing.
@@ -835,6 +1071,7 @@ fn spans(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>) {
             if let Some(plan) = assemble(material, table, &draft) {
                 found.push(Candidate {
                     plan,
+                    alternatives: Vec::new(),
                     scout: Scout::Span,
                     score: table.edges(a, b),
                 });
@@ -908,6 +1145,7 @@ fn cold_opens(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>
         if let Some(plan) = assemble(material, table, &draft) {
             opened.push(Candidate {
                 plan,
+                alternatives: Vec::new(),
                 scout: Scout::ColdOpen,
                 score: candidate.score + 2,
             });

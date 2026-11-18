@@ -247,3 +247,94 @@ impl Fits for MindClipPlan {
         (min..=max).contains(&crate::programme_ticks(self))
     }
 }
+
+#[test]
+fn the_brief_scout_builds_a_montage_from_disjoint_requested_mentions() {
+    let (mut source, words) = recording();
+    for i in [3, 27, 50] {
+        source.sentences[i].text = "The pricing changed in this quarter.".into();
+    }
+    let found = super::candidates_for_brief(
+        &Material {
+            source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+            source: &source,
+            words: &words,
+            scores: None,
+            memory: None,
+            length: (15 * S, 60 * S),
+        },
+        "Every time they talk about pricing",
+    );
+    let montage = find(&found, MindClipPlanForm::ThemeMontage);
+    assert_eq!(montage.scout, Scout::Brief);
+    assert_eq!(montage.plan.parts.len(), 3);
+    assert!(montage.plan.joins.iter().all(|join| join.link.is_some()));
+    assert_eq!(montage.alternatives.len(), 2);
+    assert_eq!(
+        montage.alternatives[0].parts[0].start_ticks,
+        montage.plan.parts[1].start_ticks
+    );
+    assert_ne!(montage.alternatives[0].plan_id, montage.plan.plan_id);
+}
+
+#[test]
+fn the_reaction_scout_requires_a_nearby_spoken_line() {
+    let (mut source, words) = recording();
+    source.cues.push(crate::script::Cue {
+        kind: "laughter".into(),
+        start_ticks: 50 * S,
+        end_ticks: 52 * S,
+        label: None,
+    });
+    let found = candidates(&Material {
+        source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+        source: &source,
+        words: &words,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    });
+    assert!(found.iter().any(|row| row.scout == Scout::Reaction));
+}
+
+#[test]
+fn edits_with_the_same_outer_edges_have_distinct_identities() {
+    let (source, words) = recording();
+    let edits = scores();
+    let material = Material {
+        source_fingerprint: "recording",
+        source: &source,
+        words: &words,
+        scores: Some(&edits),
+        memory: None,
+        length: (15 * S, 60 * S),
+    };
+    let table = super::Table::new(&material);
+    let untrimmed = super::Table::new(&Material {
+        scores: None,
+        ..material
+    });
+    let body = super::Piece {
+        a: 10,
+        b: 16,
+        role: "body",
+        why: String::new(),
+    };
+    let hook = super::Piece {
+        a: 10,
+        b: 16,
+        role: "hook",
+        why: String::new(),
+    };
+    let id = |pieces: &[super::Piece], table: &super::Table| {
+        super::plan_id("recording", "tightened", pieces, table)
+    };
+    assert_ne!(
+        id(std::slice::from_ref(&body), &table),
+        id(std::slice::from_ref(&body), &untrimmed)
+    );
+    assert_ne!(
+        id(std::slice::from_ref(&body), &table),
+        id(std::slice::from_ref(&hook), &table)
+    );
+}

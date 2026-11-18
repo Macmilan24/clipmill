@@ -592,7 +592,9 @@ name = "clipmill-mind"
 version = "0.4.0"
 dependencies = [
  "clipmill-contracts",
+ "hex",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.19",
 ]
 

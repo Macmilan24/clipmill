@@ -14,7 +14,7 @@ buf generate
 
 # Module name for a schema file: clipmill.artifact.manifest.v1.json -> artifact_manifest
 module_name() {
-  basename "$1" .json | sed -e 's/^clipmill\.//' -e 's/\.v[0-9]*$//' -e 's/\./_/g'
+  basename "$1" .json | sed -e 's/^clipmill\.//' -e 's/\.v1$//' -e 's/\./_/g'
 }
 
 mkdir -p workers/sdk/src/clipmill_worker_sdk/gen/schemas \

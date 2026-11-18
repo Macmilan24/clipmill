@@ -182,6 +182,7 @@ export interface EditIr {
     plan_id: string;
     form: "straight" | "tightened" | "stitch" | "cold_open" | "theme_montage";
     removed?: {
+      part_id?: string;
       source_fingerprint: Sha256;
       in_ticks: number;
       out_ticks: number;
@@ -271,6 +272,13 @@ export interface VideoSegment {
     kind: "adjacent" | "removed" | "reorder" | "distant";
     audio_crossfade_ticks?: number;
     room_tone?: boolean;
+    /**
+     * A verified speech-free interval of the incoming recording, in source ticks.
+     *
+     * @minItems 2
+     * @maxItems 2
+     */
+    room_tone_range?: [number, number];
   };
 }
 /**

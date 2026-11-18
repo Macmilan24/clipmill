@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import gc
 import os
+import tempfile
 import threading
 import time
 import traceback
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 
 MLX_RUNTIME = "mlx-vlm@0.7.1/clipmill-json-v2"
 
@@ -35,6 +36,25 @@ def acquire_runtime(model, cancellation):
     Closing what this returns hands the model back rather than unloading it.
     """
     return RESIDENT.acquire(model, cancellation)
+
+
+@contextmanager
+def text_session(model, cancellation, source, *, needed):
+    """Borrow the resident model and scope any prefix checkpoints to this recording."""
+    if not needed:
+        yield None
+        return
+    runtime = acquire_runtime(model, cancellation)
+    try:
+        if begin := getattr(runtime, "begin_text_session", None):
+            begin(source)
+        yield runtime
+    finally:
+        try:
+            if end := getattr(runtime, "end_text_session", None):
+                end()
+        finally:
+            runtime.close()
 
 
 def keep_warm_seconds() -> float:
@@ -209,6 +229,10 @@ class LocalModel:
         mx.random.seed(0)
         self.model = None
         self.processor = None
+        self.prefix_cache = None
+        self.cache_directory = None
+        self.cached_source = None
+        self.cache_active = False
         try:
             self.model, self.processor = load(str(root), trust_remote_code=False)
         except BaseException as error:
@@ -221,6 +245,45 @@ class LocalModel:
                 self.close()
             raise
         self.cancellation = cancellation
+
+    def begin_text_session(self, source):
+        """Keep checkpoints local to one recording and to this resident model."""
+        from mlx_vlm import apc
+
+        if self.cached_source != source:
+            self._close_prefix_cache()
+            self.cache_directory = tempfile.TemporaryDirectory(prefix="clipmill-editorial-")
+            self.prefix_cache = apc.from_env(
+                model_namespace="editorial",
+                overrides={
+                    "enabled": True,
+                    "memory_max_gb": 0.25,
+                    "num_blocks": 64,
+                    "disk_enabled": True,
+                    "disk_path": self.cache_directory.name,
+                    "disk_max_gb": 0.375,
+                    "disk_queue_max_gb": 0.0625,
+                    "checkpoint_entries": 2,
+                    "checkpoint_interval_tokens": 0,
+                },
+            )
+            self.cached_source = source
+        self.cache_active = True
+
+    def end_text_session(self):
+        self.cache_active = False
+
+    def _close_prefix_cache(self):
+        cache, self.prefix_cache = self.prefix_cache, None
+        directory, self.cache_directory = self.cache_directory, None
+        self.cached_source = None
+        self.cache_active = False
+        try:
+            if cache is not None:
+                cache.close()
+        finally:
+            if directory is not None:
+                directory.cleanup()
 
     def generate(self, prompt, schema, max_tokens, images=None):
         from mlx_vlm import stream_generate
@@ -246,8 +309,18 @@ class LocalModel:
             num_images=len(images or []),
             enable_thinking=False,
         )
-        if len(tokenizer.encode(formatted)) > 12_000:
+        token_count = len(tokenizer.encode(formatted))
+        if token_count > 12_000:
             raise ValueError("editorial context exceeds the 12,000-token limit")
+        if self.cache_active and self.prefix_cache is not None and not images:
+            prefix, marker, _ = formatted.partition("\nInput data:\n")
+            if marker:
+                # Stateful attention cannot rewind an arbitrary final snapshot.
+                # Ask the runtime to checkpoint the shared instructions and
+                # recording context while it prefills the first real request.
+                # Leave two tokens for tokenization at the text boundary.
+                shared_tokens = max(0, len(tokenizer.encode(prefix)) - 2)
+                self.prefix_cache.exact_cache_guard_tokens = max(1, token_count - shared_tokens)
         chunks = []
         last = None
         for last in stream_generate(
@@ -260,14 +333,18 @@ class LocalModel:
             logits_processors=[check_cancel, grammar],
             enable_thinking=False,
             prefill_step_size=512,
+            apc_manager=self.prefix_cache if self.cache_active and not images else None,
             resize_shape=(448, 448),
         ):
             self.cancellation.raise_if_cancelled()
             chunks.append(last.text)
-        return "".join(chunks), {
+        tokens = {
             "input": last.prompt_tokens if last else 0,
             "output": last.generation_tokens if last else 0,
         }
+        if self.cache_active and last is not None:
+            tokens["cached_input"] = int(getattr(last, "cached_tokens", 0))
+        return "".join(chunks), tokens
 
     def close(self):
         import mlx.core as mx
@@ -275,6 +352,7 @@ class LocalModel:
         self.model = None
         self.processor = None
         try:
+            self._close_prefix_cache()
             gc.collect()
         finally:
             mx.clear_cache()

@@ -57,6 +57,14 @@ pub mod error {
 #[doc = "          \"scout\""]
 #[doc = "        ],"]
 #[doc = "        \"properties\": {"]
+#[doc = "          \"alternatives\": {"]
+#[doc = "            \"description\": \"Other validated forms of the same moment, available to the planner for comparison and one repair.\","]
+#[doc = "            \"type\": \"array\","]
+#[doc = "            \"items\": {"]
+#[doc = "              \"type\": \"object\""]
+#[doc = "            },"]
+#[doc = "            \"maxItems\": 3"]
+#[doc = "          },"]
 #[doc = "          \"plan\": {"]
 #[doc = "            \"description\": \"A clipmill.mind.clip_plan.v1 document.\","]
 #[doc = "            \"type\": \"object\""]
@@ -65,13 +73,15 @@ pub mod error {
 #[doc = "            \"type\": \"integer\""]
 #[doc = "          },"]
 #[doc = "          \"scout\": {"]
-#[doc = "            \"description\": \"What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span when there is no memory.\","]
+#[doc = "            \"description\": \"What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span, a match to the brief, or a sound from the audience.\","]
 #[doc = "            \"enum\": ["]
 #[doc = "              \"event\","]
 #[doc = "              \"link\","]
 #[doc = "              \"cold_open\","]
 #[doc = "              \"theme\","]
-#[doc = "              \"span\""]
+#[doc = "              \"span\","]
+#[doc = "              \"brief\","]
+#[doc = "              \"reaction\""]
 #[doc = "            ]"]
 #[doc = "          }"]
 #[doc = "        },"]
@@ -157,6 +167,14 @@ impl MindCandidates {
 #[doc = "    \"scout\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"alternatives\": {"]
+#[doc = "      \"description\": \"Other validated forms of the same moment, available to the planner for comparison and one repair.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\""]
+#[doc = "      },"]
+#[doc = "      \"maxItems\": 3"]
+#[doc = "    },"]
 #[doc = "    \"plan\": {"]
 #[doc = "      \"description\": \"A clipmill.mind.clip_plan.v1 document.\","]
 #[doc = "      \"type\": \"object\""]
@@ -165,13 +183,15 @@ impl MindCandidates {
 #[doc = "      \"type\": \"integer\""]
 #[doc = "    },"]
 #[doc = "    \"scout\": {"]
-#[doc = "      \"description\": \"What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span when there is no memory.\","]
+#[doc = "      \"description\": \"What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span, a match to the brief, or a sound from the audience.\","]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"event\","]
 #[doc = "        \"link\","]
 #[doc = "        \"cold_open\","]
 #[doc = "        \"theme\","]
-#[doc = "        \"span\""]
+#[doc = "        \"span\","]
+#[doc = "        \"brief\","]
+#[doc = "        \"reaction\""]
 #[doc = "      ]"]
 #[doc = "    }"]
 #[doc = "  },"]
@@ -182,10 +202,14 @@ impl MindCandidates {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct MindCandidatesCandidatesItem {
+    #[doc = "Other validated forms of the same moment, available to the planner for comparison and one repair."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub alternatives:
+        ::std::vec::Vec<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
     #[doc = "A clipmill.mind.clip_plan.v1 document."]
     pub plan: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     pub score: i64,
-    #[doc = "What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span when there is no memory."]
+    #[doc = "What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span, a match to the brief, or a sound from the audience."]
     pub scout: MindCandidatesCandidatesItemScout,
 }
 impl MindCandidatesCandidatesItem {
@@ -193,19 +217,21 @@ impl MindCandidatesCandidatesItem {
         Default::default()
     }
 }
-#[doc = "What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span when there is no memory."]
+#[doc = "What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span, a match to the brief, or a sound from the audience."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
 #[doc = r""]
 #[doc = r" ```json"]
 #[doc = "{"]
-#[doc = "  \"description\": \"What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span when there is no memory.\","]
+#[doc = "  \"description\": \"What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span, a match to the brief, or a sound from the audience.\","]
 #[doc = "  \"enum\": ["]
 #[doc = "    \"event\","]
 #[doc = "    \"link\","]
 #[doc = "    \"cold_open\","]
 #[doc = "    \"theme\","]
-#[doc = "    \"span\""]
+#[doc = "    \"span\","]
+#[doc = "    \"brief\","]
+#[doc = "    \"reaction\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -233,6 +259,10 @@ pub enum MindCandidatesCandidatesItemScout {
     Theme,
     #[serde(rename = "span")]
     Span,
+    #[serde(rename = "brief")]
+    Brief,
+    #[serde(rename = "reaction")]
+    Reaction,
 }
 impl ::std::fmt::Display for MindCandidatesCandidatesItemScout {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -242,6 +272,8 @@ impl ::std::fmt::Display for MindCandidatesCandidatesItemScout {
             Self::ColdOpen => f.write_str("cold_open"),
             Self::Theme => f.write_str("theme"),
             Self::Span => f.write_str("span"),
+            Self::Brief => f.write_str("brief"),
+            Self::Reaction => f.write_str("reaction"),
         }
     }
 }
@@ -254,6 +286,8 @@ impl ::std::str::FromStr for MindCandidatesCandidatesItemScout {
             "cold_open" => Ok(Self::ColdOpen),
             "theme" => Ok(Self::Theme),
             "span" => Ok(Self::Span),
+            "brief" => Ok(Self::Brief),
+            "reaction" => Ok(Self::Reaction),
             _ => Err("invalid value".into()),
         }
     }
@@ -534,6 +568,10 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct MindCandidatesCandidatesItem {
+        alternatives: ::std::result::Result<
+            ::std::vec::Vec<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
+            ::std::string::String,
+        >,
         plan: ::std::result::Result<
             ::serde_json::Map<::std::string::String, ::serde_json::Value>,
             ::std::string::String,
@@ -545,6 +583,7 @@ pub mod builder {
     impl ::std::default::Default for MindCandidatesCandidatesItem {
         fn default() -> Self {
             Self {
+                alternatives: Ok(Default::default()),
                 plan: Err("no value supplied for plan".to_string()),
                 score: Err("no value supplied for score".to_string()),
                 scout: Err("no value supplied for scout".to_string()),
@@ -552,6 +591,18 @@ pub mod builder {
         }
     }
     impl MindCandidatesCandidatesItem {
+        pub fn alternatives<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::vec::Vec<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.alternatives = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for alternatives: {e}"));
+            self
+        }
         pub fn plan<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<
@@ -591,6 +642,7 @@ pub mod builder {
             value: MindCandidatesCandidatesItem,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                alternatives: value.alternatives?,
                 plan: value.plan?,
                 score: value.score?,
                 scout: value.scout?,
@@ -600,6 +652,7 @@ pub mod builder {
     impl ::std::convert::From<super::MindCandidatesCandidatesItem> for MindCandidatesCandidatesItem {
         fn from(value: super::MindCandidatesCandidatesItem) -> Self {
             Self {
+                alternatives: Ok(value.alternatives),
                 plan: Ok(value.plan),
                 score: Ok(value.score),
                 scout: Ok(value.scout),

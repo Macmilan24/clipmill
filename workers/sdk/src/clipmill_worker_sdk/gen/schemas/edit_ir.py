@@ -341,6 +341,10 @@ class Kind(Enum):
     distant = 'distant'
 
 
+class RoomToneRangeItem(RootModel[conint(ge=0)]):
+    root: conint(ge=0)
+
+
 class Join(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -348,6 +352,12 @@ class Join(BaseModel):
     kind: Kind
     audio_crossfade_ticks: conint(ge=0, le=45000) | None = None
     room_tone: bool | None = None
+    room_tone_range: list[RoomToneRangeItem] | None = Field(
+        None,
+        description='A verified speech-free interval of the incoming recording, in source ticks.',
+        max_length=2,
+        min_length=2,
+    )
 
 
 class VideoSegment(BaseModel):
@@ -555,6 +565,7 @@ class RemovedItem(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
+    part_id: constr(min_length=1) | None = None
     source_fingerprint: Sha256
     in_ticks: conint(ge=0)
     out_ticks: conint(ge=1)

@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field, create_model
 
-from .inference import call, prompt_digest
+from .inference import call, cited_window, prompt_digest
 
 LEVELS = ("none", "fair", "good", "strong")
 CUTS = ("tangent", "retake", "false_start", "filler", "aside", "ad_read")
@@ -77,12 +77,18 @@ def apply(rows: dict[int, dict], position: dict[int, int], answer: dict) -> None
             row = rows[int(mark["unit"][1:])]
             if LEVELS.index(mark["level"]) > LEVELS.index(row[field]):
                 row[field] = mark["level"]
+                row["trim"] = "keep"
     for cut in answer["cuts"]:
         first, last = int(cut["first_unit"][1:]), int(cut["last_unit"][1:])
-        if position[first] > position[last]:
+        width = position[last] - position[first] + 1
+        if width <= 0 or (cut["why"] in ("false_start", "filler", "retake") and width > 2):
             continue
         for index, row in rows.items():
-            if position[first] <= position[index] <= position[last] and row["trim"] == "keep":
+            if (
+                position[first] <= position[index] <= position[last]
+                and row["trim"] == "keep"
+                and row["hook"] == row["landing"] == "none"
+            ):
                 row["trim"] = cut["why"]
     for need in answer["needs"]:
         unit, on = int(need["unit"][1:]), int(need["on"][1:])
@@ -105,7 +111,8 @@ def score_units(
 ):
     """Mark up a recording's script into a `clipmill.mind.unit_scores.v1` document."""
 
-    order = [unit["index"] for unit in script["units"]]
+    script_units = {unit["index"]: unit for unit in script["units"]}
+    order = list(script_units)
     position = {index: place for place, index in enumerate(order)}
     rows = {
         index: {"unit": f"s{index}", "hook": "none", "landing": "none", "trim": "keep"}
@@ -121,7 +128,7 @@ def score_units(
         answer, failure = call(
             runtime,
             "score",
-            {"citable_units": f"{units[0]} to {units[-1]}", "script": window["text"]},
+            cited_window(script_units, window),
             reply,
             max_tokens,
             {**identity, "window_index": number - 1},

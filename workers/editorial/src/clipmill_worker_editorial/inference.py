@@ -101,6 +101,25 @@ class LookReply(BaseModel):
     detail: str = Field(min_length=1, max_length=500)
 
 
+def cited_window(units, window):
+    """Present the individual ids the model can cite, even for a compact script."""
+    lines = []
+    for index in window["units"]:
+        unit = units[index]
+        seconds = unit["start_ticks"] // 90_000
+        lines.append(
+            f"s{index} [{seconds // 60}:{seconds % 60:02d}] "
+            f"{unit.get('speaker', '')} {unit['text']}"
+        )
+    # The compact annotations have time stamps; their speech is already present above.
+    cues = [line for line in window["text"].splitlines() if line.startswith(("#", "["))]
+    return {
+        "citable_units": f"s{window['units'][0]} to s{window['units'][-1]}",
+        "recording_cues": cues,
+        "script": "\n".join(lines),
+    }
+
+
 def prompt_for(operation):
     return Path(__file__).with_name("prompts").joinpath(f"{operation}.v1.txt").read_text()
 
@@ -109,6 +128,10 @@ def stage_prompt(operation):
     """The prompt text a stage's recipe is keyed on: the memory stage runs two."""
     if operation == "memory":
         return prompt_for("memory.read") + prompt_for("memory.link")
+    if operation == "critic":
+        return prompt_for("critic") + prompt_for("plan")
+    if operation == "rank":
+        return prompt_for("compare")
     return prompt_for(operation)
 
 
@@ -126,9 +149,15 @@ def call(
     traces,
     images=None,
     prompt_schema=None,
+    fixed_context=None,
 ):
     text = (
         prompt_for(operation)
+        + (
+            "\nRecording context:\n" + json.dumps(fixed_context, ensure_ascii=False)
+            if fixed_context
+            else ""
+        )
         + "\nAnswer schema:\n"
         + json.dumps(prompt_schema or response_type.model_json_schema())
         + "\nInput data:\n"

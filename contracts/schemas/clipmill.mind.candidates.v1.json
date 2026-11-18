@@ -56,8 +56,8 @@
         "additionalProperties": false,
         "properties": {
           "scout": {
-            "description": "What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span when there is no memory.",
-            "enum": ["event", "link", "cold_open", "theme", "span"]
+            "description": "What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span, a match to the brief, or a sound from the audience.",
+            "enum": ["event", "link", "cold_open", "theme", "span", "brief", "reaction"]
           },
           "score": {
             "type": "integer"
@@ -65,6 +65,14 @@
           "plan": {
             "description": "A clipmill.mind.clip_plan.v1 document.",
             "type": "object"
+          },
+          "alternatives": {
+            "description": "Other validated forms of the same moment, available to the planner for comparison and one repair.",
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "type": "object"
+            }
           }
         }
       }
