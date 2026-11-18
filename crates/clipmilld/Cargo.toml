@@ -29,7 +29,6 @@ directories.workspace = true
 ed25519-dalek.workspace = true
 fs2.workspace = true
 getrandom.workspace = true
-humantime.workspace = true
 nix.workspace = true
 hex.workspace = true
 hmac.workspace = true

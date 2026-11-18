@@ -356,7 +356,60 @@ fn parse_duration(value: &OsString) -> Result<Duration, DaemonError> {
     let text = value
         .to_str()
         .ok_or_else(|| DaemonError::InvalidDuration("duration is not valid UTF-8".to_owned()))?;
-    humantime::parse_duration(text).map_err(|error| DaemonError::InvalidDuration(error.to_string()))
+    parse_duration_text(text).map_err(DaemonError::InvalidDuration)
+}
+
+/// A duration as people write one: whole numbers with units, run together or
+/// spaced, such as `500ms`, `90s`, `15m`, `1h30m` or `7d`.
+///
+/// The forms the daemon has always accepted for its settings, parsed here
+/// rather than by a crate whose maintenance has stopped (RUSTSEC-2026-0542).
+pub fn parse_duration_text(text: &str) -> Result<Duration, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("a duration needs a number and a unit, such as 24h".to_owned());
+    }
+    let mut total = Duration::ZERO;
+    let mut rest = text;
+    while !rest.is_empty() {
+        rest = rest.trim_start();
+        let digits = rest.chars().take_while(char::is_ascii_digit).count();
+        if digits == 0 {
+            return Err(format!("{text:?} is not a duration: expected a number"));
+        }
+        let (number, after) = rest.split_at(digits);
+        let after = after.trim_start();
+        let unit_length = after.chars().take_while(char::is_ascii_alphabetic).count();
+        let (unit, remainder) = after.split_at(unit_length);
+        let amount: u64 = number
+            .parse()
+            .map_err(|_| format!("{text:?} is not a duration: the number is too large"))?;
+        let part = match unit {
+            "ms" | "msec" | "millis" => Duration::from_millis(amount),
+            "s" | "sec" | "secs" | "second" | "seconds" => Duration::from_secs(amount),
+            "m" | "min" | "mins" | "minute" | "minutes" => {
+                Duration::from_secs(amount.saturating_mul(60))
+            }
+            "h" | "hr" | "hrs" | "hour" | "hours" => {
+                Duration::from_secs(amount.saturating_mul(3_600))
+            }
+            "d" | "day" | "days" => Duration::from_secs(amount.saturating_mul(86_400)),
+            "w" | "week" | "weeks" => Duration::from_secs(amount.saturating_mul(604_800)),
+            "" => {
+                return Err(format!(
+                    "{text:?} is not a duration: give a unit, such as {number}s or {number}h"
+                ));
+            }
+            other => {
+                return Err(format!(
+                    "{text:?} is not a duration: unknown unit {other:?}"
+                ));
+            }
+        };
+        total = total.saturating_add(part);
+        rest = remainder;
+    }
+    Ok(total)
 }
 
 fn validate_socket(path: &Path) -> Result<(), DaemonError> {
@@ -591,5 +644,20 @@ mod tests {
             PathBuf::from("/env/workers.sock")
         );
         assert!(!environment.builtin_fixture_executor);
+    }
+
+    #[test]
+    fn durations_parse_as_people_write_them() {
+        use super::parse_duration_text as parse;
+        assert_eq!(parse("500ms"), Ok(Duration::from_millis(500)));
+        assert_eq!(parse("90s"), Ok(Duration::from_secs(90)));
+        assert_eq!(parse("15m"), Ok(Duration::from_mins(15)));
+        assert_eq!(parse("1h30m"), Ok(Duration::from_mins(90)));
+        assert_eq!(parse("1h 30min"), Ok(Duration::from_mins(90)));
+        assert_eq!(parse("7d"), Ok(Duration::from_hours(168)));
+        assert_eq!(parse(" 2 weeks "), Ok(Duration::from_hours(336)));
+        for refused in ["", "h", "10", "10x", "-5s", "1.5h", "s10"] {
+            assert!(parse(refused).is_err(), "{refused:?} was accepted");
+        }
     }
 }

@@ -44,7 +44,7 @@ mod worker;
 mod youtube_transport;
 
 pub use artifacts::{ArtifactCoordinator, ArtifactServiceError};
-pub use config::{Bundle, Config, Paths};
+pub use config::{Bundle, Config, Paths, parse_duration_text};
 pub use daemon::{Daemon, EditLog};
 pub use device::{
     DeviceProfileError, VerifiedDeviceProfile, verify_profile as verify_device_profile,
