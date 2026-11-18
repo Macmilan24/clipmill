@@ -209,6 +209,7 @@ impl ResourceCapacity {
         self
     }
 
+    #[cfg(test)]
     fn reserve(&mut self, resources: &ResourceDeclaration) -> bool {
         let accelerator_available = if resources.accelerator_class.is_empty() {
             resources.vram_bytes == 0
@@ -236,6 +237,7 @@ impl ResourceCapacity {
         }
     }
 
+    #[cfg(test)]
     fn release(&mut self, resources: &ResourceDeclaration) {
         self.cpu_threads = self.cpu_threads.saturating_add(resources.cpu_threads);
         self.ram_bytes = self.ram_bytes.saturating_add(resources.ram_bytes);
@@ -2871,8 +2873,17 @@ pub(crate) struct LeasedTask {
 
 #[derive(Clone, Debug)]
 pub(crate) struct LeaseSelection {
+    pub release_resident_model: bool,
     pub task: Option<LeasedTask>,
     pub events: Vec<TaskEventRecord>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum WorkerResidency {
+    Stateless,
+    Legacy,
+    Cold,
+    Warm,
 }
 
 #[derive(Clone, Debug)]
@@ -2882,6 +2893,9 @@ pub(crate) struct LeaseRequest {
     pub now_unix_millis: u64,
     pub expires_unix_millis: u64,
     pub capacity: ResourceCapacity,
+    /// Verified host ceiling, shared by every worker and built-in task.
+    pub machine: ResourceCapacity,
+    pub residency: WorkerResidency,
     pub worker_id: String,
     pub capabilities: Vec<String>,
     /// Implementations of the declared stages that another worker family
@@ -3100,19 +3114,15 @@ async fn run_scheduler(
     let mut schedule = interval(SCHEDULER_TICK);
     schedule.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut running = JoinSet::new();
-    let mut available_capacity = capacity;
+    let mut machine_capacity = capacity;
     let builtin_capabilities = builtin_capabilities(builtin_fixture_executor);
     loop {
         tokio::select! {
             biased;
             _ = &mut stop => break,
             joined = running.join_next(), if !running.is_empty() => {
-                match joined {
-                    Some(Ok(resources)) => available_capacity.release(&resources),
-                    Some(Err(error)) => {
-                        tracing::warn!(%error, "built-in task executor stopped unexpectedly");
-                    }
-                    None => {}
+                if let Some(Err(error)) = joined {
+                    tracing::warn!(%error, "built-in task executor stopped unexpectedly");
                 }
             }
             () = notify.notified() => {}
@@ -3125,18 +3135,17 @@ async fn run_scheduler(
         {
             events.publish_all(expired);
         }
-        if running.is_empty()
-            && let Ok(mut pending) = capacity_update.lock()
+        if let Ok(mut pending) = capacity_update.lock()
             && let Some(measured) = pending.take()
         {
-            available_capacity = measured;
+            machine_capacity = measured;
             tracing::info!(
                 cpu_threads = measured.cpu_threads,
                 ram_bytes = measured.ram_bytes,
                 "scheduler applied verified device profile capacity"
             );
         }
-        while running.len() < MAX_BUILTIN_TASKS && available_capacity.cpu_threads > 0 {
+        while running.len() < MAX_BUILTIN_TASKS {
             let now = now_millis();
             let lease = LeaseId::new().to_string();
             let leased = database
@@ -3145,7 +3154,9 @@ async fn run_scheduler(
                     daemon_epoch: daemon_epoch.clone(),
                     now_unix_millis: now,
                     expires_unix_millis: now.saturating_add(duration_millis(LEASE_TTL)),
-                    capacity: available_capacity,
+                    capacity: machine_capacity,
+                    machine: machine_capacity,
+                    residency: WorkerResidency::Stateless,
                     worker_id: "builtin-fixture".to_owned(),
                     capabilities: builtin_capabilities.clone(),
                     foreign_implementations: Vec::new(),
@@ -3158,22 +3169,13 @@ async fn run_scheduler(
             let Some(task) = selection.task else {
                 break;
             };
-            let resources = task.resources.clone();
-            policy.note_task_start(&resources.network_policy);
-            if !available_capacity.reserve(&resources) {
-                tracing::error!(
-                    task_id = task.task_id,
-                    "database admitted an over-capacity task"
-                );
-                break;
-            }
+            policy.note_task_start(&task.resources.network_policy);
             let executors = executors.clone();
             let events = events.clone();
             let notify = Arc::clone(&notify);
             running.spawn(async move {
                 execute_task(executors, events, task).await;
                 notify.notify_one();
-                resources
             });
         }
     }

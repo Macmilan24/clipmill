@@ -37,6 +37,21 @@ would crowd, such as an 8 GB Mac. The editorial worker offers the daemon only
 what the computer can spare, at least what the 4B needs; when the chosen model
 needs more than that, analysis readiness says so and suggests choosing a smaller model.
 
+## Running analysis beside an edit
+
+Workers and built-in stages share one resource budget. On a 16 GiB Mac, the
+daemon admits up to 12 GiB of declared task memory. A local editorial model
+continues to occupy its reservation between tasks. When another ready job needs
+that memory, the worker unloads its idle model and confirms the release before
+the daemon grants the waiting lease. A subsequent task for the same model can
+reuse it while capacity permits.
+
+An export, source probe, or other interactive job takes priority at the next
+eligible task boundary. Playback and changes to the editor's preview plan run
+directly. Active transcription and encoding finish their current task. The
+governor accounts for ClipMill's declarations. Other applications and actual
+memory use can change the pressure on a running system.
+
 ## Downloading
 
 A download is an explicit network operation, counted by the

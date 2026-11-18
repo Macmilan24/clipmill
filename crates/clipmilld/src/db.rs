@@ -320,6 +320,11 @@ impl DbActor {
                                         recovered_unix_millis,
                                     ));
                                 }
+                                Command::WorkerDisconnected { worker, now } => {
+                                    if let Err(error) = job_store::governor::disconnect(&connection, &worker, now) {
+                                        tracing::warn!(%error, "could not retire the worker reservation");
+                                    }
+                                }
                                 Command::LeaseNextTask { request, reply } => {
                                     let _result =
                                         reply.send(job_store::lease_next_task_for_worker(
@@ -1101,6 +1106,13 @@ impl DbHandle {
         received.await.map_err(|_| StoreError::Stopped)?
     }
 
+    pub(crate) async fn worker_disconnected(&self, worker: String, now: u64) {
+        let _sent = self
+            .sender
+            .send(Command::WorkerDisconnected { worker, now })
+            .await;
+    }
+
     pub(crate) async fn lease_next_task(
         &self,
         request: LeaseRequest,
@@ -1832,6 +1844,10 @@ enum Command {
         recovered_unix_millis: u64,
         reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
     },
+    WorkerDisconnected {
+        worker: String,
+        now: u64,
+    },
     LeaseNextTask {
         request: LeaseRequest,
         reply: oneshot::Sender<Result<LeaseSelection, StoreError>>,
@@ -2512,6 +2528,7 @@ fn project_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+    mod governor;
 
     #[cfg(unix)]
     use std::path::Path;
@@ -4565,6 +4582,8 @@ mod tests {
                 now_unix_millis: 31,
                 expires_unix_millis: 15031,
                 capacity: ResourceCapacity::w4_builtin(),
+                machine: ResourceCapacity::w4_builtin(),
+                residency: crate::jobs::WorkerResidency::Stateless,
                 worker_id: "test-cloud".into(),
                 capabilities: vec![
                     cloud_kind.into(),
@@ -4638,6 +4657,8 @@ mod tests {
                 now_unix_millis: 31,
                 expires_unix_millis: 15031,
                 capacity: ResourceCapacity::w4_builtin(),
+                machine: ResourceCapacity::w4_builtin(),
+                residency: crate::jobs::WorkerResidency::Stateless,
                 worker_id: format!("{family}-worker"),
                 foreign_implementations: crate::implementations::foreign_to(family, &stages)
                     .into_iter()

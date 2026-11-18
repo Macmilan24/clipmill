@@ -179,6 +179,8 @@ fn metadata_lease(at: u64) -> crate::jobs::LeaseRequest {
         worker_id: "metadata-worker-test".into(),
         capabilities: vec![KIND.into()],
         foreign_implementations: Vec::new(),
+        machine: crate::jobs::ResourceCapacity::measured(4, 64 << 30, 5 << 30),
+        residency: crate::jobs::WorkerResidency::Stateless,
         capacity: crate::jobs::ResourceCapacity {
             cpu_threads: 4,
             ram_bytes: 64 * 1024 * 1024 * 1024,

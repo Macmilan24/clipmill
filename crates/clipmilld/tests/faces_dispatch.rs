@@ -414,7 +414,10 @@ async fn read_worker(stream: &mut clipmilld::endpoint::Stream) -> worker_respons
 async fn pull(stream: &mut clipmilld::endpoint::Stream) -> worker_response::Body {
     write_worker(
         stream,
-        worker_request::Body::WorkRequest(WorkRequest { max_wait_ms: 0 }),
+        worker_request::Body::WorkRequest(WorkRequest {
+            max_wait_ms: 0,
+            ..Default::default()
+        }),
     )
     .await;
     read_worker(stream).await
