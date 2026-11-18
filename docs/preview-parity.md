@@ -297,3 +297,14 @@ Controlled regressions cover live pixels advancing before a redraw, Pause
 immediately after a held boundary frame, both decode/seek-event orders, delayed
 references and trims that move a reference's program frame without changing its
 source position. The user's saved edit was not changed by these final checks.
+
+## Joins between parts
+
+A clip planned as parts records how each section joins the one before it
+(decision R76). A join's audio blend renders as a fade out of the section
+before the cut and a fade in of the section after, each half the blend and at
+most a quarter of a second, meeting at the cut; sections still abut, so the
+programme keeps its length and every caption its time. Joins without a blend,
+and the plan itself, change nothing the renderer draws. The editor's preview
+does not play these fades yet: it cuts hard where the export blends. Room tone
+on a join is recorded but not yet rendered.

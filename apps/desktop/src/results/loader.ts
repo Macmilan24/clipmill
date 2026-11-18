@@ -19,6 +19,7 @@ import { newest } from '../daemon/ordering.js';
 import type { ClipDecisionRecord, Job, Source } from '../daemon/client.js';
 import { publishedArtifact } from '../library/model.js';
 import { type ClipRow, type Summary, clipRows, summarize } from './model.js';
+import { MIND_CANDIDATES_KIND, type PlannedClip, readPlans } from './plans.js';
 import { type Transcript, readTranscript } from './transcript.js';
 import { type Voices, readVoices } from './voices.js';
 
@@ -109,6 +110,11 @@ export interface ResultsSnapshot {
   readonly speakersArtifactId?: string | null;
   /** The index the rows were joined from, kept for the transcript's sentences. */
   readonly index?: IndexTranscript | null;
+  /**
+   * The mind's clips: plans of parts, best first. Empty for a run without
+   * local editorial, or one that found nothing to build.
+   */
+  readonly plans?: readonly PlannedClip[];
   readonly problem: ResultsProblem | null;
 }
 
@@ -126,6 +132,7 @@ export const EMPTY_SNAPSHOT: ResultsSnapshot = {
   transcriptArtifactId: null,
   speakersArtifactId: null,
   index: null,
+  plans: [],
   problem: { kind: 'no-source' },
 };
 
@@ -145,6 +152,16 @@ function analyzed(jobs: readonly Job[], sourceId: string, jobId: string | null):
         (job.sourceId === '' || job.sourceId === sourceId),
     ),
   );
+}
+
+/** Plans from a document that may be absent or unreadable. */
+function plansOf(json: string | null, sourceFingerprint: string): readonly PlannedClip[] {
+  if (!json) return [];
+  try {
+    return readPlans(JSON.parse(json), sourceFingerprint);
+  } catch {
+    return [];
+  }
 }
 
 export class ResultsLoader {
@@ -184,6 +201,7 @@ export class ResultsLoader {
         peaksDoc,
         documents,
         sourceMapDoc,
+        plansDoc,
       ] = await Promise.all([
         this.api.readDocument(projectId, ranking),
         this.api.readDocument(projectId, candidates),
@@ -198,6 +216,9 @@ export class ResultsLoader {
           projectId,
           publishedArtifact(job, 'evidence.source_map.v1') ?? (source.sourceMapArtifactId || null),
         ),
+        // The mind's clips, when the run had a local editorial model. A
+        // failure here costs the plans, never the board.
+        this.readOptional(projectId, publishedArtifact(job, MIND_CANDIDATES_KIND)),
       ]);
       const rankingSet = JSON.parse(rankingDoc.json) as RankingSet;
       // The ranking names the recording it ranked. Showing another source's
@@ -268,6 +289,7 @@ export class ResultsLoader {
           index?.inputs?.transcript_artifact_id ?? publishedArtifact(job, TRANSCRIPT_KIND),
         speakersArtifactId: publishedArtifact(job, SPEAKERS_KIND),
         index,
+        plans: plansOf(plansDoc, source.sourceFingerprint),
         problem: null,
       };
     } catch (error) {

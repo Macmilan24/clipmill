@@ -63,6 +63,11 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'Who speaks when, so the transcript can say',
   },
   {
+    kind: 'audio.events.v1',
+    label: 'Hear the room',
+    detail: 'Laughter, applause, music and shouting, the reactions words cannot show',
+  },
+  {
     kind: 'evidence.shots.v1',
     label: 'Detect shots',
     detail: 'Camera cuts, so framing stays stable within each shot',
@@ -76,6 +81,31 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     kind: 'index.transcript.v1',
     label: 'Index transcript',
     detail: 'Structure over the words, for search and selection',
+  },
+  {
+    kind: 'timeline.index.v1',
+    label: 'Build the timeline',
+    detail: 'Words, voices, pauses, shots and reactions in one searchable record',
+  },
+  {
+    kind: 'mind.script.v1',
+    label: 'Write the script',
+    detail: 'The recording as an annotated script a model can read',
+  },
+  {
+    kind: 'mind.memory.v1',
+    label: 'Remember the recording',
+    detail: 'Chapters, people, stories and the links between distant moments',
+  },
+  {
+    kind: 'mind.unit_scores.v1',
+    label: 'Mark up every line',
+    detail: 'Strong openings, clean landings, and what a tight cut can leave out',
+  },
+  {
+    kind: 'mind.candidates.v1',
+    label: 'Cut the clips',
+    detail: 'Stitched, tightened and cold-opened clips built from the memory',
   },
   {
     kind: 'editorial.windows.v1',

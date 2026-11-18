@@ -80,6 +80,8 @@ pub(crate) const JOBS: &[Job] = &[
             "editorial-propose",
             "editorial-review",
             "editorial-look",
+            "editorial-memory",
+            "editorial-score",
             "youtube-metadata",
         ],
     },
@@ -106,6 +108,12 @@ pub(crate) const JOBS: &[Job] = &[
         title: "Telling voices apart",
         summary: "Hears who speaks when, so transcripts name each voice.",
         stages: &["speech-speakers"],
+    },
+    Job {
+        capability: "audio-events",
+        title: "Audio events",
+        summary: "Hears laughter, applause, music and shouting, so clips can find where the room reacted.",
+        stages: &["audio-events"],
     },
     Job {
         capability: "detect-faces",

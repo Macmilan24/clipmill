@@ -428,9 +428,15 @@ impl ::std::convert::TryFrom<::std::string::String> for SkippedStageReason {
 #[doc = "        \"speech.alignment.v1\","]
 #[doc = "        \"speech.transcript.v1\","]
 #[doc = "        \"speech.speakers.v1\","]
+#[doc = "        \"audio.events.v1\","]
 #[doc = "        \"evidence.shots.v1\","]
 #[doc = "        \"vision.face_track.v1\","]
 #[doc = "        \"index.transcript.v1\","]
+#[doc = "        \"timeline.index.v1\","]
+#[doc = "        \"mind.script.v1\","]
+#[doc = "        \"mind.memory.v1\","]
+#[doc = "        \"mind.unit_scores.v1\","]
+#[doc = "        \"mind.candidates.v1\","]
 #[doc = "        \"editorial.windows.v1\","]
 #[doc = "        \"editorial.proposals.v1\","]
 #[doc = "        \"discovery.candidates.v1\","]
@@ -470,9 +476,15 @@ impl Stage {
 #[doc = "    \"speech.alignment.v1\","]
 #[doc = "    \"speech.transcript.v1\","]
 #[doc = "    \"speech.speakers.v1\","]
+#[doc = "    \"audio.events.v1\","]
 #[doc = "    \"evidence.shots.v1\","]
 #[doc = "    \"vision.face_track.v1\","]
 #[doc = "    \"index.transcript.v1\","]
+#[doc = "    \"timeline.index.v1\","]
+#[doc = "    \"mind.script.v1\","]
+#[doc = "    \"mind.memory.v1\","]
+#[doc = "    \"mind.unit_scores.v1\","]
+#[doc = "    \"mind.candidates.v1\","]
 #[doc = "    \"editorial.windows.v1\","]
 #[doc = "    \"editorial.proposals.v1\","]
 #[doc = "    \"discovery.candidates.v1\","]
@@ -510,12 +522,24 @@ pub enum StageKind {
     SpeechTranscriptV1,
     #[serde(rename = "speech.speakers.v1")]
     SpeechSpeakersV1,
+    #[serde(rename = "audio.events.v1")]
+    AudioEventsV1,
     #[serde(rename = "evidence.shots.v1")]
     EvidenceShotsV1,
     #[serde(rename = "vision.face_track.v1")]
     VisionFaceTrackV1,
     #[serde(rename = "index.transcript.v1")]
     IndexTranscriptV1,
+    #[serde(rename = "timeline.index.v1")]
+    TimelineIndexV1,
+    #[serde(rename = "mind.script.v1")]
+    MindScriptV1,
+    #[serde(rename = "mind.memory.v1")]
+    MindMemoryV1,
+    #[serde(rename = "mind.unit_scores.v1")]
+    MindUnitScoresV1,
+    #[serde(rename = "mind.candidates.v1")]
+    MindCandidatesV1,
     #[serde(rename = "editorial.windows.v1")]
     EditorialWindowsV1,
     #[serde(rename = "editorial.proposals.v1")]
@@ -539,9 +563,15 @@ impl ::std::fmt::Display for StageKind {
             Self::SpeechAlignmentV1 => f.write_str("speech.alignment.v1"),
             Self::SpeechTranscriptV1 => f.write_str("speech.transcript.v1"),
             Self::SpeechSpeakersV1 => f.write_str("speech.speakers.v1"),
+            Self::AudioEventsV1 => f.write_str("audio.events.v1"),
             Self::EvidenceShotsV1 => f.write_str("evidence.shots.v1"),
             Self::VisionFaceTrackV1 => f.write_str("vision.face_track.v1"),
             Self::IndexTranscriptV1 => f.write_str("index.transcript.v1"),
+            Self::TimelineIndexV1 => f.write_str("timeline.index.v1"),
+            Self::MindScriptV1 => f.write_str("mind.script.v1"),
+            Self::MindMemoryV1 => f.write_str("mind.memory.v1"),
+            Self::MindUnitScoresV1 => f.write_str("mind.unit_scores.v1"),
+            Self::MindCandidatesV1 => f.write_str("mind.candidates.v1"),
             Self::EditorialWindowsV1 => f.write_str("editorial.windows.v1"),
             Self::EditorialProposalsV1 => f.write_str("editorial.proposals.v1"),
             Self::DiscoveryCandidatesV1 => f.write_str("discovery.candidates.v1"),
@@ -562,9 +592,15 @@ impl ::std::str::FromStr for StageKind {
             "speech.alignment.v1" => Ok(Self::SpeechAlignmentV1),
             "speech.transcript.v1" => Ok(Self::SpeechTranscriptV1),
             "speech.speakers.v1" => Ok(Self::SpeechSpeakersV1),
+            "audio.events.v1" => Ok(Self::AudioEventsV1),
             "evidence.shots.v1" => Ok(Self::EvidenceShotsV1),
             "vision.face_track.v1" => Ok(Self::VisionFaceTrackV1),
             "index.transcript.v1" => Ok(Self::IndexTranscriptV1),
+            "timeline.index.v1" => Ok(Self::TimelineIndexV1),
+            "mind.script.v1" => Ok(Self::MindScriptV1),
+            "mind.memory.v1" => Ok(Self::MindMemoryV1),
+            "mind.unit_scores.v1" => Ok(Self::MindUnitScoresV1),
+            "mind.candidates.v1" => Ok(Self::MindCandidatesV1),
             "editorial.windows.v1" => Ok(Self::EditorialWindowsV1),
             "editorial.proposals.v1" => Ok(Self::EditorialProposalsV1),
             "discovery.candidates.v1" => Ok(Self::DiscoveryCandidatesV1),

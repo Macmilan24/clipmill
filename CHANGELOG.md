@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Editorial AI loads its model once per analysis.** Proposal, review and
+  the visual check used to load the model again for each stage; on Windows and
+  Linux each one started a new llama.cpp server. The editorial worker now keeps
+  the model loaded between tasks and unloads it after 90 seconds idle.
+- **Editorial AI on 8 GB Macs.** Models offers Qwen3.5 4B on Apple silicon,
+  as it already did on Windows and Linux, and the editorial worker no longer
+  asks for the 9B's memory whichever model is chosen. Before, an 8 GB Mac's
+  editorial worker offered more memory than the computer could spare and was
+  never given work, even with a smaller model.
+
 ## 0.4.0 — Studio tour, activity and update notices
 
 - **A studio tour.** Two minutes through where everything is, from a long

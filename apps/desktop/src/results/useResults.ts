@@ -18,6 +18,7 @@ import { kitRequest } from '../editor/brand.js';
 import { highlightFor, lookFor, optionsFor } from './captionLook.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
 import { TICKS_PER_SECOND } from './model.js';
+import type { PlannedClip } from './plans.js';
 import type { Transcript } from './transcript.js';
 
 /** The proxy file the media protocol serves for a proxy artifact. */
@@ -79,6 +80,8 @@ export interface ResultsState {
    * redraw after each, and the decisions are already durable after each write.
    */
   readonly approveMany: (candidateIds: readonly string[]) => Promise<void>;
+  /** Make an edit from one of the mind's plans and send it to the editor. */
+  readonly editPlan: (plan: PlannedClip) => Promise<DirectedClip | null>;
   /**
    * The filmstrip frame nearest a moment, as a URL the media protocol serves.
    *
@@ -544,6 +547,48 @@ export function useResults(
     [api, reload, manualRequest],
   );
 
+  /**
+   * Make an edit from one of the mind's plans: its parts in the order they
+   * play, with their joins and what was cut out of them. Like a manual clip it
+   * is sent to the editor, not approved: a plan is something to watch first.
+   */
+  const editPlan = useCallback(
+    async (plan: PlannedClip): Promise<DirectedClip | null> => {
+      if (!projectId || !snapshot.source || !snapshot.run) return null;
+      const look = lookFor(projectId);
+      const options = optionsFor(projectId);
+      const context = contextSequence.current;
+      setBusy(true);
+      setNotice(null);
+      try {
+        const directed = await api.directClip({
+          projectId,
+          sourceId: snapshot.source.sourceId,
+          // The plan's own run: its parts are timed against this transcript.
+          jobId: snapshot.run.jobId,
+          candidateId: plan.planId,
+          cut: 'chosen',
+          planJson: plan.planJson,
+          ...(look ? { styleRef: look } : {}),
+          ...(options ? { captionOptionsJson: options } : {}),
+          ...kitRequest(),
+          highlightSpokenWord: highlightFor(projectId),
+          approve: false,
+        });
+        if (context !== contextSequence.current) return null;
+        setNotice(directed.reopened ? 'Opened its edit as it stands.' : 'Sent to the editor.');
+        reload();
+        return directed;
+      } catch (error) {
+        if (context === contextSequence.current) setNotice((error as Error).message);
+        return null;
+      } finally {
+        if (context === contextSequence.current) setBusy(false);
+      }
+    },
+    [api, projectId, reload, snapshot.source, snapshot.run],
+  );
+
   const approveMany = useCallback(
     async (candidateIds: readonly string[]) => {
       if (!projectId || !snapshot.source || candidateIds.length === 0) {
@@ -607,6 +652,7 @@ export function useResults(
     decide,
     approve,
     approveMany,
+    editPlan,
     tileUrl,
     solveFor,
     framing,

@@ -613,6 +613,18 @@ message SkippedStageV1 {
   string reason = 2;
 }
 
+// What the audio tagger is asked to do: listen to the whole 16 kHz rendition
+// and publish the laughter, applause, cheering, music, shouting and gasps in
+// it. The window and the thresholds belong to the implementation, which the
+// artifact key already names, so this carries only what names the recording.
+// The rendition itself arrives on the lease.
+message AudioEventsStagePayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  string source_fingerprint = 3;
+}
+
 // Versioned payload for the daemon-owned device profiler. The stable
 // hardware/runtime fingerprint selects the cache lineage; generation makes
 // an explicit remeasurement a distinct artifact recipe.
@@ -1366,6 +1378,13 @@ message DirectClipRequest {
   // The frame the clip is framed for: vertical, portrait, square or
   // landscape. Empty is vertical.
   string shape = 16;
+  // A clip planned as parts (clipmill.mind.clip_plan.v1, decision R76), as
+  // JSON. Given, the clip is directed from the plan rather than from a
+  // candidate: its parts in programme order, with their joins and what was
+  // removed. The plan names its own recording and is checked before anything
+  // is built. It needs an analysis run (job_id) for the evidence and cannot
+  // be combined with manual_span.
+  string plan_json = 17;
 }
 
 message DirectClipResponse {

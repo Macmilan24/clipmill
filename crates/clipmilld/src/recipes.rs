@@ -271,6 +271,27 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
+    // Timeline Index (R74). Builtin and modelless: one searchable SQLite file
+    // per recording, rebuilt from the transcript, its index, speaker turns and
+    // shots, for the mind, search and agents to read.
+    Recipe {
+        kind: "index-timeline",
+        output_kind: "timeline.index.v1",
+        semantic_version: "clipmill.timeline.index.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "audio-events",
+        output_kind: "audio.events.v1",
+        semantic_version: "clipmill.audio.events.v1",
+        executor: Executor::Worker,
+        capability: Some("audio-events"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
     // Editorial windows. Builtin and modelless: the
     // cut an editorial model reads, arithmetic over the index and keyed on
     // the budget, so the model's own stages read a published artifact.
@@ -307,6 +328,42 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.editorial.looks.v1",
         executor: Executor::Worker,
         capability: Some("editorial"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "mind-script",
+        output_kind: "mind.script.v1",
+        semantic_version: "clipmill.mind.script.v1",
+        executor: Executor::Builtin,
+        capability: None,
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "editorial-memory",
+        output_kind: "mind.memory.v1",
+        semantic_version: "clipmill.mind.memory.v1",
+        executor: Executor::Worker,
+        capability: Some("editorial"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "editorial-score",
+        output_kind: "mind.unit_scores.v1",
+        semantic_version: "clipmill.mind.unit_scores.v1",
+        executor: Executor::Worker,
+        capability: Some("editorial"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "mind-cut",
+        output_kind: "mind.candidates.v1",
+        semantic_version: "clipmill.mind.candidates.v1",
+        executor: Executor::Builtin,
+        capability: None,
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },

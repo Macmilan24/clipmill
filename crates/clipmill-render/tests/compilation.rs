@@ -40,6 +40,8 @@ fn segment(id: &str, in_ticks: i64, out_ticks: i64, layout: Layout) -> VideoSegm
         in_ticks,
         out_ticks,
         layout,
+        part: None,
+        join: None,
     }
 }
 
@@ -1366,4 +1368,71 @@ fn a_punch_in_draws_a_tighter_crop_in_render_and_preview_alike() {
         "about the crop's own centre"
     );
     assert_eq!((at(52).width, at(52).height), (608, 1_080));
+}
+
+/// A join's audio blend fades the section before the cut out and the one
+/// after it in, and nothing else changes: same inputs, same video, same
+/// lengths, so captions keep their time.
+#[test]
+fn a_join_blend_fades_across_its_cut_and_changes_nothing_else() {
+    use clipmill_edit_ir::{Join, JoinKind};
+    let profile = RenderProfile::default();
+    let baseline = compile(&first_slice(), &[source()], &profile).expect("compiles");
+    let mut document = first_slice();
+    assert!(document.video.segments.len() >= 2, "the fixture has a cut");
+    document.video.segments[1].join = Some(Join {
+        kind: JoinKind::Distant,
+        audio_crossfade_ticks: 5_400,
+        room_tone: false,
+    });
+    let joined = compile(&document, &[source()], &profile).expect("compiles");
+    assert!(
+        joined.graph.graph.contains("afade=t=out:"),
+        "{}",
+        joined.graph.graph
+    );
+    assert!(
+        joined
+            .graph
+            .graph
+            .contains("afade=t=in:st=0:d=0.030000:curve=qsin,")
+    );
+    let without_fades: String = joined
+        .graph
+        .graph
+        .split(',')
+        .filter(|filter| !filter.starts_with("afade="))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(without_fades, baseline.graph.graph);
+    assert_eq!(joined.ass, baseline.ass);
+}
+
+/// Joins without a blend, and the plan a clip was built from, are records of
+/// the edit: the renderer draws exactly what it drew before them.
+#[test]
+fn joins_without_blends_and_the_plan_change_nothing_the_renderer_sees() {
+    use clipmill_edit_ir::{Join, JoinKind, PartRef, PartRole, Plan, PlanForm};
+    let profile = RenderProfile::default();
+    let baseline = compile(&first_slice(), &[source()], &profile).expect("compiles");
+    let mut document = first_slice();
+    for segment in &mut document.video.segments {
+        segment.part = Some(PartRef {
+            part_id: "p1".to_owned(),
+            role: PartRole::Body,
+        });
+    }
+    document.video.segments[1].join = Some(Join {
+        kind: JoinKind::Adjacent,
+        audio_crossfade_ticks: 0,
+        room_tone: false,
+    });
+    document.plan = Some(Plan {
+        plan_id: "plan_00000000000000c3".to_owned(),
+        form: PlanForm::Tightened,
+        removed: Vec::new(),
+    });
+    let planned = compile(&document, &[source()], &profile).expect("compiles");
+    assert_eq!(planned.graph, baseline.graph);
+    assert_eq!(planned.recipe_config(), baseline.recipe_config());
 }

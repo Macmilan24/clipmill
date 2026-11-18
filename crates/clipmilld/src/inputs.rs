@@ -132,6 +132,22 @@ impl Resolved {
         }
     }
 
+    /// One file of an input on disk, verified against its manifest first, for
+    /// a reader that needs a path rather than bytes (SQLite).
+    pub(crate) fn verified_file(
+        &self,
+        kind: &'static str,
+        file: &str,
+    ) -> Result<std::path::PathBuf, TaskExecutionError> {
+        let (_, lease) = self.found.get(kind).ok_or_else(|| {
+            TaskExecutionError::deterministic(format!("this task has no {kind} to read"))
+        })?;
+        let path = media::artifact_path(file)?;
+        lease
+            .verified_path(&path)
+            .map_err(|error| TaskExecutionError::transient(error.to_string()))
+    }
+
     /// The address of one input, for the document that records what it read.
     pub(crate) fn address(&self, kind: &'static str) -> Result<String, TaskExecutionError> {
         self.found

@@ -31,10 +31,15 @@ from .runtime import implementation_suffix
 
 CAPABILITIES = (
     "editorial-look",
+    "editorial-memory",
     "editorial-propose",
     "editorial-review",
+    "editorial-score",
     "youtube-metadata",
 )
+# The mind's stages: local only, and keyed on their own output budgets.
+MIND_OPERATIONS = ("memory", "score")
+MAX_OUTPUT_TOKENS = {"memory": 4096}
 
 
 def execute(context: TaskContext) -> tuple[str, ...]:
@@ -62,14 +67,20 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
         raise DeterministicTaskError("cloud permission does not match the task route")
     if cloud and cloud_runtime is None:
         raise DeterministicTaskError("this worker does not execute cloud tasks")
-    if payload.prompt_digest != prompt_digest(operation) or payload.max_output_tokens != 2048:
+    if payload.prompt_digest != prompt_digest(
+        operation
+    ) or payload.max_output_tokens != MAX_OUTPUT_TOKENS.get(operation, 2048):
         raise DeterministicTaskError(
             "editorial prompt or decoding policy differs from the planned recipe; update the worker"
         )
+    if cloud and operation in MIND_OPERATIONS:
+        raise DeterministicTaskError("the mind's stages run on this computer only")
     model = None if cloud else require_model(context.lease, "editorial")
     inputs = LeaseInputs(context)
     if operation == "look":
         return execute_look(context, inputs, model, payload)
+    if operation in MIND_OPERATIONS:
+        return execute_mind(context, inputs, model, payload, operation)
     windows_input = inputs.require("editorial.windows.v1")
     windows = json.loads(context.artifact_file(windows_input.artifact, "windows.json").read_text())
     if content_profile(windows.get("content_profile", "")) != profile:
@@ -88,9 +99,9 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
                 context.lease.job_id,
                 context.cancellation,
             )
-        from .runtime import open_runtime
+        from .runtime import acquire_runtime
 
-        return open_runtime(model, context.cancellation)
+        return acquire_runtime(model, context.cancellation)
 
     route = "-cloud" if cloud else implementation_suffix(model)
     producer = {
@@ -179,6 +190,68 @@ def execute_stage(context: TaskContext, capabilities, cloud_runtime=None) -> tup
             runtime.close()
 
 
+def execute_mind(context, inputs, model, payload, operation):
+    """The Recording Memory or the sentence markup, from the annotated script."""
+    from clipmill_worker_sdk.gen.schemas.mind_memory import MindMemory
+    from clipmill_worker_sdk.gen.schemas.mind_script import MindScript
+    from clipmill_worker_sdk.gen.schemas.mind_unit_scores import MindUnitScores
+
+    from .memory import build_memory
+    from .runtime import acquire_runtime
+    from .score import score_units
+
+    script_input = inputs.require("mind.script.v1")
+    script = json.loads(context.artifact_file(script_input.artifact, "script.json").read_text())
+    MindScript.model_validate(script)
+    identity = {"route": "local", "model": {"name": model.name, "digest": model.digest}}
+    implementation = f"clipmill-worker-editorial@0.2.0/{operation}{implementation_suffix(model)}"
+    traces = []
+    # Borrowed from the resident model, so memory, markup and the stages after
+    # them reuse one load; closing hands it back.
+    runtime = acquire_runtime(model, context.cancellation) if script["windows"] else None
+    try:
+        build, schema, output = (
+            (build_memory, MindMemory, "memory.json")
+            if operation == "memory"
+            else (score_units, MindUnitScores, "unit_scores.json")
+        )
+        document = build(
+            runtime,
+            script,
+            source_fingerprint=script["source_fingerprint"],
+            implementation=implementation,
+            model=model.name,
+            max_tokens=payload.max_output_tokens,
+            identity=identity,
+            traces=traces,
+            cancellation=context.cancellation,
+            progress=context.report_progress,
+        )
+    finally:
+        if runtime is not None:
+            runtime.close()
+    # A document this worker wrote and its own contract refuses is a bug here,
+    # not something a retry fixes.
+    try:
+        schema.model_validate(document)
+    except ValueError as error:
+        raise DeterministicTaskError(f"{output} does not meet its contract: {error}") from error
+    if script["windows"] and traces and all(t.get("outcome") != "answered" for t in traces):
+        detail = next((t.get("detail") for t in traces if t.get("detail")), "no answer")
+        raise RetryableTaskError(f"the model answered none of the {operation} calls: {detail}")
+    trace = {
+        "schema_version": "clipmill.editorial.trace.v1",
+        "content_profile": "interview",
+        "source_fingerprint": script["source_fingerprint"],
+        "producer": {"stage": payload.stage, "implementation": implementation},
+        "calls": traces,
+    }
+    context.staging.write_bytes(output, canonical_bytes(document))
+    context.staging.write_bytes("trace.json", canonical_bytes(trace))
+    context.report_progress("editorial_calls", len(traces), len(traces))
+    return (output, "trace.json")
+
+
 def content_profile(value):
     profile = value or "interview"
     if profile not in ("interview", "scripted"):
@@ -218,7 +291,7 @@ def fail_with_trace(context, answers, trace, *, allow_all_failed=False):
 
 
 def execute_look(context, inputs, model, payload):
-    from .runtime import open_runtime
+    from .runtime import acquire_runtime
 
     def read(kind, name):
         entry = inputs.require(kind)
@@ -254,7 +327,7 @@ def execute_look(context, inputs, model, payload):
     }
     traces = []
     checks = look(
-        lambda: open_runtime(model, context.cancellation),
+        lambda: acquire_runtime(model, context.cancellation),
         candidates,
         judgments,
         frames,
@@ -288,15 +361,30 @@ def execute_look(context, inputs, model, payload):
     return ("looks.json", "trace.json")
 
 
+# The worker's memory ceiling follows the machine, because it loads whichever
+# model its lease binds and each task declares that model's own memory. The
+# floor is only what the smallest model needs: floored at the 9B instead, an
+# 8 GB Mac's worker offered more than the daemon's budget and was never given
+# any work, not even for the 4B. A machine whose memory cannot be read offers
+# the floor; CLIPMILL_WORKER_MEMORY_BYTES raises it.
+
+#: Weights plus runtime allowance of the smallest editorial model each runtime
+#: loads, as its manifest declares: Qwen3.5 4B, in
+#: models/registry/qwen3-5-4b-editorial-{mlx,gguf}.toml.
+SMALLEST_MODEL_BYTES = {
+    "mlx": 3_061_129_077 + 1_610_612_736,
+    "llama.cpp": 3_413_361_504 + 1_610_612_736,
+}
+
+
 def main() -> int:
+    backend = local_backend()
     return run_worker(
         execute,
         capabilities=CAPABILITIES,
         description="ClipMill local editorial worker",
-        backend=local_backend(),
-        # Loads whichever model the lease binds, so the ceiling follows the
-        # machine; the floor is the bundled Qwen3.5 9B and its runtime.
-        max_memory_bytes=memory_ceiling(5_977_071_067 + 2 * 1024**3),
+        backend=backend,
+        max_memory_bytes=memory_ceiling(SMALLEST_MODEL_BYTES[backend]),
     )
 
 
@@ -355,5 +443,10 @@ def run_worker(executor, *, capabilities, description, backend, max_memory_bytes
             capabilities=capabilities,
         )
     )
-    client.run(executor, stop)
+    try:
+        client.run(executor, stop)
+    finally:
+        from .runtime import RESIDENT
+
+        RESIDENT.close()
     return 0

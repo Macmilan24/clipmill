@@ -27,7 +27,7 @@
 /// Ordered by where a shell meets them: the source it imported, what ingest
 /// derived, the transcript, the structure over it, the nominations, the ranking,
 /// the analysis that roots them all, then the edit and its render.
-const DOCUMENTS: [(&str, &str); 14] = [
+const DOCUMENTS: [(&str, &str); 19] = [
     ("evidence.source_map.v1", "source-map.json"),
     ("media.ingest_manifest.v1", "ingest-manifest.json"),
     // Results needs exact source ticks to choose the nearest thumbnail. Only
@@ -42,6 +42,13 @@ const DOCUMENTS: [(&str, &str); 14] = [
     ("speech.speakers.v1", "speakers.json"),
     ("evidence.shots.v1", "shots.json"),
     ("index.transcript.v1", "index.json"),
+    // The mind's documents: what was heard, the script a model read, the
+    // memory and markup it wrote, and the clips cut from them.
+    ("audio.events.v1", "audio_events.json"),
+    ("mind.script.v1", "script.json"),
+    ("mind.memory.v1", "memory.json"),
+    ("mind.unit_scores.v1", "unit_scores.json"),
+    ("mind.candidates.v1", "candidates.json"),
     ("discovery.candidates.v1", "candidates.json"),
     ("ranking.set.v1", "ranking.json"),
     ("analysis.manifest.v1", "analysis.json"),
@@ -209,6 +216,7 @@ mod tests {
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from([
                 "analysis.manifest.v1",
+                "audio.events.v1",
                 "discovery.candidates.v1",
                 "edit.ir.v1",
                 "evidence.shots.v1",
@@ -218,6 +226,10 @@ mod tests {
                 "media.audio_peaks.v1",
                 "media.filmstrip.v1",
                 "media.ingest_manifest.v1",
+                "mind.candidates.v1",
+                "mind.memory.v1",
+                "mind.script.v1",
+                "mind.unit_scores.v1",
                 "ranking.set.v1",
                 "render.clip.v1",
                 "speech.speakers.v1",

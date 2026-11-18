@@ -54,6 +54,8 @@ fn word(text: &str, start: i64, end: i64) -> CaptionWord {
 )]
 fn sample_document() -> EditDocument {
     let segment = |id: &str, in_ticks: i64, out_ticks: i64, keyframes: Vec<i64>| VideoSegment {
+        part: None,
+        join: None,
         segment_id: id.to_owned(),
         source_fingerprint: FINGERPRINT.to_owned(),
         in_ticks,

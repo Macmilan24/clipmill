@@ -13,6 +13,10 @@ pub mod archive_index;
 pub mod artifact_manifest;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/audio_events.rs"]
+pub mod audio_events;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/captions_cues.rs"]
 pub mod captions_cues;
 
@@ -67,6 +71,30 @@ pub mod index_transcript;
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/media_audio.rs"]
 pub mod media_audio;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_brief.rs"]
+pub mod mind_brief;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_clip_plan.rs"]
+pub mod mind_clip_plan;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_memory.rs"]
+pub mod mind_memory;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_script.rs"]
+pub mod mind_script;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_candidates.rs"]
+pub mod mind_candidates;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_unit_scores.rs"]
+pub mod mind_unit_scores;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/media_audio_peaks.rs"]

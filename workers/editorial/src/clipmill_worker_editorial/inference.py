@@ -105,8 +105,15 @@ def prompt_for(operation):
     return Path(__file__).with_name("prompts").joinpath(f"{operation}.v1.txt").read_text()
 
 
+def stage_prompt(operation):
+    """The prompt text a stage's recipe is keyed on: the memory stage runs two."""
+    if operation == "memory":
+        return prompt_for("memory.read") + prompt_for("memory.link")
+    return prompt_for(operation)
+
+
 def prompt_digest(operation):
-    return "sha256:" + hashlib.sha256(prompt_for(operation).encode()).hexdigest()
+    return "sha256:" + hashlib.sha256(stage_prompt(operation).encode()).hexdigest()
 
 
 def call(

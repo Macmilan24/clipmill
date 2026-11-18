@@ -1,0 +1,18 @@
+[package]
+name = "clipmill-timeline"
+description = "The Timeline Index: one searchable SQLite record of what a recording contains"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+rusqlite.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.23"
+
+[lints]
+workspace = true

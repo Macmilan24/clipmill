@@ -487,6 +487,7 @@ dependencies = [
  "clipmill-captions",
  "clipmill-contracts",
  "clipmill-edit-ir",
+ "clipmill-mind",
  "clipmill-reframe",
  "clipmill-render",
  "serde_json",
@@ -569,6 +570,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-mind"
+version = "0.4.0"
+dependencies = [
+ "clipmill-contracts",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "clipmill-reframe"
 version = "0.4.0"
 dependencies = [
@@ -612,6 +622,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-timeline"
+version = "0.4.0"
+dependencies = [
+ "rusqlite",
+ "tempfile",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "clipmill-youtube"
 version = "0.4.0"
 dependencies = [
@@ -645,8 +664,10 @@ dependencies = [
  "clipmill-evidence",
  "clipmill-export",
  "clipmill-hub",
+ "clipmill-mind",
  "clipmill-reframe",
  "clipmill-render",
+ "clipmill-timeline",
  "clipmill-youtube",
  "directories",
  "ed25519-dalek",

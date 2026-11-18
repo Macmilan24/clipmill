@@ -57,6 +57,7 @@ CAPABILITIES = {
     "detect-faces",
     "detect-shots",
     "editorial",
+    "audio-events",
 }
 
 

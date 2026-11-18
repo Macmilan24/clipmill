@@ -39,6 +39,8 @@ fn main() -> std::process::ExitCode {
             transition_ticks: 0,
             cutaways: Vec::new(),
             segments: vec![VideoSegment {
+                part: None,
+                join: None,
                 segment_id: "preview".to_owned(),
                 source_fingerprint: format!("sha256:{}", "0".repeat(64)),
                 in_ticks: 0,

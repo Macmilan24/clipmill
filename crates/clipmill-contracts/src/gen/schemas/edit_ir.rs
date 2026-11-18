@@ -1331,6 +1331,60 @@ impl ::std::convert::TryFrom<::std::string::String> for CutawayFit {
 #[doc = "        \"$ref\": \"#/$defs/overlay\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"plan\": {"]
+#[doc = "      \"description\": \"The plan of parts this clip was built from. Never consumed by any render path.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"form\","]
+#[doc = "        \"plan_id\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"form\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"straight\","]
+#[doc = "            \"tightened\","]
+#[doc = "            \"stitch\","]
+#[doc = "            \"cold_open\","]
+#[doc = "            \"theme_montage\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"plan_id\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"minLength\": 1"]
+#[doc = "        },"]
+#[doc = "        \"removed\": {"]
+#[doc = "          \"type\": \"array\","]
+#[doc = "          \"items\": {"]
+#[doc = "            \"type\": \"object\","]
+#[doc = "            \"required\": ["]
+#[doc = "              \"in_ticks\","]
+#[doc = "              \"out_ticks\","]
+#[doc = "              \"reason\","]
+#[doc = "              \"source_fingerprint\""]
+#[doc = "            ],"]
+#[doc = "            \"properties\": {"]
+#[doc = "              \"in_ticks\": {"]
+#[doc = "                \"type\": \"integer\","]
+#[doc = "                \"minimum\": 0.0"]
+#[doc = "              },"]
+#[doc = "              \"out_ticks\": {"]
+#[doc = "                \"type\": \"integer\","]
+#[doc = "                \"minimum\": 1.0"]
+#[doc = "              },"]
+#[doc = "              \"reason\": {"]
+#[doc = "                \"type\": \"string\","]
+#[doc = "                \"minLength\": 1"]
+#[doc = "              },"]
+#[doc = "              \"source_fingerprint\": {"]
+#[doc = "                \"$ref\": \"#/$defs/sha256\""]
+#[doc = "              }"]
+#[doc = "            },"]
+#[doc = "            \"additionalProperties\": false"]
+#[doc = "          }"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"rationale\": {"]
 #[doc = "      \"description\": \"Why the director cut here. Never consumed by any render path, so explanation can never perturb pixels.\","]
 #[doc = "      \"type\": \"object\","]
@@ -1424,6 +1478,8 @@ pub struct EditIr {
     #[doc = "Titles and labels laid over the program, bottom first. Spans are program time, like a cue's: a cut moves an overlay with the material around it and removes whatever it cut."]
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub overlays: ::std::vec::Vec<Overlay>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub plan: ::std::option::Option<EditIrPlan>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub rationale: ::std::option::Option<EditIrRationale>,
     pub timebase: EditIrTimebase,
@@ -2937,6 +2993,349 @@ impl<'de> ::serde::Deserialize<'de> for EditIrCaptionsOptionsUnspoken {
             })
     }
 }
+#[doc = "The plan of parts this clip was built from. Never consumed by any render path."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The plan of parts this clip was built from. Never consumed by any render path.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"form\","]
+#[doc = "    \"plan_id\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"form\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"straight\","]
+#[doc = "        \"tightened\","]
+#[doc = "        \"stitch\","]
+#[doc = "        \"cold_open\","]
+#[doc = "        \"theme_montage\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"plan_id\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"removed\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\","]
+#[doc = "        \"required\": ["]
+#[doc = "          \"in_ticks\","]
+#[doc = "          \"out_ticks\","]
+#[doc = "          \"reason\","]
+#[doc = "          \"source_fingerprint\""]
+#[doc = "        ],"]
+#[doc = "        \"properties\": {"]
+#[doc = "          \"in_ticks\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 0.0"]
+#[doc = "          },"]
+#[doc = "          \"out_ticks\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 1.0"]
+#[doc = "          },"]
+#[doc = "          \"reason\": {"]
+#[doc = "            \"type\": \"string\","]
+#[doc = "            \"minLength\": 1"]
+#[doc = "          },"]
+#[doc = "          \"source_fingerprint\": {"]
+#[doc = "            \"$ref\": \"#/$defs/sha256\""]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"additionalProperties\": false"]
+#[doc = "      }"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrPlan {
+    pub form: EditIrPlanForm,
+    pub plan_id: EditIrPlanPlanId,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub removed: ::std::vec::Vec<EditIrPlanRemovedItem>,
+}
+impl EditIrPlan {
+    pub fn builder() -> builder::EditIrPlan {
+        Default::default()
+    }
+}
+#[doc = "`EditIrPlanForm`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"straight\","]
+#[doc = "    \"tightened\","]
+#[doc = "    \"stitch\","]
+#[doc = "    \"cold_open\","]
+#[doc = "    \"theme_montage\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum EditIrPlanForm {
+    #[serde(rename = "straight")]
+    Straight,
+    #[serde(rename = "tightened")]
+    Tightened,
+    #[serde(rename = "stitch")]
+    Stitch,
+    #[serde(rename = "cold_open")]
+    ColdOpen,
+    #[serde(rename = "theme_montage")]
+    ThemeMontage,
+}
+impl ::std::fmt::Display for EditIrPlanForm {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Straight => f.write_str("straight"),
+            Self::Tightened => f.write_str("tightened"),
+            Self::Stitch => f.write_str("stitch"),
+            Self::ColdOpen => f.write_str("cold_open"),
+            Self::ThemeMontage => f.write_str("theme_montage"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditIrPlanForm {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "straight" => Ok(Self::Straight),
+            "tightened" => Ok(Self::Tightened),
+            "stitch" => Ok(Self::Stitch),
+            "cold_open" => Ok(Self::ColdOpen),
+            "theme_montage" => Ok(Self::ThemeMontage),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrPlanForm {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrPlanForm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrPlanForm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`EditIrPlanPlanId`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrPlanPlanId(::std::string::String);
+impl ::std::ops::Deref for EditIrPlanPlanId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrPlanPlanId> for ::std::string::String {
+    fn from(value: EditIrPlanPlanId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrPlanPlanId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrPlanPlanId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrPlanPlanId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrPlanPlanId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrPlanPlanId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`EditIrPlanRemovedItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"in_ticks\","]
+#[doc = "    \"out_ticks\","]
+#[doc = "    \"reason\","]
+#[doc = "    \"source_fingerprint\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"in_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"out_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 1.0"]
+#[doc = "    },"]
+#[doc = "    \"reason\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"source_fingerprint\": {"]
+#[doc = "      \"$ref\": \"#/$defs/sha256\""]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditIrPlanRemovedItem {
+    pub in_ticks: u64,
+    pub out_ticks: ::std::num::NonZeroU64,
+    pub reason: EditIrPlanRemovedItemReason,
+    pub source_fingerprint: Sha256,
+}
+impl EditIrPlanRemovedItem {
+    pub fn builder() -> builder::EditIrPlanRemovedItem {
+        Default::default()
+    }
+}
+#[doc = "`EditIrPlanRemovedItemReason`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct EditIrPlanRemovedItemReason(::std::string::String);
+impl ::std::ops::Deref for EditIrPlanRemovedItemReason {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<EditIrPlanRemovedItemReason> for ::std::string::String {
+    fn from(value: EditIrPlanRemovedItemReason) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for EditIrPlanRemovedItemReason {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditIrPlanRemovedItemReason {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for EditIrPlanRemovedItemReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditIrPlanRemovedItemReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for EditIrPlanRemovedItemReason {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 #[doc = "Why the director cut here. Never consumed by any render path, so explanation can never perturb pixels."]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -3975,6 +4374,32 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"minimum\": 0.0"]
 #[doc = "    },"]
+#[doc = "    \"join\": {"]
+#[doc = "      \"description\": \"How this segment joins the one before it. Absent: the track's transition.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"kind\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"audio_crossfade_ticks\": {"]
+#[doc = "          \"type\": \"integer\","]
+#[doc = "          \"maximum\": 45000.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"kind\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"adjacent\","]
+#[doc = "            \"removed\","]
+#[doc = "            \"reorder\","]
+#[doc = "            \"distant\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"room_tone\": {"]
+#[doc = "          \"type\": \"boolean\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"layout\": {"]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"required\": ["]
@@ -4154,6 +4579,34 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[doc = "      \"type\": \"integer\","]
 #[doc = "      \"minimum\": 1.0"]
 #[doc = "    },"]
+#[doc = "    \"part\": {"]
+#[doc = "      \"description\": \"The plan part this segment plays, when the clip was planned as parts. Several segments share a part when shots or a removed range split it.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"part_id\","]
+#[doc = "        \"role\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"part_id\": {"]
+#[doc = "          \"type\": \"string\","]
+#[doc = "          \"minLength\": 1"]
+#[doc = "        },"]
+#[doc = "        \"role\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"hook\","]
+#[doc = "            \"setup\","]
+#[doc = "            \"question\","]
+#[doc = "            \"answer\","]
+#[doc = "            \"body\","]
+#[doc = "            \"payoff\","]
+#[doc = "            \"proof\","]
+#[doc = "            \"reaction\","]
+#[doc = "            \"item\""]
+#[doc = "          ]"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"segment_id\": {"]
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"minLength\": 1"]
@@ -4170,14 +4623,146 @@ impl<'de> ::serde::Deserialize<'de> for Sha256 {
 #[serde(deny_unknown_fields)]
 pub struct VideoSegment {
     pub in_ticks: u64,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub join: ::std::option::Option<VideoSegmentJoin>,
     pub layout: VideoSegmentLayout,
     pub out_ticks: ::std::num::NonZeroU64,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub part: ::std::option::Option<VideoSegmentPart>,
     pub segment_id: VideoSegmentSegmentId,
     pub source_fingerprint: Sha256,
 }
 impl VideoSegment {
     pub fn builder() -> builder::VideoSegment {
         Default::default()
+    }
+}
+#[doc = "How this segment joins the one before it. Absent: the track's transition."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"How this segment joins the one before it. Absent: the track's transition.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"kind\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"audio_crossfade_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"maximum\": 45000.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"kind\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"adjacent\","]
+#[doc = "        \"removed\","]
+#[doc = "        \"reorder\","]
+#[doc = "        \"distant\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"room_tone\": {"]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct VideoSegmentJoin {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub audio_crossfade_ticks: ::std::option::Option<i64>,
+    pub kind: VideoSegmentJoinKind,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub room_tone: ::std::option::Option<bool>,
+}
+impl VideoSegmentJoin {
+    pub fn builder() -> builder::VideoSegmentJoin {
+        Default::default()
+    }
+}
+#[doc = "`VideoSegmentJoinKind`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"adjacent\","]
+#[doc = "    \"removed\","]
+#[doc = "    \"reorder\","]
+#[doc = "    \"distant\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum VideoSegmentJoinKind {
+    #[serde(rename = "adjacent")]
+    Adjacent,
+    #[serde(rename = "removed")]
+    Removed,
+    #[serde(rename = "reorder")]
+    Reorder,
+    #[serde(rename = "distant")]
+    Distant,
+}
+impl ::std::fmt::Display for VideoSegmentJoinKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Adjacent => f.write_str("adjacent"),
+            Self::Removed => f.write_str("removed"),
+            Self::Reorder => f.write_str("reorder"),
+            Self::Distant => f.write_str("distant"),
+        }
+    }
+}
+impl ::std::str::FromStr for VideoSegmentJoinKind {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "adjacent" => Ok(Self::Adjacent),
+            "removed" => Ok(Self::Removed),
+            "reorder" => Ok(Self::Reorder),
+            "distant" => Ok(Self::Distant),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for VideoSegmentJoinKind {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for VideoSegmentJoinKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentJoinKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`VideoSegmentLayout`"]
@@ -5023,6 +5608,226 @@ impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentLayoutState 
         value.parse()
     }
 }
+#[doc = "The plan part this segment plays, when the clip was planned as parts. Several segments share a part when shots or a removed range split it."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The plan part this segment plays, when the clip was planned as parts. Several segments share a part when shots or a removed range split it.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"part_id\","]
+#[doc = "    \"role\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"part_id\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    },"]
+#[doc = "    \"role\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"hook\","]
+#[doc = "        \"setup\","]
+#[doc = "        \"question\","]
+#[doc = "        \"answer\","]
+#[doc = "        \"body\","]
+#[doc = "        \"payoff\","]
+#[doc = "        \"proof\","]
+#[doc = "        \"reaction\","]
+#[doc = "        \"item\""]
+#[doc = "      ]"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct VideoSegmentPart {
+    pub part_id: VideoSegmentPartPartId,
+    pub role: VideoSegmentPartRole,
+}
+impl VideoSegmentPart {
+    pub fn builder() -> builder::VideoSegmentPart {
+        Default::default()
+    }
+}
+#[doc = "`VideoSegmentPartPartId`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct VideoSegmentPartPartId(::std::string::String);
+impl ::std::ops::Deref for VideoSegmentPartPartId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<VideoSegmentPartPartId> for ::std::string::String {
+    fn from(value: VideoSegmentPartPartId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for VideoSegmentPartPartId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for VideoSegmentPartPartId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for VideoSegmentPartPartId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentPartPartId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for VideoSegmentPartPartId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`VideoSegmentPartRole`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"hook\","]
+#[doc = "    \"setup\","]
+#[doc = "    \"question\","]
+#[doc = "    \"answer\","]
+#[doc = "    \"body\","]
+#[doc = "    \"payoff\","]
+#[doc = "    \"proof\","]
+#[doc = "    \"reaction\","]
+#[doc = "    \"item\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum VideoSegmentPartRole {
+    #[serde(rename = "hook")]
+    Hook,
+    #[serde(rename = "setup")]
+    Setup,
+    #[serde(rename = "question")]
+    Question,
+    #[serde(rename = "answer")]
+    Answer,
+    #[serde(rename = "body")]
+    Body,
+    #[serde(rename = "payoff")]
+    Payoff,
+    #[serde(rename = "proof")]
+    Proof,
+    #[serde(rename = "reaction")]
+    Reaction,
+    #[serde(rename = "item")]
+    Item,
+}
+impl ::std::fmt::Display for VideoSegmentPartRole {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Hook => f.write_str("hook"),
+            Self::Setup => f.write_str("setup"),
+            Self::Question => f.write_str("question"),
+            Self::Answer => f.write_str("answer"),
+            Self::Body => f.write_str("body"),
+            Self::Payoff => f.write_str("payoff"),
+            Self::Proof => f.write_str("proof"),
+            Self::Reaction => f.write_str("reaction"),
+            Self::Item => f.write_str("item"),
+        }
+    }
+}
+impl ::std::str::FromStr for VideoSegmentPartRole {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "hook" => Ok(Self::Hook),
+            "setup" => Ok(Self::Setup),
+            "question" => Ok(Self::Question),
+            "answer" => Ok(Self::Answer),
+            "body" => Ok(Self::Body),
+            "payoff" => Ok(Self::Payoff),
+            "proof" => Ok(Self::Proof),
+            "reaction" => Ok(Self::Reaction),
+            "item" => Ok(Self::Item),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for VideoSegmentPartRole {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for VideoSegmentPartRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VideoSegmentPartRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 #[doc = "`VideoSegmentSegmentId`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -5604,6 +6409,8 @@ pub mod builder {
             ::std::result::Result<::std::option::Option<super::EditIrBrand>, ::std::string::String>,
         captions: ::std::result::Result<super::EditIrCaptions, ::std::string::String>,
         overlays: ::std::result::Result<::std::vec::Vec<super::Overlay>, ::std::string::String>,
+        plan:
+            ::std::result::Result<::std::option::Option<super::EditIrPlan>, ::std::string::String>,
         rationale: ::std::result::Result<
             ::std::option::Option<super::EditIrRationale>,
             ::std::string::String,
@@ -5622,6 +6429,7 @@ pub mod builder {
                 brand: Ok(Default::default()),
                 captions: Err("no value supplied for captions".to_string()),
                 overlays: Ok(Default::default()),
+                plan: Ok(Default::default()),
                 rationale: Ok(Default::default()),
                 timebase: Err("no value supplied for timebase".to_string()),
                 title: Ok(Default::default()),
@@ -5679,6 +6487,16 @@ pub mod builder {
             self.overlays = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for overlays: {e}"));
+            self
+        }
+        pub fn plan<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::EditIrPlan>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.plan = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for plan: {e}"));
             self
         }
         pub fn rationale<T>(mut self, value: T) -> Self
@@ -5741,6 +6559,7 @@ pub mod builder {
                 brand: value.brand?,
                 captions: value.captions?,
                 overlays: value.overlays?,
+                plan: value.plan?,
                 rationale: value.rationale?,
                 timebase: value.timebase?,
                 title: value.title?,
@@ -5757,6 +6576,7 @@ pub mod builder {
                 brand: Ok(value.brand),
                 captions: Ok(value.captions),
                 overlays: Ok(value.overlays),
+                plan: Ok(value.plan),
                 rationale: Ok(value.rationale),
                 timebase: Ok(value.timebase),
                 title: Ok(value.title),
@@ -6610,6 +7430,159 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    pub struct EditIrPlan {
+        form: ::std::result::Result<super::EditIrPlanForm, ::std::string::String>,
+        plan_id: ::std::result::Result<super::EditIrPlanPlanId, ::std::string::String>,
+        removed: ::std::result::Result<
+            ::std::vec::Vec<super::EditIrPlanRemovedItem>,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for EditIrPlan {
+        fn default() -> Self {
+            Self {
+                form: Err("no value supplied for form".to_string()),
+                plan_id: Err("no value supplied for plan_id".to_string()),
+                removed: Ok(Default::default()),
+            }
+        }
+    }
+    impl EditIrPlan {
+        pub fn form<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditIrPlanForm>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.form = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for form: {e}"));
+            self
+        }
+        pub fn plan_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditIrPlanPlanId>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.plan_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for plan_id: {e}"));
+            self
+        }
+        pub fn removed<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::EditIrPlanRemovedItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.removed = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for removed: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrPlan> for super::EditIrPlan {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrPlan,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                form: value.form?,
+                plan_id: value.plan_id?,
+                removed: value.removed?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrPlan> for EditIrPlan {
+        fn from(value: super::EditIrPlan) -> Self {
+            Self {
+                form: Ok(value.form),
+                plan_id: Ok(value.plan_id),
+                removed: Ok(value.removed),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct EditIrPlanRemovedItem {
+        in_ticks: ::std::result::Result<u64, ::std::string::String>,
+        out_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        reason: ::std::result::Result<super::EditIrPlanRemovedItemReason, ::std::string::String>,
+        source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
+    }
+    impl ::std::default::Default for EditIrPlanRemovedItem {
+        fn default() -> Self {
+            Self {
+                in_ticks: Err("no value supplied for in_ticks".to_string()),
+                out_ticks: Err("no value supplied for out_ticks".to_string()),
+                reason: Err("no value supplied for reason".to_string()),
+                source_fingerprint: Err("no value supplied for source_fingerprint".to_string()),
+            }
+        }
+    }
+    impl EditIrPlanRemovedItem {
+        pub fn in_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.in_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for in_ticks: {e}"));
+            self
+        }
+        pub fn out_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::num::NonZeroU64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.out_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for out_ticks: {e}"));
+            self
+        }
+        pub fn reason<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::EditIrPlanRemovedItemReason>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.reason = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for reason: {e}"));
+            self
+        }
+        pub fn source_fingerprint<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::Sha256>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.source_fingerprint = value.try_into().map_err(|e| {
+                format!("error converting supplied value for source_fingerprint: {e}")
+            });
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<EditIrPlanRemovedItem> for super::EditIrPlanRemovedItem {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: EditIrPlanRemovedItem,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                in_ticks: value.in_ticks?,
+                out_ticks: value.out_ticks?,
+                reason: value.reason?,
+                source_fingerprint: value.source_fingerprint?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::EditIrPlanRemovedItem> for EditIrPlanRemovedItem {
+        fn from(value: super::EditIrPlanRemovedItem) -> Self {
+            Self {
+                in_ticks: Ok(value.in_ticks),
+                out_ticks: Ok(value.out_ticks),
+                reason: Ok(value.reason),
+                source_fingerprint: Ok(value.source_fingerprint),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct EditIrRationale {
         candidate_id: ::std::result::Result<
             ::std::option::Option<::std::string::String>,
@@ -6890,8 +7863,16 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub struct VideoSegment {
         in_ticks: ::std::result::Result<u64, ::std::string::String>,
+        join: ::std::result::Result<
+            ::std::option::Option<super::VideoSegmentJoin>,
+            ::std::string::String,
+        >,
         layout: ::std::result::Result<super::VideoSegmentLayout, ::std::string::String>,
         out_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        part: ::std::result::Result<
+            ::std::option::Option<super::VideoSegmentPart>,
+            ::std::string::String,
+        >,
         segment_id: ::std::result::Result<super::VideoSegmentSegmentId, ::std::string::String>,
         source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
     }
@@ -6899,8 +7880,10 @@ pub mod builder {
         fn default() -> Self {
             Self {
                 in_ticks: Err("no value supplied for in_ticks".to_string()),
+                join: Ok(Default::default()),
                 layout: Err("no value supplied for layout".to_string()),
                 out_ticks: Err("no value supplied for out_ticks".to_string()),
+                part: Ok(Default::default()),
                 segment_id: Err("no value supplied for segment_id".to_string()),
                 source_fingerprint: Err("no value supplied for source_fingerprint".to_string()),
             }
@@ -6915,6 +7898,16 @@ pub mod builder {
             self.in_ticks = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for in_ticks: {e}"));
+            self
+        }
+        pub fn join<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::VideoSegmentJoin>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.join = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for join: {e}"));
             self
         }
         pub fn layout<T>(mut self, value: T) -> Self
@@ -6935,6 +7928,16 @@ pub mod builder {
             self.out_ticks = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for out_ticks: {e}"));
+            self
+        }
+        pub fn part<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::VideoSegmentPart>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.part = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for part: {e}"));
             self
         }
         pub fn segment_id<T>(mut self, value: T) -> Self
@@ -6965,8 +7968,10 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 in_ticks: value.in_ticks?,
+                join: value.join?,
                 layout: value.layout?,
                 out_ticks: value.out_ticks?,
+                part: value.part?,
                 segment_id: value.segment_id?,
                 source_fingerprint: value.source_fingerprint?,
             })
@@ -6976,10 +7981,81 @@ pub mod builder {
         fn from(value: super::VideoSegment) -> Self {
             Self {
                 in_ticks: Ok(value.in_ticks),
+                join: Ok(value.join),
                 layout: Ok(value.layout),
                 out_ticks: Ok(value.out_ticks),
+                part: Ok(value.part),
                 segment_id: Ok(value.segment_id),
                 source_fingerprint: Ok(value.source_fingerprint),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct VideoSegmentJoin {
+        audio_crossfade_ticks:
+            ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        kind: ::std::result::Result<super::VideoSegmentJoinKind, ::std::string::String>,
+        room_tone: ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
+    }
+    impl ::std::default::Default for VideoSegmentJoin {
+        fn default() -> Self {
+            Self {
+                audio_crossfade_ticks: Ok(Default::default()),
+                kind: Err("no value supplied for kind".to_string()),
+                room_tone: Ok(Default::default()),
+            }
+        }
+    }
+    impl VideoSegmentJoin {
+        pub fn audio_crossfade_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<i64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.audio_crossfade_ticks = value.try_into().map_err(|e| {
+                format!("error converting supplied value for audio_crossfade_ticks: {e}")
+            });
+            self
+        }
+        pub fn kind<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::VideoSegmentJoinKind>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.kind = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for kind: {e}"));
+            self
+        }
+        pub fn room_tone<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<bool>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.room_tone = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for room_tone: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<VideoSegmentJoin> for super::VideoSegmentJoin {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: VideoSegmentJoin,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                audio_crossfade_ticks: value.audio_crossfade_ticks?,
+                kind: value.kind?,
+                room_tone: value.room_tone?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::VideoSegmentJoin> for VideoSegmentJoin {
+        fn from(value: super::VideoSegmentJoin) -> Self {
+            Self {
+                audio_crossfade_ticks: Ok(value.audio_crossfade_ticks),
+                kind: Ok(value.kind),
+                room_tone: Ok(value.room_tone),
             }
         }
     }
@@ -7413,6 +8489,60 @@ pub mod builder {
                 easing: Ok(value.easing),
                 rect: Ok(value.rect),
                 t_ticks: Ok(value.t_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct VideoSegmentPart {
+        part_id: ::std::result::Result<super::VideoSegmentPartPartId, ::std::string::String>,
+        role: ::std::result::Result<super::VideoSegmentPartRole, ::std::string::String>,
+    }
+    impl ::std::default::Default for VideoSegmentPart {
+        fn default() -> Self {
+            Self {
+                part_id: Err("no value supplied for part_id".to_string()),
+                role: Err("no value supplied for role".to_string()),
+            }
+        }
+    }
+    impl VideoSegmentPart {
+        pub fn part_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::VideoSegmentPartPartId>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.part_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for part_id: {e}"));
+            self
+        }
+        pub fn role<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::VideoSegmentPartRole>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.role = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for role: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<VideoSegmentPart> for super::VideoSegmentPart {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: VideoSegmentPart,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                part_id: value.part_id?,
+                role: value.role?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::VideoSegmentPart> for VideoSegmentPart {
+        fn from(value: super::VideoSegmentPart) -> Self {
+            Self {
+                part_id: Ok(value.part_id),
+                role: Ok(value.role),
             }
         }
     }

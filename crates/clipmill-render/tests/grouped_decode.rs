@@ -52,6 +52,8 @@ fn adjacent_sections_encode_with_one_decoder() {
     document.video.segments = [("first", 0, 90_000), ("second", 90_000, 180_000)]
         .into_iter()
         .map(|(id, start, end)| VideoSegment {
+            part: None,
+            join: None,
             segment_id: id.to_owned(),
             source_fingerprint: FINGERPRINT.to_owned(),
             in_ticks: start,

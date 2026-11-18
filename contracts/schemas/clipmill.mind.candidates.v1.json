@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.mind.candidates.v1.json",
+  "title": "MindCandidates",
+  "description": "The clips the cutter proposes for one recording, best first by a provisional score: plans of parts (tightened, stitched, cold-opened, montaged or straight) built from the Recording Memory and the sentence markup. Each plan is a `clipmill.mind.clip_plan.v1` document that already passed the plan checks against the recording's words and the length asked for. The planner and the ranker decide between them; the score here only orders them.",
+  "type": "object",
+  "required": ["schema_version", "source_fingerprint", "length", "inputs", "candidates"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.mind.candidates.v1"
+    },
+    "source_fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "length": {
+      "type": "object",
+      "required": ["min_ticks", "max_ticks"],
+      "additionalProperties": false,
+      "properties": {
+        "min_ticks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_ticks": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "inputs": {
+      "description": "The artifacts the cutter read.",
+      "type": "object",
+      "required": ["timeline_artifact_id", "script_artifact_id"],
+      "additionalProperties": false,
+      "properties": {
+        "timeline_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "script_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "memory_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "scores_artifact_id": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scout", "score", "plan"],
+        "additionalProperties": false,
+        "properties": {
+          "scout": {
+            "description": "What found it: an event, a link between events, a strong line lifted to open a moment, a theme across moments, or a hook-to-landing span when there is no memory.",
+            "enum": ["event", "link", "cold_open", "theme", "span"]
+          },
+          "score": {
+            "type": "integer"
+          },
+          "plan": {
+            "description": "A clipmill.mind.clip_plan.v1 document.",
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

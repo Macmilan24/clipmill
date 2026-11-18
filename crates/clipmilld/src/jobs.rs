@@ -11,10 +11,10 @@ use clipmill_artifacts::{
 };
 use clipmill_contracts::proto::{
     ipc::v1::{
-        self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, CaptionsStagePayloadV1,
-        ClipDurationV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1, DetectShotsPayloadV1,
-        DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1, DiscoverStagePayloadV1,
-        EditorialStagePayloadV1, FacesStagePayloadV1, IndexStagePayloadV1,
+        self, AnalysisStagePayloadV1, AnalyzeSourcePayloadV1, AudioEventsStagePayloadV1,
+        CaptionsStagePayloadV1, ClipDurationV1, DeriveCaptionsPayloadV1, DetectFacesPayloadV1,
+        DetectShotsPayloadV1, DeviceProfilePayloadV1, DiscoverCandidatesPayloadV1,
+        DiscoverStagePayloadV1, EditorialStagePayloadV1, FacesStagePayloadV1, IndexStagePayloadV1,
         IndexTranscriptPayloadV1, IngestSourcePayloadV1, JobState, ProbeSourcePayloadV1,
         RankCandidatesPayloadV1, RankStagePayloadV1, ShotsStagePayloadV1, SkippedStageV1,
         SpeechAlignmentV1, SpeechDetectionV1, SpeechRecognitionV1, SpeechStagePayloadV1,
@@ -40,15 +40,18 @@ use crate::{
     device::{DeviceProfiler, VerifiedDeviceProfile, verify_profile},
     discovery, editorial, evidence,
     media::{self, MediaRunner, ProgressSlot},
-    ranking,
+    mind, ranking,
     render::{self, RenderContext},
     sources::{SourceInspector, SourceProbeError},
-    speech,
+    speech, timeline,
 };
 
 /// Key version every speech stage payload carries, so a worker can refuse a
 /// payload the daemon never meant for it.
 pub(crate) const SPEECH_STAGE_KEY_VERSION: &str = "clipmill.speech-stage.v1";
+
+/// Key version the audio events stage payload carries.
+pub(crate) const AUDIO_EVENTS_STAGE_KEY_VERSION: &str = "clipmill.audio-events-stage.v1";
 
 /// Key version the shot-detection stage payload carries, for the same reason.
 pub(crate) const SHOTS_STAGE_KEY_VERSION: &str = "clipmill.shots-stage.v1";
@@ -605,6 +608,38 @@ fn faces_task(task_id: String, payload: &FacesStagePayloadV1) -> TaskSpec {
 /// Its payload is the speech chain's, naming its own stage and nothing else:
 /// how voices are told apart is the worker's, recorded in what it publishes,
 /// so the key moves with the implementation rather than with a knob here.
+/// What can be heard besides words: laughter, applause, music, shouting.
+fn audio_events_task(
+    task_id: String,
+    source_fingerprint: &str,
+    audio_task: &str,
+    models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
+) -> TaskSpec {
+    let implementation = speech_implementation("audio-events", bindings);
+    TaskSpec {
+        task_id,
+        ordinal: 0,
+        kind: "audio-events".to_owned(),
+        input_kinds: vec!["media.audio_16k.v1".to_owned()],
+        output_kind: "audio.events.v1".to_owned(),
+        payload: AudioEventsStagePayloadV1 {
+            key_version: AUDIO_EVENTS_STAGE_KEY_VERSION.to_owned(),
+            stage: "audio-events".to_owned(),
+            source_fingerprint: source_fingerprint.to_owned(),
+        }
+        .encode_to_vec(),
+        dependencies: vec![audio_task.to_owned()],
+        input_artifact_ids: Vec::new(),
+        // One session thread, fixed by the worker for the same reason the
+        // voice detector's is: an event's edge must not depend on the load.
+        resources: speech_resources(implementation, models, 1),
+        implementation: implementation.name.to_owned(),
+        max_attempts: 3,
+        is_final: false,
+    }
+}
+
 fn speakers_task(
     task_id: String,
     source_fingerprint: &str,
@@ -1565,6 +1600,8 @@ impl JobPlan {
         ));
 
         // The speech chain, reading the rendition this plan is about to derive.
+        let mut speakers_id: Option<String> = None;
+        let mut audio_events_id: Option<String> = None;
         let transcript = match &handles.audio_16k {
             None => {
                 for kind in [
@@ -1573,6 +1610,7 @@ impl JobPlan {
                     "speech.alignment.v1",
                     "speech.transcript.v1",
                     "speech.speakers.v1",
+                    "audio.events.v1",
                 ] {
                     skip(kind, "no_audio");
                 }
@@ -1609,8 +1647,20 @@ impl JobPlan {
                         bindings,
                     );
                     stages.push(("speech.speakers.v1".to_owned(), speakers.task_id.clone()));
+                    speakers_id = Some(speakers.task_id.clone());
                     tasks.push(speakers);
                 }
+                // The reactions a transcript cannot show, from the same rendition.
+                let events = audio_events_task(
+                    TaskId::new().to_string(),
+                    source.source_fingerprint,
+                    audio.task_id.as_str(),
+                    models,
+                    bindings,
+                );
+                stages.push(("audio.events.v1".to_owned(), events.task_id.clone()));
+                audio_events_id = Some(events.task_id.clone());
+                tasks.push(events);
                 Some(chain.transcript_task_id)
             }
         };
@@ -1674,6 +1724,7 @@ impl JobPlan {
             None => {
                 for kind in [
                     "index.transcript.v1",
+                    "timeline.index.v1",
                     "editorial.windows.v1",
                     "discovery.candidates.v1",
                     "ranking.set.v1",
@@ -1707,6 +1758,58 @@ impl JobPlan {
                     },
                 ));
                 stages.push(("index.transcript.v1".to_owned(), index.clone()));
+
+                // The Timeline Index (R74): everything known about the
+                // recording in one searchable file, for the mind and agents.
+                // Nothing in this plan reads it yet.
+                let timeline_id = TaskId::new().to_string();
+                let mut timeline_dependencies = vec![index.clone(), transcript.clone()];
+                let mut timeline_kinds = vec![
+                    "index.transcript.v1".to_owned(),
+                    "speech.transcript.v1".to_owned(),
+                ];
+                if let Some(speakers) = &speakers_id {
+                    timeline_dependencies.push(speakers.clone());
+                    timeline_kinds.push("speech.speakers.v1".to_owned());
+                }
+                if let Some(shots) = &shots {
+                    timeline_dependencies.push(shots.clone());
+                    timeline_kinds.push("evidence.shots.v1".to_owned());
+                }
+                if let Some(events) = &audio_events_id {
+                    timeline_dependencies.push(events.clone());
+                    timeline_kinds.push("audio.events.v1".to_owned());
+                }
+                tasks.push(builtin_task(
+                    timeline_id.clone(),
+                    Builtin {
+                        kind: timeline::KIND_TIMELINE,
+                        output_kind: "timeline.index.v1",
+                        implementation: timeline::IMPLEMENTATION,
+                        input_kinds: timeline_kinds,
+                        dependencies: timeline_dependencies,
+                        payload: IndexStagePayloadV1 {
+                            key_version: timeline::TIMELINE_STAGE_KEY_VERSION.to_owned(),
+                            stage: timeline::KIND_TIMELINE.to_owned(),
+                        }
+                        .encode_to_vec(),
+                        ram_mib: 256,
+                    },
+                ));
+                stages.push(("timeline.index.v1".to_owned(), timeline_id.clone()));
+
+                // The mind (architecture §4.3–4.6): the script, the memory and
+                // the markup a local model writes from it, and the cutter's
+                // plans of parts. Local only, like looking at frames.
+                if request.local_editorial {
+                    tasks.extend(mind_tasks(
+                        &timeline_id,
+                        request,
+                        models,
+                        bindings,
+                        &mut stages,
+                    )?);
+                }
 
                 // The windows an editorial model reads.
                 // Cut here so the model's stages, when they arrive, read a
@@ -2126,6 +2229,71 @@ fn editorial_duration(request: &AnalyzeSourcePayloadV1) -> ClipDurationV1 {
     }
 }
 
+/// The mind's stages over one Timeline Index: script, memory and markup in
+/// parallel on the editorial model, then the cutter.
+fn mind_tasks(
+    timeline_id: &str,
+    request: &AnalyzeSourcePayloadV1,
+    models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
+    stages: &mut Vec<(String, String)>,
+) -> Result<Vec<TaskSpec>, &'static str> {
+    let payload = |stage: &str| {
+        EditorialStagePayloadV1 {
+            key_version: mind::MIND_STAGE_KEY_VERSION.to_owned(),
+            stage: stage.to_owned(),
+            duration: (stage == mind::KIND_CUT).then(|| editorial_duration(request)),
+            ..Default::default()
+        }
+        .encode_to_vec()
+    };
+    let script = TaskId::new().to_string();
+    let mut tasks = vec![builtin_task(
+        script.clone(),
+        Builtin {
+            kind: mind::KIND_SCRIPT,
+            output_kind: "mind.script.v1",
+            implementation: mind::SCRIPT_IMPLEMENTATION,
+            input_kinds: vec!["timeline.index.v1".to_owned()],
+            dependencies: vec![timeline_id.to_owned()],
+            payload: payload(mind::KIND_SCRIPT),
+            ram_mib: 256,
+        },
+    )];
+    stages.push(("mind.script.v1".to_owned(), script.clone()));
+    let mut cut_dependencies = vec![timeline_id.to_owned(), script.clone()];
+    let mut cut_kinds = vec!["timeline.index.v1".to_owned(), "mind.script.v1".to_owned()];
+    for operation in ["memory", "score"] {
+        let task = editorial_worker_task(
+            operation,
+            vec![script.clone()],
+            vec!["mind.script.v1".to_owned()],
+            request,
+            models,
+            bindings,
+        )?;
+        stages.push((task.output_kind.clone(), task.task_id.clone()));
+        cut_dependencies.push(task.task_id.clone());
+        cut_kinds.push(task.output_kind.clone());
+        tasks.push(task);
+    }
+    let cut = TaskId::new().to_string();
+    tasks.push(builtin_task(
+        cut.clone(),
+        Builtin {
+            kind: mind::KIND_CUT,
+            output_kind: "mind.candidates.v1",
+            implementation: mind::CUT_IMPLEMENTATION,
+            input_kinds: cut_kinds,
+            dependencies: cut_dependencies,
+            payload: payload(mind::KIND_CUT),
+            ram_mib: 256,
+        },
+    ));
+    stages.push(("mind.candidates.v1".to_owned(), cut));
+    Ok(tasks)
+}
+
 fn editorial_worker_task(
     operation: &str,
     dependencies: Vec<String>,
@@ -2135,7 +2303,9 @@ fn editorial_worker_task(
     bindings: &crate::selection::Bindings,
 ) -> Result<TaskSpec, &'static str> {
     use sha2::{Digest, Sha256};
-    let cloud = if operation == "look" {
+    // Looking at frames, and the mind's memory and markup, run on this
+    // computer only.
+    let cloud = if matches!(operation, "look" | "memory" | "score") {
         None
     } else {
         request.cloud_editorial.clone()
@@ -2164,13 +2334,28 @@ fn editorial_worker_task(
         "look" => include_str!(
             "../../../workers/editorial/src/clipmill_worker_editorial/prompts/look.v1.txt"
         ),
+        "memory" => concat!(
+            include_str!(
+                "../../../workers/editorial/src/clipmill_worker_editorial/prompts/memory.read.v1.txt"
+            ),
+            include_str!(
+                "../../../workers/editorial/src/clipmill_worker_editorial/prompts/memory.link.v1.txt"
+            ),
+        ),
+        "score" => include_str!(
+            "../../../workers/editorial/src/clipmill_worker_editorial/prompts/score.v1.txt"
+        ),
         _ => return Err("unknown editorial operation"),
     };
     let output_kind = match operation {
         "propose" => "editorial.proposals.v1",
         "look" => "editorial.looks.v1",
+        "memory" => "mind.memory.v1",
+        "score" => "mind.unit_scores.v1",
         _ => "editorial.judgments.v1",
     };
+    // The link pass lists chapters and links for a whole recording at once.
+    let max_output_tokens = if operation == "memory" { 4096 } else { 2048 };
     Ok(TaskSpec {
         task_id: TaskId::new().to_string(),
         ordinal: 0,
@@ -2182,7 +2367,7 @@ fn editorial_worker_task(
             stage: kind,
             duration: Some(editorial_duration(request)),
             prompt_digest: format!("sha256:{}", hex::encode(Sha256::digest(prompt.as_bytes()))),
-            max_output_tokens: 2048,
+            max_output_tokens,
             cloud: cloud.clone(),
             content_profile: editorial_profile(request).to_owned(),
         }
@@ -2938,6 +3123,11 @@ impl BuiltinExecutors {
             evidence::KIND_INDEX => {
                 evidence::execute_index_task(&self.artifacts, task, progress).await
             }
+            timeline::KIND_TIMELINE => {
+                timeline::execute_timeline_task(&self.artifacts, task, progress).await
+            }
+            mind::KIND_SCRIPT => mind::execute_script_task(&self.artifacts, task, progress).await,
+            mind::KIND_CUT => mind::execute_cut_task(&self.artifacts, task, progress).await,
             editorial::KIND_VALIDATE => {
                 editorial::execute_validate_task(&self.artifacts, task, progress).await
             }
@@ -3440,7 +3630,8 @@ pub(crate) fn is_terminal_job(state: i32) -> bool {
 mod builtin_tests {
     use super::builtin_capabilities;
     use crate::{
-        analysis, captions, discovery, editorial, evidence, export, media, ranking, render, speech,
+        analysis, captions, discovery, editorial, evidence, export, media, mind, ranking, render,
+        speech, timeline,
     };
 
     /// Every stage this runner has an executor for is claimed, which is to
@@ -3456,6 +3647,9 @@ mod builtin_tests {
             export::KIND_DELIVER_EXPORT,
             speech::KIND_TRANSCRIPT,
             evidence::KIND_INDEX,
+            timeline::KIND_TIMELINE,
+            mind::KIND_SCRIPT,
+            mind::KIND_CUT,
             editorial::KIND_WINDOWS,
             editorial::KIND_VALIDATE,
             discovery::KIND_DISCOVER,
@@ -4378,7 +4572,7 @@ mod analyze_tests {
     fn the_fan_in_depends_on_every_stage_that_published_something() {
         let plan = plan(true, true);
         let manifest = task(&plan, analysis::KIND_MANIFEST);
-        assert_eq!(manifest.dependencies.len(), 13);
+        assert_eq!(manifest.dependencies.len(), 15);
         assert_eq!(manifest.input_kinds.len(), manifest.dependencies.len());
         // Nothing declared: every input is a task in this plan.
         assert!(manifest.input_artifact_ids.is_empty());
@@ -4393,6 +4587,7 @@ mod analyze_tests {
             "evidence.shots.v1",
             "vision.face_track.v1",
             "index.transcript.v1",
+            "timeline.index.v1",
             "editorial.windows.v1",
             "discovery.candidates.v1",
             "ranking.set.v1",
@@ -4501,7 +4696,7 @@ mod analyze_tests {
     }
 
     /// A source with no audio has no transcript and no voices, so the five
-    /// speech stages and the four that read a transcript are all absent — each
+    /// speech stages and the five that read a transcript are all absent — each
     /// with the reason.
     #[test]
     fn a_source_with_no_audio_skips_everything_that_needs_speech() {
@@ -4518,7 +4713,9 @@ mod analyze_tests {
                 "speech.alignment.v1",
                 "speech.transcript.v1",
                 "speech.speakers.v1",
+                "audio.events.v1",
                 "index.transcript.v1",
+                "timeline.index.v1",
                 "editorial.windows.v1",
                 "discovery.candidates.v1",
                 "ranking.set.v1",

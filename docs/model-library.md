@@ -30,6 +30,13 @@ fresh installation is offered in one download: the portable models every job
 needs, and the editorial model: the MLX build on Apple silicon, the GGUF build
 on Windows and Linux.
 
+Every platform also offers Qwen3.5 4B for editorial work, as an MLX build on
+Apple silicon and a GGUF build elsewhere. It needs about 4.7 GB (MLX) or 5 GB
+(GGUF) where the 9B needs about 8 GB, so it is the choice for a computer the 9B
+would crowd, such as an 8 GB Mac. The editorial worker offers the daemon only
+what the computer can spare, at least what the 4B needs; when the chosen model
+needs more than that, analysis readiness says so and suggests choosing a smaller model.
+
 ## Downloading
 
 A download is an explicit network operation, counted by the

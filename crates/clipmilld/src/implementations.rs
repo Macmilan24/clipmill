@@ -56,6 +56,18 @@ pub(crate) struct Implementation {
 /// replace.
 const IMPLEMENTATIONS: &[Implementation] = &[
     Implementation {
+        name: "clipmill-worker-audio-events@0.1.0",
+        capability: "audio-events",
+        stage: "audio-events",
+        model: "ced-mini-audio-events",
+        worker: "audio-events",
+        backend: "onnx-cpu",
+        accelerator_class: "",
+        portable: true,
+        opt_in: false,
+        accuracy: 1,
+    },
+    Implementation {
         name: "clipmill-worker-vad@0.1.0",
         capability: "vad",
         stage: "speech-vad",
@@ -167,6 +179,30 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accuracy: 1,
     },
     Implementation {
+        name: "clipmill-worker-editorial@0.2.0/memory",
+        capability: "editorial",
+        stage: "editorial-memory",
+        model: "qwen3-5-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: false,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/score",
+        capability: "editorial",
+        stage: "editorial-score",
+        model: "qwen3-5-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: false,
+        accuracy: 1,
+    },
+    Implementation {
         name: "clipmill-worker-editorial@0.2.0/metadata",
         capability: "editorial",
         stage: "youtube-metadata",
@@ -176,6 +212,80 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accelerator_class: "metal",
         portable: false,
         opt_in: false,
+        accuracy: 1,
+    },
+    // Qwen3.5 4B on Apple silicon, when a person picks it: the Mac that the
+    // 9B would crowd, 8 GB ones above all, still gets local editorial work.
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/propose/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "editorial-propose",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/review/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "editorial-review",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/look/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "editorial-look",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/memory/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "editorial-memory",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/score/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "editorial-score",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/metadata/qwen3-5-4b-editorial-mlx",
+        capability: "editorial",
+        stage: "youtube-metadata",
+        model: "qwen3-5-4b-editorial-mlx",
+        worker: "editorial",
+        backend: "mlx",
+        accelerator_class: "metal",
+        portable: false,
+        opt_in: true,
         accuracy: 1,
     },
     // The same editorial stages on Windows and Linux, through the pinned
@@ -208,6 +318,30 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         name: "clipmill-worker-editorial@0.2.0/look-llama.cpp",
         capability: "editorial",
         stage: "editorial-look",
+        model: "qwen3-5-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: false,
+        accuracy: 2,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/memory-llama.cpp",
+        capability: "editorial",
+        stage: "editorial-memory",
+        model: "qwen3-5-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: false,
+        accuracy: 2,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/score-llama.cpp",
+        capability: "editorial",
+        stage: "editorial-score",
         model: "qwen3-5-editorial-gguf",
         worker: "editorial",
         backend: "llama.cpp",
@@ -256,6 +390,30 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         name: "clipmill-worker-editorial@0.2.0/look-llama.cpp/qwen3-5-4b-editorial-gguf",
         capability: "editorial",
         stage: "editorial-look",
+        model: "qwen3-5-4b-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/memory-llama.cpp/qwen3-5-4b-editorial-gguf",
+        capability: "editorial",
+        stage: "editorial-memory",
+        model: "qwen3-5-4b-editorial-gguf",
+        worker: "editorial",
+        backend: "llama.cpp",
+        accelerator_class: "llama.cpp",
+        portable: false,
+        opt_in: true,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/score-llama.cpp/qwen3-5-4b-editorial-gguf",
+        capability: "editorial",
+        stage: "editorial-score",
         model: "qwen3-5-4b-editorial-gguf",
         worker: "editorial",
         backend: "llama.cpp",
@@ -391,6 +549,8 @@ pub(crate) fn register_custom(model: &str, capability: &str) -> Result<(), &'sta
             ),
             ("clipmill-worker-editorial@0.2.0/review", "editorial-review"),
             ("clipmill-worker-editorial@0.2.0/look", "editorial-look"),
+            ("clipmill-worker-editorial@0.2.0/memory", "editorial-memory"),
+            ("clipmill-worker-editorial@0.2.0/score", "editorial-score"),
             (
                 "clipmill-worker-editorial@0.2.0/metadata",
                 "youtube-metadata",
@@ -518,6 +678,7 @@ pub(crate) fn foreign_to(family: &str, stages: &[String]) -> Vec<&'static str> {
 pub(crate) fn worker_title(family: &str) -> &'static str {
     match family {
         "speech-vad" => "speech-detection worker",
+        "audio-events" => "audio events worker",
         "speech-asr" => "whisper.cpp worker",
         "speech-align" => "word-timing worker",
         "speech-mlx" => "MLX speech worker",
@@ -722,6 +883,7 @@ mod tests {
             candidates_for_capability_names(),
             [
                 "asr",
+                "audio-events",
                 "detect-faces",
                 "forced-align",
                 "speaker-embed",
@@ -733,6 +895,7 @@ mod tests {
         assert!(
             candidates_for_capability_names().into_iter().eq([
                 "asr",
+                "audio-events",
                 "detect-faces",
                 "forced-align",
                 "speaker-embed",
@@ -863,6 +1026,28 @@ mod tests {
                 assert_eq!(implementation.backend, "llama.cpp");
                 assert_eq!(implementation.accelerator_class, "llama.cpp");
                 assert!(crate::jobs::accelerator_bit(implementation.accelerator_class).is_some());
+            }
+            assert!(!nine.opt_in && four.opt_in);
+            assert_ne!(nine.name, four.name);
+        }
+    }
+
+    /// A Mac offers the same choice: the 9B unless a person picks the 4B,
+    /// both on the editorial worker's MLX runtime and the Metal accelerator.
+    #[test]
+    fn every_editorial_stage_offers_the_4b_on_apple_silicon() {
+        for stage in [
+            "editorial-propose",
+            "editorial-review",
+            "editorial-look",
+            "youtube-metadata",
+        ] {
+            let nine = for_stage_and_model(stage, "qwen3-5-editorial-mlx").expect(stage);
+            let four = for_stage_and_model(stage, "qwen3-5-4b-editorial-mlx").expect(stage);
+            for implementation in [nine, four] {
+                assert_eq!(implementation.worker, "editorial");
+                assert_eq!(implementation.backend, "mlx");
+                assert_eq!(implementation.accelerator_class, "metal");
             }
             assert!(!nine.opt_in && four.opt_in);
             assert_ne!(nine.name, four.name);
