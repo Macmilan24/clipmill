@@ -71,19 +71,32 @@ pub(crate) async fn execute_rank_task(
     progress.set("stages", 1, 3);
 
     let request = request_of(&payload);
-    let document = clipmill_discovery::rank(
-        &candidates,
-        &index,
-        &transcript,
-        RankingInputs {
-            candidates: &resolved.address("discovery.candidates.v1")?,
-            index: &resolved.address("index.transcript.v1")?,
-            transcript: &resolved.address("speech.transcript.v1")?,
-        },
-        request,
-        IMPLEMENTATION,
-    )
-    .map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
+    let addresses = (
+        resolved.address("discovery.candidates.v1")?,
+        resolved.address("index.transcript.v1")?,
+        resolved.address("speech.transcript.v1")?,
+    );
+    // Ranking a long recording's candidates is seconds of computation. On the
+    // async runtime it starves this task's lease heartbeat, the lease expires
+    // and every retry ends the same way, so it runs on a blocking thread.
+    let (ranked, index) = tokio::task::spawn_blocking(move || {
+        let ranked = clipmill_discovery::rank(
+            &candidates,
+            &index,
+            &transcript,
+            RankingInputs {
+                candidates: &addresses.0,
+                index: &addresses.1,
+                transcript: &addresses.2,
+            },
+            request,
+            IMPLEMENTATION,
+        );
+        (ranked, index)
+    })
+    .await
+    .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    let document = ranked.map_err(|error| TaskExecutionError::deterministic(error.to_string()))?;
     let judgments = resolved
         .read_optional::<clipmill_contracts::schemas::editorial_judgments::EditorialJudgments>(
             "editorial.judgments.v1",
