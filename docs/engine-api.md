@@ -113,6 +113,19 @@ valid input-response maps without changing a job. Progress is available by
 polling. See the [Tasks extension](https://modelcontextprotocol.io/extensions/tasks/overview)
 and [Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http).
 
+When a modern client supports form elicitation, `clipmill_export_clip` first
+asks the person for a rights statement on the original tool call. The engine
+checks the render grant, caller, exact arguments and five-minute expiry when
+the client returns the form. Declining or cancelling finishes without creating
+a job. After a daemon restart, a client can begin a fresh confirmation.
+Other clients pass the person's statement through the existing `rights` argument.
+
+Tool results that create an edit include a `resource_link` to its document.
+Read it through `resources/read` with the read scope, using the returned
+`clipmill://edits/{doc_id}` URI. The payload contains the current revision and
+edit document. The resource template is discoverable through
+`resources/templates/list`.
+
 A retried write can carry the same `Idempotency-Key` header on either HTTP
 endpoint. Over stdio, provide the key as `params._meta["io.clipmill/requestId"]`
 on a tool call. Keys accept 1 to 255 printable ASCII bytes. Reuse a key only

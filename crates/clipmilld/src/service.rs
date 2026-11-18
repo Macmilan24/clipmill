@@ -3,6 +3,7 @@ mod assets;
 mod batch;
 mod briefs;
 mod engine;
+mod mcp_consent;
 mod models;
 mod resources;
 mod search;

@@ -30,7 +30,7 @@ pub(super) fn server_info() -> Value {
 pub(super) fn discovery() -> Value {
     json!({
         "supportedVersions": versions(),
-        "capabilities": { "tools": {}, "extensions": { (TASKS): {} } },
+        "capabilities": { "tools": {}, "resources": {}, "extensions": { (TASKS): {} } },
         "instructions": super::INSTRUCTIONS,
     })
 }

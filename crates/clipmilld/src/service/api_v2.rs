@@ -36,8 +36,10 @@ const TOKEN_PREFIX: &str = "cmt_";
 const READ_CHUNK: u64 = 4 * 1024 * 1024;
 
 /// Every operation and the scope it needs.
-pub(crate) const OPERATIONS: [(&str, &str); 33] = [
+pub(crate) const OPERATIONS: [(&str, &str); 35] = [
     ("whoami", "authenticated"),
+    ("mcp_export_consent", "render"),
+    ("read_edit_resource", "read"),
     ("audit_log", "read"),
     ("status", "read"),
     ("list_projects", "read"),
@@ -453,6 +455,8 @@ impl Service {
     ) -> ApiResult {
         match op {
             "whoami" => Ok(json!({"client_id": caller.client_id, "scopes": caller.scopes})),
+            "mcp_export_consent" => super::mcp_consent::export_consent(&caller.client_id, args),
+            "read_edit_resource" => self.get_api_edit(args).await,
             "status" => {
                 let health = self
                     .v1(request::Body::Health(HealthRequest {}), None)
