@@ -799,7 +799,12 @@ fn cli_path() -> Option<String> {
     if let Some(explicit) = std::env::var_os("CLIPMILL_CLI_BIN") {
         return Some(std::path::PathBuf::from(explicit).display().to_string());
     }
-    let directory = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let executable = std::env::current_exe().ok()?;
+    #[cfg(target_os = "linux")]
+    if let Some(image) = packaged::appimage_path(&executable) {
+        return Some(image.display().to_string());
+    }
+    let directory = executable.parent()?;
     let sibling = directory.join(format!("clipmill{}", std::env::consts::EXE_SUFFIX));
     sibling.is_file().then(|| sibling.display().to_string())
 }
@@ -1050,6 +1055,15 @@ async fn stream_task_events(supervisor: Arc<DaemonSupervisor>, app: tauri::AppHa
     reason = "Tauri command registration is kept together in the app builder"
 )]
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--print-cli-path")) {
+        println!(
+            "{}",
+            cli_path().ok_or("The bundled ClipMill command is missing")?
+        );
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
+    packaged::forward_appimage_cli()?;
     let config = clipmilld::Config::resolve(None, None)?;
     let socket = config.paths.socket.clone();
     tracing::info!(socket = %socket.display(), "resolved daemon socket");

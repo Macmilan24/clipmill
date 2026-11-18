@@ -13,6 +13,9 @@ argument `mcp`. Settings shows the command path for this installation. Put
 `CLIPMILL_TOKEN` in the host's private environment or credential store. Avoid
 putting the token in a project file, command history or shared configuration.
 
+The Linux AppImage can start the MCP server itself. Keep the image at the
+path shown in Settings so the same configuration works after Studio restarts.
+
 For an HTTP client, run `clipmill serve` while ClipMill is open. Set the MCP
 endpoint to `http://127.0.0.1:7428/mcp` and supply the connected-client token
 as an Authorization bearer credential. The gateway runs on this computer.

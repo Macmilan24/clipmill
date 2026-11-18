@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 
-def verify(directory: Path) -> None:
+def verify(command: Path, environment: dict[str, str]) -> None:
     root = Path(__file__).resolve().parents[2]
     version = json.loads((root / "apps/desktop/src-tauri/tauri.conf.json").read_text())["version"]
-    command = directory / ("clipmill.exe" if os.name == "nt" else "clipmill")
     request = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -29,10 +29,10 @@ def verify(directory: Path) -> None:
         result = subprocess.run(
             [command.resolve(), "mcp"],
             input=json.dumps(request) + "\n",
-            env={**os.environ, "CLIPMILL_DATA_DIR": state},
+            env={**environment, "CLIPMILL_DATA_DIR": state},
             text=True,
             capture_output=True,
-            timeout=15,
+            timeout=60,
             check=True,
         )
     reply = json.loads(result.stdout)
@@ -42,5 +42,38 @@ def verify(directory: Path) -> None:
     print(f"Installed CLI started the ClipMill {version} MCP server")
 
 
+def verify_appimage(artifact: Path) -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary).resolve()
+        image = root / "ClipMill portable studio.AppImage"
+        shutil.copy2(artifact, image)
+        for launch in ("first", "second"):
+            scratch = root / launch
+            scratch.mkdir()
+            # The real AppImage runtime's no-FUSE mode uses a fresh AppDir.
+            environment = {
+                **os.environ,
+                "APPIMAGE_EXTRACT_AND_RUN": "1",
+                "TMPDIR": str(scratch),
+                "CLIPMILL_DATA_DIR": str(root / "state"),
+            }
+            result = subprocess.run(
+                [image, "--print-cli-path"],
+                env=environment,
+                text=True,
+                capture_output=True,
+                timeout=60,
+                check=True,
+            )
+            configured = Path(result.stdout.strip())
+            if configured != image:
+                raise SystemExit(f"Portable Settings command changed to {configured}")
+            verify(configured, environment)
+
+
 if __name__ == "__main__":
-    verify(Path(sys.argv[1]))
+    if sys.argv[1] == "--appimage":
+        verify_appimage(Path(sys.argv[2]))
+    else:
+        executable = "clipmill.exe" if os.name == "nt" else "clipmill"
+        verify(Path(sys.argv[1]) / executable, dict(os.environ))
