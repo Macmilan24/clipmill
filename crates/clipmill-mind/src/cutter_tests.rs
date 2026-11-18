@@ -149,6 +149,40 @@ fn a_distant_answer_is_stitched_to_its_question() {
 }
 
 #[test]
+fn a_long_linked_answer_uses_the_available_sentence_boundary() {
+    let (source, words) = recording();
+    let fingerprint = format!("sha256:{}", "a".repeat(64));
+    let material = Material {
+        source_fingerprint: &fingerprint,
+        source: &source,
+        words: &words,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    };
+    let candidate = stitched(
+        &material,
+        &Table::new(&material),
+        [
+            (3, 3, "question", "Price?"),
+            (30, 50, "answer", "The price"),
+        ],
+        "l1 question_answer: m1>m2",
+        vec!["l1".to_owned()],
+    )
+    .expect("a 5-second question and a 53-second answer fit the 60-second budget");
+    assert_eq!(candidate.plan.duration_ticks.get(), 58 * S);
+    assert_eq!(
+        candidate.plan.parts[1].units.first().unwrap().as_str(),
+        "s30"
+    );
+    assert_eq!(
+        candidate.plan.parts[1].units.last().unwrap().as_str(),
+        "s38"
+    );
+}
+
+#[test]
 fn a_tangent_inside_a_story_is_cut_out() {
     let found = cut(true);
     let tight = find(&found, MindClipPlanForm::Tightened);
@@ -194,6 +228,64 @@ fn most_candidates_are_more_than_one_straight_span() {
         .filter(|c| c.plan.form != MindClipPlanForm::Straight)
         .count();
     assert!(shaped * 2 > found.len(), "{:?}", forms(&found));
+}
+
+#[test]
+fn a_long_dependency_chain_cannot_replace_the_cited_event_with_its_distant_setup() {
+    let (source, words) = recording();
+    let mut table = Table::new(&Material {
+        source_fingerprint: "",
+        source: &source,
+        words: &words,
+        scores: None,
+        memory: None,
+        length: (15 * S, 25 * S),
+    });
+    for index in 1..=17 {
+        table.units[index].needs = Some(index - 1);
+    }
+    let (start, end) = table.fit(17, 23, (15 * S, 25 * S)).unwrap();
+    assert!((18..=23).contains(&start));
+    assert!(end >= start && (15 * S..=25 * S).contains(&table.kept(start, end)));
+    assert!(table.fit(17, 17, (15 * S, 25 * S)).is_none());
+}
+
+#[test]
+fn a_short_event_can_borrow_nearby_setup_and_landing_without_losing_its_evidence() {
+    let (source, words) = recording();
+    let mut table = Table::new(&Material {
+        source_fingerprint: "",
+        source: &source,
+        words: &words,
+        scores: None,
+        memory: None,
+        length: (15 * S, 23 * S),
+    });
+    table.units[7].needs = Some(6);
+    table.units[8].landing = 3;
+    let (start, end) = table.fit(7, 7, (15 * S, 23 * S)).unwrap();
+    assert_eq!((start, end), (6, 8));
+    assert_eq!(table.kept(start, end), 17 * S);
+
+    // An attractive but early landing between the linked events cannot
+    // stand in for the later answer. Both endpoints must survive the cut.
+    let question = (7, 7);
+    let answer = (12, 12);
+    assert!(
+        table
+            .fit_anchored(question, answer, (15 * S, 23 * S))
+            .is_none()
+    );
+    let (start, end) = table
+        .fit_anchored(question, answer, (15 * S, 45 * S))
+        .unwrap();
+    assert!(start <= 7 && end >= 12);
+    table.units[12].cut = Some("tangent");
+    assert!(
+        table
+            .fit_anchored(question, answer, (15 * S, 45 * S))
+            .is_none()
+    );
 }
 
 #[test]

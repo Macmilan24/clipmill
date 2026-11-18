@@ -22,6 +22,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
+use std::ops::RangeInclusive;
 
 use clipmill_contracts::schemas::mind_clip_plan::MindClipPlan;
 use clipmill_contracts::schemas::mind_memory::{EventKind, EventMood, LinkKind, MindMemory};
@@ -224,51 +225,66 @@ impl Table {
         span.saturating_sub(removed)
     }
 
-    /// Moves the edges of `a..=b` off lines a tight cut would drop, and back
-    /// over the lines its opening depends on.
-    fn settle(&self, mut a: usize, mut b: usize) -> Option<(usize, usize)> {
+    /// The source evidence a cut can actually play from this event.
+    fn kept_edges(&self, (mut a, mut b): (usize, usize)) -> Option<(usize, usize)> {
         while a < b && self.units[a].cut.is_some() {
             a += 1;
         }
         while b > a && self.units[b].cut.is_some() {
             b -= 1;
         }
-        while let Some(earlier) = self.units[a].needs {
-            if a - earlier > NEEDS_REACH_UNITS {
-                return None;
-            }
-            a = earlier;
-        }
-        Some((a, b))
+        self.units[a].cut.is_none().then_some((a, b))
     }
 
     /// The best span inside or around `a..=b` whose kept length is within
     /// `(min, max)`: open on the strongest standalone line, close on the
     /// strongest landing.
     fn fit(&self, a: usize, b: usize, length: (u64, u64)) -> Option<(usize, usize)> {
-        let (a, b) = self.settle(a, b)?;
+        self.fit_anchored((a, b), (a, b), length)
+    }
+
+    /// Keep audible evidence from both events, including any nearby context
+    /// needed for a standalone opening.
+    fn fit_anchored(
+        &self,
+        first: (usize, usize),
+        last: (usize, usize),
+        length: (u64, u64),
+    ) -> Option<(usize, usize)> {
+        let (a, last_start) = self.kept_edges(first)?;
+        let (first_end, b) = self.kept_edges(last)?;
+        let mut opening = a;
+        while let Some(earlier) = self.units[opening].needs {
+            if a - earlier > NEEDS_REACH_UNITS {
+                // Try an independent opening inside this event instead.
+                opening = a;
+                break;
+            }
+            opening = earlier;
+        }
         // Where a moment starts is the reader's judgment: open within its
         // first quarter, and later only when nothing earlier fits the length.
         // A strong line deep inside a moment is what a cold open is for.
-        let near = a + (b - a) / 4;
-        self.search((a, b), near, length)
-            .or_else(|| self.search((a, b), b, length))
+        let near = (a + (b - a) / 4).min(last_start);
+        self.search((a, b), opening..=near, first_end, length)
+            .or_else(|| self.search((a, b), opening..=last_start, first_end, length))
     }
 
     fn search(
         &self,
         (a, b): (usize, usize),
-        last_start: usize,
+        openings: RangeInclusive<usize>,
+        first_end: usize,
         (min, max): (u64, u64),
     ) -> Option<(usize, usize)> {
         let reach = (b + EXTEND_UNITS).min(self.units.len() - 1);
         let mut best: Option<(i64, usize, usize)> = None;
-        for start in a..=last_start {
+        for start in openings {
             // A line that depends on an earlier one cannot open a part.
             if self.units[start].needs.is_some() || self.units[start].cut.is_some() {
                 continue;
             }
-            for end in start..=reach {
+            for end in start.max(first_end)..=reach {
                 if self.units[end].cut.is_some() {
                     continue;
                 }
@@ -280,7 +296,7 @@ impl Table {
                     continue;
                 }
                 // Prefer covering the moment, then strong edges, then length.
-                let covered = i64::try_from(end.min(b) + 1 - start).unwrap_or(0);
+                let covered = i64::try_from(end.min(b) + 1 - start.max(a)).unwrap_or(0);
                 let past = i64::try_from(end.saturating_sub(b)).unwrap_or(0);
                 let score = 4 * i64::from(self.units[start].hook)
                     + 4 * i64::from(self.units[end].landing)
@@ -676,7 +692,7 @@ fn links(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &mu
         ];
         let gap = table.units[ta].start.saturating_sub(table.units[fb].end);
         let candidate = if gap < STITCH_MIN_GAP_TICKS {
-            joined(material, table, (fa, tb), from_title, evidence)
+            joined(material, table, [(fa, fb), (ta, tb)], from_title, evidence)
         } else {
             stitched(
                 material,
@@ -699,11 +715,11 @@ fn links(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &mu
 fn joined(
     material: &Material<'_>,
     table: &Table,
-    (a, b): (usize, usize),
+    [first, last]: [(usize, usize); 2],
     title: &str,
     evidence: Vec<String>,
 ) -> Option<Candidate> {
-    let (a, b) = table.fit(a, b, material.length)?;
+    let (a, b) = table.fit_anchored(first, last, material.length)?;
     let form = single_form(table, a, b);
     let plan = assemble(
         material,
@@ -744,18 +760,15 @@ fn stitched(
     // The first half sets up: keep it short so the payoff has the time.
     let (fa, fb) = table.fit(fa, fb, (MIN_PART_TICKS, max * 2 / 5))?;
     let first = table.kept(fa, fb);
-    // The payoff is the reason for the clip: all of it, or as much as fits,
-    // never a lone line cut from it.
+    // Keep the entire payoff when it fits. A longer answer may end on the
+    // best available sentence boundary below the remaining time budget.
     let room = max.saturating_sub(first);
-    let whole = table.kept(ta, tb).min(room);
-    let (ta, tb) = table.fit(
-        ta,
-        tb,
-        (
-            min.saturating_sub(first).max(whole).max(MIN_PART_TICKS),
-            room,
-        ),
-    )?;
+    let whole = table.kept(ta, tb);
+    let mut minimum = min.saturating_sub(first).max(MIN_PART_TICKS);
+    if whole <= room {
+        minimum = minimum.max(whole);
+    }
+    let (ta, tb) = table.fit(ta, tb, (minimum, room))?;
     let plan = assemble(
         material,
         table,

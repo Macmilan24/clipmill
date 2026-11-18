@@ -30,7 +30,7 @@ use crate::{
 pub(crate) const KIND_SCRIPT: &str = "mind-script";
 pub(crate) const KIND_CUT: &str = "mind-cut";
 pub(crate) const SCRIPT_IMPLEMENTATION: &str = "clipmill-mind-script@1.0.0";
-pub(crate) const CUT_IMPLEMENTATION: &str = "clipmill-mind-cut@1.2.0";
+pub(crate) const CUT_IMPLEMENTATION: &str = "clipmill-mind-cut@1.3.0";
 /// Key version every mind stage payload carries.
 pub(crate) const MIND_STAGE_KEY_VERSION: &str = "clipmill.mind-stage.v1";
 /// About how much script one call reads: room for a 4B model's prompt, the
@@ -391,7 +391,7 @@ pub(crate) async fn execute_cut_task(
     let mut config = Map::new();
     config.insert("min_ticks".to_owned(), json!(length.0));
     config.insert("max_ticks".to_owned(), json!(length.1));
-    config.insert("algorithm".to_owned(), json!("clipmill.mind.cutter.v3"));
+    config.insert("algorithm".to_owned(), json!("clipmill.mind.cutter.v4"));
     config.insert(
         "editorial_prompt".to_owned(),
         json!(payload.editorial_prompt),
