@@ -1302,11 +1302,17 @@ fn display_reason(selected_by: &str) -> &'static str {
 }
 
 /// What an x86-64 processor offers that the bundled native runtimes rely on.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "These are independent CPUID flags; a VM may expose any combination."
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct CpuFeatures {
+    pub x86_64_v2: bool,
     pub avx2: bool,
     pub fma: bool,
     pub f16c: bool,
+    pub bmi2: bool,
 }
 
 impl CpuFeatures {
@@ -1315,27 +1321,40 @@ impl CpuFeatures {
     pub(crate) fn here() -> Self {
         #[cfg(target_arch = "x86_64")]
         {
+            // The locked NumPy x64 wheel checks this feature group on import.
+            // SSE and SSE2 are already part of the x86-64 architecture.
+            let lahf_sahf = std::arch::x86_64::__cpuid(0x8000_0000).eax >= 0x8000_0001
+                && std::arch::x86_64::__cpuid(0x8000_0001).ecx & 1 != 0;
             Self {
+                x86_64_v2: std::arch::is_x86_feature_detected!("sse3")
+                    && std::arch::is_x86_feature_detected!("ssse3")
+                    && std::arch::is_x86_feature_detected!("sse4.1")
+                    && std::arch::is_x86_feature_detected!("sse4.2")
+                    && std::arch::is_x86_feature_detected!("popcnt")
+                    && std::arch::is_x86_feature_detected!("cmpxchg16b")
+                    && lahf_sahf,
                 avx2: std::arch::is_x86_feature_detected!("avx2"),
                 fma: std::arch::is_x86_feature_detected!("fma"),
                 f16c: std::arch::is_x86_feature_detected!("f16c"),
+                bmi2: std::arch::is_x86_feature_detected!("bmi2"),
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
             Self {
+                x86_64_v2: true,
                 avx2: true,
                 fma: true,
                 f16c: true,
+                bmi2: true,
             }
         }
     }
 
-    /// The bundled whisper.cpp is ggml's x86-64 build with AVX2, FMA and F16C:
-    /// on a processor without them it dies on its first instruction rather
-    /// than refusing (issue #140), so it is not offered there at all.
+    /// The upstream x86-64 wheel requires these instructions. The Windows
+    /// binding instead dispatches to a kernel supported by the process.
     pub(crate) fn runs_whisper_cpp(self) -> bool {
-        self.avx2 && self.fma && self.f16c
+        self.avx2 && self.fma && self.f16c && self.bmi2
     }
 }
 
@@ -1348,9 +1367,20 @@ fn supported_on(manifest: &ModelManifest, cpu: CpuFeatures) -> Result<(), &'stat
     if manifest.runtime == "mlx" && !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         return Err("Runs only on Macs with Apple silicon.");
     }
-    if manifest.runtime == "whisper.cpp" && !cpu.runs_whisper_cpp() {
+    if manifest.runtime == "whisper.cpp"
+        && cfg!(all(target_os = "windows", target_arch = "x86_64"))
+        && !cpu.x86_64_v2
+    {
         return Err(
-            "Needs a processor with AVX2, which this one lacks. Parakeet recognizes speech on it.",
+            "Transcription on Windows requires an x86-64-v2 processor, including SSE4.2 and POPCNT.",
+        );
+    }
+    if manifest.runtime == "whisper.cpp"
+        && !cfg!(all(target_os = "windows", target_arch = "x86_64"))
+        && !cpu.runs_whisper_cpp()
+    {
+        return Err(
+            "This Whisper build needs AVX2, FMA, F16C and BMI2. Parakeet is available for its supported languages.",
         );
     }
     // The pinned llama.cpp server ships in the Windows and Linux builds only.

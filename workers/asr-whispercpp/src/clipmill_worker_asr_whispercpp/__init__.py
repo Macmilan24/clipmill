@@ -41,7 +41,6 @@ from clipmill_worker_sdk.inputs import LeaseInputs, MissingInputError
 from clipmill_worker_sdk.ticks import samples_to_ticks, samples_to_ticks_ceil, ticks_to_samples
 from clipmill_worker_sdk.weights import ModelVerificationError, VerifiedModel, require_model
 
-from .cpu import missing_instructions
 from .engine import (
     IMPLEMENTATION,
     VERBATIM,
@@ -65,14 +64,6 @@ LOGGER = logging.getLogger(__name__)
 
 def execute_asr(context: TaskContext) -> tuple[str, ...]:
     context.cancellation.raise_if_cancelled()
-    missing = missing_instructions()
-    if missing:
-        # Refused before whisper.cpp is touched: it would not raise, it would
-        # take the whole worker down on its first instruction.
-        raise DeterministicTaskError(
-            f"This processor lacks {', '.join(missing)}, which the bundled Whisper needs. "
-            "Choose Parakeet for speech in Models, then analyze again."
-        )
     payload = _payload(context)
     try:
         model = require_model(context.lease, "asr")

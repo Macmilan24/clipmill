@@ -807,25 +807,43 @@ async fn a_fresh_install_asks_for_the_editorial_model_this_platform_runs() {
     assert_eq!(binding.model, expected);
 }
 
-/// Issue #140: an Ivy Bridge i7 has AVX but not AVX2, and the bundled
-/// whisper.cpp died on it with an illegal instruction. It is not offered there.
+/// An Ivy Bridge CPU can use the dispatched Windows wheel. The upstream
+/// fixed-ISA wheel must still be refused where the host lacks AVX2.
 #[test]
-fn whisper_cpp_is_not_offered_to_a_processor_without_avx2() {
+fn whisper_cpp_support_matches_the_wheel_shipped_for_this_platform() {
     let manifest = tiny_manifest("whisper-tiny", b"weights");
     let ivy_bridge = super::CpuFeatures {
+        x86_64_v2: true,
         avx2: false,
         fma: false,
         f16c: true,
+        bmi2: false,
     };
-    let reason = super::supported_on(&manifest, ivy_bridge).expect_err("refused");
-    assert!(
-        reason.contains("AVX2") && reason.contains("Parakeet"),
-        "{reason}"
-    );
+    let result = super::supported_on(&manifest, ivy_bridge);
+    if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        assert!(result.is_ok());
+        let core_2 = super::CpuFeatures {
+            x86_64_v2: false,
+            ..ivy_bridge
+        };
+        let reason = super::supported_on(&manifest, core_2).expect_err("NumPy needs x86-64-v2");
+        assert!(
+            reason.contains("SSE4.2") && reason.contains("POPCNT"),
+            "{reason}"
+        );
+    } else {
+        let reason = result.expect_err("the stock wheel needs AVX2");
+        assert!(
+            reason.contains("AVX2") && reason.contains("Parakeet"),
+            "{reason}"
+        );
+    }
     let haswell = super::CpuFeatures {
+        x86_64_v2: true,
         avx2: true,
         fma: true,
         f16c: true,
+        bmi2: true,
     };
     assert!(super::supported_on(&manifest, haswell).is_ok());
     let mut other = manifest;

@@ -1,0 +1,32 @@
+[project]
+name = "pywhispercpp"
+version = "1.5.0+clipmill.1"
+description = "pywhispercpp with CPU-dispatched Windows x64 kernels for ClipMill"
+license = "AGPL-3.0-only AND MIT AND BSD-3-Clause"
+requires-python = ">=3.12"
+dependencies = ["numpy>=2", "platformdirs", "requests", "tqdm"]
+
+[project.urls]
+Upstream = "https://github.com/absadiki/pywhispercpp/tree/v1.5.0"
+
+[project.scripts]
+pwcpp = "pywhispercpp.examples.main:main"
+pwcpp-assistant = "pywhispercpp.examples.assistant:_main"
+pwcpp-livestream = "pywhispercpp.examples.livestream:_main"
+pwcpp-recording = "pywhispercpp.examples.recording:_main"
+pwcpp-gui = "pywhispercpp.examples.gui:_main"
+
+[build-system]
+requires = ["hatchling==1.33.0", "cmake==4.4.2; sys_platform == 'win32'"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "build_windows.py"
+
+[tool.clipmill.upstream]
+# The PyPI sdist includes the binding, pybind11, whisper.cpp and its ggml kernels.
+url = "https://files.pythonhosted.org/packages/1c/43/8778f0685a4d32d74efdfa78fc5f745ca9998d96f8121dbf7793db2da5d3/pywhispercpp-1.5.0.tar.gz"
+sha256 = "5aa54c73ec96617d97aa519dbbf817e44255eddd9bd52ee1243be61028dbd018"
