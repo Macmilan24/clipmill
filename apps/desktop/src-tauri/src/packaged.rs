@@ -14,7 +14,7 @@ use tauri::Manager as _;
 
 use crate::daemon::Launch;
 
-/// AppImage remounts its payload at a new path on each launch. Settings uses
+/// `AppImage` remounts its payload at a new path on each launch. Settings uses
 /// the original image, which can reopen its own CLI for a connected client.
 #[cfg(target_os = "linux")]
 pub(crate) fn appimage_path(executable: &std::path::Path) -> Option<PathBuf> {
