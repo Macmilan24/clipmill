@@ -359,15 +359,30 @@ def execute_look(context, inputs, model, payload):
     return ("looks.json", "trace.json")
 
 
+# The worker's memory ceiling follows the machine, because it loads whichever
+# model its lease binds and each task declares that model's own memory. The
+# floor is only what the smallest model needs: floored at the 9B instead, an
+# 8 GB Mac's worker offered more than the daemon's budget and was never given
+# any work, not even for the 4B. A machine whose memory cannot be read offers
+# the floor; CLIPMILL_WORKER_MEMORY_BYTES raises it.
+
+#: Weights plus runtime allowance of the smallest editorial model each runtime
+#: loads, as its manifest declares: Qwen3.5 4B, in
+#: models/registry/qwen3-5-4b-editorial-{mlx,gguf}.toml.
+SMALLEST_MODEL_BYTES = {
+    "mlx": 3_061_129_077 + 1_610_612_736,
+    "llama.cpp": 3_413_361_504 + 1_610_612_736,
+}
+
+
 def main() -> int:
+    backend = local_backend()
     return run_worker(
         execute,
         capabilities=CAPABILITIES,
         description="ClipMill local editorial worker",
-        backend=local_backend(),
-        # Loads whichever model the lease binds, so the ceiling follows the
-        # machine; the floor is the bundled Qwen3.5 9B and its runtime.
-        max_memory_bytes=memory_ceiling(5_977_071_067 + 2 * 1024**3),
+        backend=backend,
+        max_memory_bytes=memory_ceiling(SMALLEST_MODEL_BYTES[backend]),
     )
 
 
