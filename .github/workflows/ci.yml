@@ -152,7 +152,7 @@ jobs:
         run: python3 -m unittest discover -s tools/release/tests
       - name: pytest and installed license policy (all projects)
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speakers workers/speech-mlx workers/shots workers/faces workers/audio-events workers/editorial integrations/youtube-import eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/asr-parakeet workers/align workers/speakers workers/speech-mlx workers/shots workers/faces workers/audio-events workers/embed workers/editorial integrations/youtube-import eval/harness; do
             echo "==> $project"
             uv sync --frozen --quiet --project "$project"
             (cd "$project" && uv run --frozen pytest)
@@ -421,15 +421,14 @@ jobs:
       - name: Fetch and verify pinned FFmpeg sidecars
         run: ./tools/fetch-ffmpeg.sh
       # Keyed on the manifests, so re-pinning a model fetches it again and
-      # nothing else. The weights are half a gigabyte; a cache keyed on
-      # anything looser would either serve stale digests or never hit.
+      # nothing else. Cached files are verified again before inference.
       - name: Restore the pinned speech weights
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/models
-          key: speech-models-${{ runner.os }}-${{ hashFiles('models/registry/silero-vad.toml', 'models/registry/whisper-base.toml', 'models/registry/wav2vec2-ctc-en.toml') }}
+          key: speech-models-${{ runner.os }}-${{ hashFiles('models/registry/silero-vad.toml', 'models/registry/whisper-base.toml', 'models/registry/wav2vec2-ctc-en.toml', 'models/registry/parakeet-tdt-v3.toml') }}
       - name: Fetch and verify the pinned speech weights
-        run: ./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en
+        run: ./tools/fetch-models.sh silero-vad whisper-base wav2vec2-ctc-en parakeet-tdt-v3
       # The fixture is spoken by the platform's own voice. macOS has `say`;
       # Linux needs one installed, and the drill refuses to guess.
       - name: Install a speech synthesizer (Linux)
@@ -705,6 +704,14 @@ jobs:
       - run: uv sync --frozen --project eval/harness
       - run: ./tools/drills/device-drill.sh 1
       - run: ./tools/drills/eval-smoke.sh 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Exercise both MCP generations over stdio and HTTP
+        run: |
+          cargo build -p clipmill-cli -p clipmilld --bins
+          npm ci --ignore-scripts --prefix tools/drills/mcp-tasks
+          uv run --locked --project eval/harness python tools/drills/mcp-tasks/drive.py
 
   network-denial:
     name: network-denial (Local Lock gate)
@@ -831,7 +838,7 @@ jobs:
           enable-cache: true
       - name: Sync every frozen Python environment
         run: |
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speakers workers/speech-mlx workers/shots workers/faces workers/audio-events workers/editorial integrations/youtube-import eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/asr-parakeet workers/align workers/speakers workers/speech-mlx workers/shots workers/faces workers/audio-events workers/embed workers/editorial integrations/youtube-import eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Audit every Python lockfile
@@ -871,7 +878,7 @@ jobs:
         run: |
           ./tools/fetch-ffmpeg.sh
           pnpm install --frozen-lockfile
-          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/align workers/speakers workers/speech-mlx workers/shots workers/faces workers/audio-events workers/editorial integrations/youtube-import eval/harness; do
+          for project in workers/sdk workers/echo workers/vad workers/asr-whispercpp workers/asr-parakeet workers/align workers/speakers workers/speech-mlx workers/shots workers/faces workers/audio-events workers/embed workers/editorial integrations/youtube-import eval/harness; do
             uv sync --frozen --project "$project"
           done
       - name: Reproducible security gate

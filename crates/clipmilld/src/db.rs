@@ -28,6 +28,8 @@ mod youtube_publish_store;
 mod youtube_store;
 pub(crate) use youtube_publish_store::{Publication, PublishingCommand, PublishingReply};
 pub(crate) use youtube_store::YoutubeCommand;
+mod agent_store;
+pub(crate) use agent_store::{AgentClient, AgentCommand, AgentReply, AuditEntry};
 mod batch_store;
 pub(crate) use batch_store::BatchCommand;
 mod job_store;
@@ -44,7 +46,7 @@ mod decision_store;
 pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 16;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -127,6 +129,10 @@ impl DbActor {
                                 Command::Batch { command, reply } => {
                                     let _result =
                                         reply.send(batch_store::execute(&mut connection, command));
+                                }
+                                Command::Agent { command, reply } => {
+                                    let _result =
+                                        reply.send(agent_store::execute(&mut connection, command));
                                 }
                                 Command::ReplayRequest {
                                     request_id,
@@ -218,16 +224,18 @@ impl DbActor {
                                         ));
                                 }
                                 Command::SubmitJob {
+                                    owner,
                                     request_id,
                                     request_hash,
                                     plan,
                                     reply,
                                 } => {
-                                    let _result = reply.send(job_store::submit_job(
+                                    let _result = reply.send(job_store::submit_job_as(
                                         &mut connection,
                                         &request_id,
                                         &request_hash,
                                         &plan,
+                                        owner.as_deref(),
                                     ));
                                 }
                                 Command::GetJob { job_id, reply } => {
@@ -313,6 +321,11 @@ impl DbActor {
                                         &daemon_epoch,
                                         recovered_unix_millis,
                                     ));
+                                }
+                                Command::WorkerDisconnected { worker, now } => {
+                                    if let Err(error) = job_store::governor::disconnect(&connection, &worker, now) {
+                                        tracing::warn!(%error, "could not retire the worker reservation");
+                                    }
                                 }
                                 Command::LeaseNextTask { request, reply } => {
                                     let _result =
@@ -432,6 +445,7 @@ impl DbActor {
                                         reply.send(job_store::current_event_id(&connection));
                                 }
                                 Command::ListEvents {
+                                    limit,
                                     after_event_id,
                                     filter,
                                     reply,
@@ -440,6 +454,7 @@ impl DbActor {
                                         &connection,
                                         after_event_id,
                                         &filter,
+                                        limit,
                                     ));
                                 }
                                 Command::FindSourceObservation {
@@ -780,6 +795,16 @@ impl DbHandle {
         received.await.map_err(|_| StoreError::Stopped)?
     }
 
+    /// Connected agents and the engine API's audit log.
+    pub(crate) async fn agents(&self, command: AgentCommand) -> Result<AgentReply, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::Agent { command, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
     pub(crate) async fn replay_request(
         &self,
         request_id: String,
@@ -941,10 +966,12 @@ impl DbHandle {
         request_id: String,
         request_hash: [u8; 32],
         plan: JobPlan,
+        owner: Option<String>,
     ) -> Result<MutationResult, StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::SubmitJob {
+                owner,
                 request_id,
                 request_hash,
                 plan,
@@ -1083,6 +1110,13 @@ impl DbHandle {
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    pub(crate) async fn worker_disconnected(&self, worker: String, now: u64) {
+        let _sent = self
+            .sender
+            .send(Command::WorkerDisconnected { worker, now })
+            .await;
     }
 
     pub(crate) async fn lease_next_task(
@@ -1261,9 +1295,19 @@ impl DbHandle {
         after_event_id: u64,
         filter: EventFilter,
     ) -> Result<Vec<TaskEventRecord>, StoreError> {
+        self.list_events_page(after_event_id, filter, -1).await
+    }
+
+    pub(crate) async fn list_events_page(
+        &self,
+        after_event_id: u64,
+        filter: EventFilter,
+        limit: i64,
+    ) -> Result<Vec<TaskEventRecord>, StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::ListEvents {
+                limit,
                 after_event_id,
                 filter,
                 reply,
@@ -1661,6 +1705,10 @@ enum Command {
         >,
     },
 
+    Agent {
+        command: AgentCommand,
+        reply: oneshot::Sender<Result<AgentReply, StoreError>>,
+    },
     Batch {
         command: BatchCommand,
         reply: oneshot::Sender<
@@ -1764,6 +1812,7 @@ enum Command {
         reply: oneshot::Sender<Result<Vec<String>, StoreError>>,
     },
     SubmitJob {
+        owner: Option<String>,
         request_id: String,
         request_hash: [u8; 32],
         plan: JobPlan,
@@ -1811,6 +1860,10 @@ enum Command {
         daemon_epoch: String,
         recovered_unix_millis: u64,
         reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
+    },
+    WorkerDisconnected {
+        worker: String,
+        now: u64,
     },
     LeaseNextTask {
         request: LeaseRequest,
@@ -1869,6 +1922,7 @@ enum Command {
         reply: oneshot::Sender<Result<u64, StoreError>>,
     },
     ListEvents {
+        limit: i64,
         after_event_id: u64,
         filter: EventFilter,
         reply: oneshot::Sender<Result<Vec<TaskEventRecord>, StoreError>>,
@@ -2094,8 +2148,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(batch_store::CREATE_V12_TABLES)?;
         transaction.execute_batch(youtube_store::CREATE_V13_TABLES)?;
         transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
+        transaction.execute_batch(agent_store::CREATE_V15_TABLES)?;
+        transaction.execute_batch(agent_store::CREATE_V16_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 14;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 16;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -2146,7 +2202,13 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 14 {
             transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 14;")?;
+        if version < 15 {
+            transaction.execute_batch(agent_store::CREATE_V15_TABLES)?;
+        }
+        if version < 16 {
+            transaction.execute_batch(agent_store::CREATE_V16_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 16;")?;
         transaction.commit()?;
     }
     Ok(())
@@ -2488,6 +2550,7 @@ fn project_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+    mod governor;
 
     #[cfg(unix)]
     use std::path::Path;
@@ -4541,6 +4604,8 @@ mod tests {
                 now_unix_millis: 31,
                 expires_unix_millis: 15031,
                 capacity: ResourceCapacity::w4_builtin(),
+                machine: ResourceCapacity::w4_builtin(),
+                residency: crate::jobs::WorkerResidency::Stateless,
                 worker_id: "test-cloud".into(),
                 capabilities: vec![
                     cloud_kind.into(),
@@ -4614,6 +4679,8 @@ mod tests {
                 now_unix_millis: 31,
                 expires_unix_millis: 15031,
                 capacity: ResourceCapacity::w4_builtin(),
+                machine: ResourceCapacity::w4_builtin(),
+                residency: crate::jobs::WorkerResidency::Stateless,
                 worker_id: format!("{family}-worker"),
                 foreign_implementations: crate::implementations::foreign_to(family, &stages)
                     .into_iter()
@@ -4651,6 +4718,38 @@ mod tests {
                 .unwrap_or_else(|| panic!("{runs_it} was not offered its own task"));
             assert_eq!(leased.implementation, implementation);
         }
+    }
+
+    /// The resource governor: a preview someone asked for is served before an
+    /// analysis that was queued first.
+    #[test]
+    fn a_job_someone_waits_on_is_leased_before_background_work() {
+        let temp = TempDir::new().unwrap();
+        let (_, mut connection) = database(&temp);
+        let p = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "governor", 10);
+        create_project(&mut connection, "p", &[1; 32], &p).unwrap();
+        let id = p.project_id.parse().unwrap();
+        let mut background = JobPlan::demo(&id, b"analysis".to_vec(), 20);
+        background.tasks.truncate(1);
+        background.tasks[0].is_final = true;
+        job_store::submit_job(&mut connection, "first", &[2; 32], &background).unwrap();
+        let mut preview = JobPlan::demo(&id, b"preview".to_vec(), 30);
+        preview.kind = "render-clip".to_owned();
+        preview.tasks.truncate(1);
+        preview.tasks[0].is_final = true;
+        job_store::submit_job(&mut connection, "second", &[3; 32], &preview).unwrap();
+        let leased = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            40,
+            15_040,
+            ResourceCapacity::w4_builtin(),
+        )
+        .unwrap()
+        .task
+        .expect("a task");
+        assert_eq!(leased.job_id, preview.job_id);
     }
 
     #[test]

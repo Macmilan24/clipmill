@@ -137,6 +137,28 @@ jobs:
         run: >
           codesign --verify --deep --strict --verbose=2
           "target/${{ matrix.target }}/release/bundle/macos/ClipMill.app"
+      - name: Connect to the installed MCP command (macOS)
+        if: runner.os == 'macOS'
+        run: >-
+          python3 tools/release/verify_cli.py
+          "target/${{ matrix.target }}/release/bundle/macos/ClipMill.app/Contents/MacOS"
+      - name: Connect to the installed MCP command (Debian)
+        if: runner.os == 'Linux'
+        run: |
+          dpkg-deb --extract target/${{ matrix.target }}/release/bundle/deb/*.deb "$RUNNER_TEMP/clipmill-install"
+          python3 tools/release/verify_cli.py "$RUNNER_TEMP/clipmill-install/usr/bin"
+      - name: Reconnect using the portable AppImage Settings command
+        if: runner.os == 'Linux'
+        run: python3 tools/release/verify_cli.py --appimage target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+      - name: Connect to the installed MCP command (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-Item "target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe"
+          $install = Join-Path $env:RUNNER_TEMP 'clipmill-install'
+          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$install" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
+          python tools/release/verify_cli.py "$install"
       - name: Collect the installers
         shell: bash
         run: |

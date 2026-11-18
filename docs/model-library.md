@@ -37,6 +37,21 @@ would crowd, such as an 8 GB Mac. The editorial worker offers the daemon only
 what the computer can spare, at least what the 4B needs; when the chosen model
 needs more than that, analysis readiness says so and suggests choosing a smaller model.
 
+## Running analysis beside an edit
+
+Workers and built-in stages share one resource budget. On a 16 GiB Mac, the
+daemon admits up to 12 GiB of declared task memory. A local editorial model
+continues to occupy its reservation between tasks. When another ready job needs
+that memory, the worker unloads its idle model and confirms the release before
+the daemon grants the waiting lease. A subsequent task for the same model can
+reuse it while capacity permits.
+
+An export, source probe, or other interactive job takes priority at the next
+eligible task boundary. Playback and changes to the editor's preview plan run
+directly. Active transcription and encoding finish their current task. The
+governor accounts for ClipMill's declarations. Other applications and actual
+memory use can change the pressure on a running system.
+
 ## Downloading
 
 A download is an explicit network operation, counted by the
@@ -68,9 +83,36 @@ Per job, the next analysis plans:
 3. otherwise any installed candidate, the portable one first;
 4. otherwise the default, which readiness then reports as not installed.
 
+### Speech recognition and word timing
+
+For a recording with a known, supported language, an unmeasured device uses
+Parakeet TDT v3 when installed. A chosen recognizer or a usable measured
+recognizer takes precedence. Parakeet recognizes words and measures their
+timing in the same CPU pass on macOS, Windows and Linux. Whisper and Qwen
+continue to use the selected forced aligner. With Parakeet explicitly selected,
+automatic transcription works within its 25 languages and reports the language
+as undetermined unless the caller supplies it. A request for another language
+uses an available general recognizer.
+
+Parakeet covers Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian,
+Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian,
+Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish,
+Swedish and Ukrainian. The model weighs 640 MiB. Its acoustic timing grid is
+80 ms. Words with no measured duration retain interpolated timing in the
+transcript. [NVIDIA model card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
+
 The choice is resolved when a job is planned and written into its tasks, so a
 change never alters an analysis already running. Removing a chosen model returns
 its job to automatic. Choices live in `state/model-choices.json`.
+
+The Parakeet worker uses the same ONNX Runtime CPU provider as voice detection
+and speaker identification. Its local feature, encoder and joint-decoder graphs
+expose both the emitted token and its duration. That lets the worker retain
+confidence and timing together without another alignment model. MLX offers an
+Apple-specific alternative. Sherpa-ONNX and NVIDIA's ggml runtime would each
+add a native runtime to the component. On the reference Apple silicon Mac the
+ONNX route timed 14 of 14 fixture words with an 81 ms median edge error. The
+fixture and threshold are shared with the existing speech gate. [ONNX export](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) · [MLX](https://github.com/senstella/parakeet-mlx) · [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx) · [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp)
 
 Some candidates are _opt-in_: Whisper Large v3 Turbo, and every model a person
 pins. A benchmark ranks speed, and these exist for other reasons — accuracy, or

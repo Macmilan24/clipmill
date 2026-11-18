@@ -206,6 +206,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "clipmill-worker-align" },
+    { name = "clipmill-worker-asr-parakeet" },
     { name = "clipmill-worker-asr-whispercpp" },
     { name = "clipmill-worker-speech-mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "clipmill-worker-vad" },
@@ -214,6 +215,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "clipmill-worker-align", editable = "../../../workers/align" },
+    { name = "clipmill-worker-asr-parakeet", editable = "../../../workers/asr-parakeet" },
     { name = "clipmill-worker-asr-whispercpp", editable = "../../../workers/asr-whispercpp" },
     { name = "clipmill-worker-speech-mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", editable = "../../../workers/speech-mlx" },
     { name = "clipmill-worker-vad", editable = "../../../workers/vad" },
@@ -223,6 +225,26 @@ requires-dist = [
 name = "clipmill-worker-align"
 version = "0.1.0"
 source = { editable = "../../../workers/align" }
+dependencies = [
+    { name = "clipmill-worker-sdk" },
+    { name = "numpy" },
+    { name = "onnxruntime" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "clipmill-worker-sdk", editable = "../../../workers/sdk" },
+    { name = "numpy", specifier = ">=2" },
+    { name = "onnxruntime", specifier = ">=1.20" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
+
+[[package]]
+name = "clipmill-worker-asr-parakeet"
+version = "0.1.0"
+source = { editable = "../../../workers/asr-parakeet" }
 dependencies = [
     { name = "clipmill-worker-sdk" },
     { name = "numpy" },

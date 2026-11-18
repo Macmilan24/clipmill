@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — Word timing, recording search and connected clients
+
+- Parakeet TDT v3 recognizes and times words locally with one model for 25
+  supported languages. Readiness follows the recording language and chosen
+  recognizer. Other recordings can still use Whisper and forced alignment.
+- The scheduler accounts for model residency, defers background work under
+  pressure and asks idle workers to release models when appropriate.
+- The bundled command and loopback gateway support modern MCP discovery,
+  durable tasks and earlier clients. A connected client can reopen an edit
+  and ask for the person's rights statement before submitting an export.
+
+- Search an analyzed recording from the CLI, local API, or MCP. Results include
+  timestamps, transcript text, and matches from chapters, people and memory
+  links. Installed local embeddings also find related wording.
+- Connect local clients in Settings, inspect their audit history, and revoke
+  their access. The `clipmill` command can analyze, review and export a clip.
 
 - **Editorial AI loads its model once per analysis.** Proposal, review and
   the visual check used to load the model again for each stage; on Windows and

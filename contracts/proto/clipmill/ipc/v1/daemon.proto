@@ -87,6 +87,13 @@ message Request {
     CancelEngineInstallRequest cancel_engine_install = 81;
     ShutdownRequest shutdown = 82;
     CheckForUpdateRequest check_for_update = 83;
+    // The engine API v2 that agents, the CLI and the gateway use.
+    EngineCallRequest engine_call = 84;
+    // Connected agents, managed from the Studio.
+    CreateAgentClientRequest create_agent_client = 85;
+    ListAgentClientsRequest list_agent_clients = 86;
+    RevokeAgentClientRequest revoke_agent_client = 87;
+    ListEngineAuditRequest list_engine_audit = 88;
   }
 }
 
@@ -156,6 +163,10 @@ message Response {
     EngineResponse engine = 65;
     ShutdownResponse shutdown = 66;
     CheckForUpdateResponse check_for_update = 67;
+    EngineCallResponse engine_call = 68;
+    AgentClientCreated agent_client_created = 69;
+    AgentClientsResponse agent_clients = 70;
+    EngineAuditResponse engine_audit = 71;
   }
 }
 
@@ -623,6 +634,18 @@ message AudioEventsStagePayloadV1 {
   // The registered task kind this payload belongs to.
   string stage = 2;
   string source_fingerprint = 3;
+}
+
+// What the embedding model is asked to do. For a recording's speech and
+// memory (`text-embed`) the inputs arrive on the lease and the payload names
+// the recording; for a search (`text-embed-query`) the payload carries the
+// words to search for.
+message TextEmbedPayloadV1 {
+  string key_version = 1;
+  // The registered task kind this payload belongs to.
+  string stage = 2;
+  string source_fingerprint = 3;
+  string query = 4;
 }
 
 // Versioned payload for the daemon-owned device profiler. The stable
@@ -1987,7 +2010,10 @@ message CheckForUpdateResponse {
 // started used to show as a stage sitting planned forever with nothing to say.
 // This is the question a screen asks before submitting, and again while a
 // stage waits: what would each stage need, and is it here?
-message GetReadinessRequest {}
+message GetReadinessRequest {
+  // The recording's requested speech language. Empty keeps automatic detection.
+  string language = 1;
+}
 
 // One stage an analysis plans, and whether what it needs is present.
 message StageReadinessV1 {
@@ -2475,3 +2501,74 @@ message EngineResponse {
 // resumes when a daemon next starts. Answered before the daemon stops.
 message ShutdownRequest {}
 message ShutdownResponse {}
+
+// One call to the engine API v2 (docs/engine-api.md), the surface agents, the
+// `clipmill` command and the local gateway share. `call_json` is
+// `{"op": "...", "args": {...}}`. The token names the connected agent making
+// the call; a call without one comes from a process of this account on this
+// computer and gets the local scopes. Every call is written to the audit log.
+message EngineCallRequest {
+  string token = 1;
+  string call_json = 2;
+}
+
+// `{"ok": true, "result": ...}`, or `{"ok": false, "error": {"code", "message",
+// "retryable"}}` with a sentence a person can act on.
+message EngineCallResponse {
+  string result_json = 1;
+}
+
+// An agent or tool a person connected, and what it may do.
+message AgentClientV1 {
+  string client_id = 1;
+  string name = 2;
+  // Any of read, edit, render, publish, delete.
+  repeated string scopes = 3;
+  uint64 created_unix_millis = 4;
+  // Zero while the token works.
+  uint64 revoked_unix_millis = 5;
+  uint64 last_used_unix_millis = 6;
+}
+
+message CreateAgentClientRequest {
+  string name = 1;
+  repeated string scopes = 2;
+}
+
+// The token is shown here once and stored only as its hash.
+message AgentClientCreated {
+  AgentClientV1 client = 1;
+  string token = 2;
+}
+
+message ListAgentClientsRequest {}
+
+message AgentClientsResponse {
+  repeated AgentClientV1 clients = 1;
+}
+
+// Answered with the clients as they now stand.
+message RevokeAgentClientRequest {
+  string client_id = 1;
+}
+
+message ListEngineAuditRequest {
+  // Newest first; zero means the default of 200.
+  uint32 limit = 1;
+}
+
+// One engine API call: who made it, what it asked for, and how it ended.
+message EngineAuditEntryV1 {
+  uint64 at_unix_millis = 1;
+  string client_id = 2;
+  string client_name = 3;
+  string operation = 4;
+  string target = 5;
+  // ok, refused or failed.
+  string outcome = 6;
+  string detail = 7;
+}
+
+message EngineAuditResponse {
+  repeated EngineAuditEntryV1 entries = 1;
+}

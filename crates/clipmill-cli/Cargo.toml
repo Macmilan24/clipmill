@@ -1,0 +1,31 @@
+[package]
+name = "clipmill-cli"
+description = "The clipmill command: projects, analysis, clips and export from a shell, and an MCP server for agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "clipmill"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+clap = { workspace = true, features = ["env"] }
+clipmill-contracts.workspace = true
+clipmilld.workspace = true
+# The gateway's HTTP/1.1 server, from the same hyper the daemon's downloads
+# already compile in.
+http-body-util = "0.1.4"
+hyper = { version = "1.11", features = ["http1", "server"] }
+hyper-util = { version = "0.1.20", features = ["tokio"] }
+prost.workspace = true
+serde_json.workspace = true
+time = { version = "0.3", features = ["formatting"] }
+tokio = { workspace = true, features = ["io-std"] }
+ulid.workspace = true
+
+[lints]
+workspace = true

@@ -57,6 +57,7 @@ fn every_valid_speech_fixture_roundtrips_canonically() {
     roundtrip::<SpeechVad>("contracts/fixtures/speech.vad/valid/never_examined.json");
     roundtrip::<SpeechAsr>("contracts/fixtures/speech.asr/valid/two_utterances.json");
     roundtrip::<SpeechAsr>("contracts/fixtures/speech.asr/valid/one_segment_undecodable.json");
+    roundtrip::<SpeechAsr>("contracts/fixtures/speech.asr/valid/tdt_words.json");
     roundtrip::<SpeechAlignment>("contracts/fixtures/speech.alignment/valid/ten_words.json");
     roundtrip::<SpeechAlignment>(
         "contracts/fixtures/speech.alignment/valid/one_segment_unaligned.json",
@@ -89,13 +90,11 @@ fn silence_and_never_having_looked_are_different_documents() {
     assert!(!unexamined.invalid_regions.is_empty());
 }
 
-/// The recognizer's intervals are bookkeeping. If this constant were ever
-/// widened, every word-snapped trim in the product would quietly start
-/// trusting token positions.
+/// Whisper and Qwen leave word timing to the configured forced aligner.
 #[test]
 fn recognizer_output_names_alignment_as_the_timing_authority() {
     let asr: SpeechAsr = roundtrip("contracts/fixtures/speech.asr/valid/two_utterances.json");
-    assert_eq!(asr.timing_authority, serde_json::json!("forced_alignment"));
+    assert_eq!(asr.timing_authority.to_string(), "forced_alignment");
     // Greedy at temperature zero is what makes a cached transcript worth
     // caching: the same audio must decode to the same text.
     assert!(matches!(
@@ -106,20 +105,14 @@ fn recognizer_output_names_alignment_as_the_timing_authority() {
     assert!(!asr.decoding.conditioned_on_previous);
 }
 
-/// A `const` reaches Rust as an unvalidated `serde_json::Value`: typify turns
-/// string patterns and enums into newtypes that refuse bad input, but a fixed
-/// value is carried, not checked. That is a real gap on a field whose whole
-/// job is to stop anything downstream from trusting decoder positions, so it
-/// is pinned here rather than assumed away — the schema and the Python leg
-/// refuse the document, and every Rust reader of this artifact has to check
-/// the field itself.
 #[test]
-fn a_const_is_carried_by_the_rust_type_but_not_enforced_by_it() {
-    let smuggled: SpeechAsr = serde_json::from_str(&read(
-        "contracts/fixtures/speech.asr/invalid/decoder_claimed_as_timing_authority.json",
-    ))
-    .expect("typify does not enforce const, so this parses");
-    assert_eq!(smuggled.timing_authority, serde_json::json!("decoder_hint"));
+fn ordinary_decoder_hints_cannot_claim_timing_authority() {
+    assert!(
+        serde_json::from_str::<SpeechAsr>(&read(
+            "contracts/fixtures/speech.asr/invalid/decoder_claimed_as_timing_authority.json",
+        ))
+        .is_err()
+    );
 }
 
 /// Speech that could not be decoded is a hole in the transcript, not silence.

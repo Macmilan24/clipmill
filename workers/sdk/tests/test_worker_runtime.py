@@ -167,6 +167,26 @@ def test_framing_handles_socket_fragmentation() -> None:
         receiver.close()
 
 
+def test_worker_reports_an_unloaded_model_on_its_next_poll(tmp_path: Path) -> None:
+    retained = {"model": True}
+    client = WorkerClient(
+        WorkerConfiguration(
+            socket_path=tmp_path / "worker.sock",
+            shm_socket_path=tmp_path / "shm.sock",
+            family="editorial",
+            identity=identity_file(tmp_path / "identity.json"),
+            capabilities=(),
+            has_resident_model=lambda: retained["model"],
+            release_resident_model=lambda: retained.update(model=False),
+        )
+    )
+    before = client._work_request(0).work_request
+    assert before.HasField("has_resident_model") and before.has_resident_model
+    assert client._unload_requested(worker_pb2.NoWork(release_resident_model=True))
+    after = client._work_request(0).work_request
+    assert after.HasField("has_resident_model") and not after.has_resident_model
+
+
 def test_staging_rejects_traversal_symlinks_and_undeclared_files(tmp_path: Path) -> None:
     root = tmp_path / "stg_01J00000000000000000000000"
     root.mkdir(mode=0o700)

@@ -1,0 +1,13 @@
+Parakeet-TDT-0.6B-v3
+NVIDIA Corporation
+
+Original model and attribution:
+https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+
+Ilya Stupakov converted and quantized the checkpoint to ONNX.
+https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce
+
+Weights are licensed under Creative Commons Attribution 4.0 International.
+https://creativecommons.org/licenses/by/4.0/
+
+ClipMill downloads the pinned int8 graphs and vocabulary without modification.

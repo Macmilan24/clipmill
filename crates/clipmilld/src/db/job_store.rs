@@ -1,3 +1,5 @@
+pub(super) mod governor;
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use clipmill_artifacts::NetworkPolicy;
@@ -40,6 +42,7 @@ struct SelectedTaskRow {
     determinism_class: String,
     checkpoint_support: bool,
     preemption_cost: i64,
+    interactive: bool,
 }
 
 type FailedTaskRow = (String, String, String, String, String, Vec<u8>, i64, i64);
@@ -242,11 +245,22 @@ pub(super) fn artifact_is_project_output(
     Ok(found.is_some())
 }
 
+#[cfg(test)]
 pub(super) fn submit_job(
     connection: &mut Connection,
     request_id: &str,
     request_hash: &[u8; 32],
     plan: &JobPlan,
+) -> Result<MutationResult, StoreError> {
+    submit_job_as(connection, request_id, request_hash, plan, None)
+}
+
+pub(super) fn submit_job_as(
+    connection: &mut Connection,
+    request_id: &str,
+    request_hash: &[u8; 32],
+    plan: &JobPlan,
+    owner: Option<&str>,
 ) -> Result<MutationResult, StoreError> {
     validate_plan(plan)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -280,6 +294,12 @@ pub(super) fn submit_job(
         }
     }
     let events = insert_job_plan(&transaction, plan)?;
+    if let Some(client) = owner {
+        transaction.execute(
+            "INSERT INTO engine_job_owners(job_id,client_id) VALUES (?1,?2)",
+            params![plan.job_id, client],
+        )?;
+    }
     let job = get_job_tx(&transaction, &plan.job_id)?;
     let response = Response {
         request_id: request_id.to_owned(),
@@ -614,6 +634,11 @@ pub(super) fn recover_jobs(
     Ok(events)
 }
 
+/// Jobs a person is waiting on, as a comma-delimited list for SQL: they are
+/// leased before background work (resource governor, plan step 1.6).
+pub(crate) const INTERACTIVE_JOBS: &str =
+    ",render-clip,export-clip,probe-source,youtube-metadata,embed-query,";
+
 #[allow(clippy::too_many_lines)]
 pub(super) fn lease_next_task_for_worker(
     connection: &mut Connection,
@@ -641,14 +666,17 @@ pub(super) fn lease_next_task_for_worker(
     let capacity = request.capacity;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut events = fail_open_circuit_breakers(&transaction, now)?;
-    let selected: Option<SelectedTaskRow> = transaction
-        .query_row(
+    let admission = governor::Admission::read(&transaction, request)?;
+    let mut blocked = None;
+    let mut change_model = false;
+    let selected = {
+        let mut statement = transaction.prepare(
             "SELECT t.task_id, t.job_id, j.project_id, j.source_id,
                     t.kind, t.output_kind, t.payload,
                     t.implementation, t.attempt, t.cpu_threads, t.ram_bytes,
                     t.accelerator_class, t.vram_bytes, t.disk_bytes, t.network_policy,
                     t.thermal_class, t.determinism_class, t.checkpoint_support,
-                    t.preemption_cost
+                    t.preemption_cost, instr(?22, ',' || j.kind || ',') > 0
              FROM tasks t JOIN jobs j ON j.job_id = t.job_id
              WHERE t.state IN (?1, ?2)
                AND t.next_attempt_unix_millis <= ?3
@@ -698,8 +726,13 @@ pub(super) fn lease_next_task_for_worker(
                ))
                AND instr(?17, ',' || t.kind || ',') > 0
                AND (t.implementation = '' OR instr(?21, ',' || t.implementation || ',') = 0)
-             ORDER BY j.created_unix_millis, j.job_id, t.ordinal
-             LIMIT 1",
+             -- Someone waiting goes first: a preview, an export or a
+             -- recording being added is served before background analysis,
+             -- in the order asked within each.
+             ORDER BY CASE WHEN instr(?22, ',' || j.kind || ',') > 0 THEN 0 ELSE 1 END,
+                      j.created_unix_millis, j.job_id, t.ordinal",
+        )?;
+        let candidates = statement.query_map(
             params![
                 TaskState::Planned as i32,
                 TaskState::Retryable as i32,
@@ -722,6 +755,7 @@ pub(super) fn lease_next_task_for_worker(
                 network_allowed_filter,
                 local_lock_filter,
                 foreign_filter,
+                INTERACTIVE_JOBS,
             ],
             |row| {
                 Ok(SelectedTaskRow {
@@ -744,13 +778,38 @@ pub(super) fn lease_next_task_for_worker(
                     determinism_class: row.get(16)?,
                     checkpoint_support: row.get(17)?,
                     preemption_cost: row.get(18)?,
+                    interactive: row.get(19)?,
                 })
             },
-        )
-        .optional()?;
+        )?;
+        let mut choice = None;
+        for candidate in candidates {
+            let task = candidate?;
+            if admission.fits(&task) {
+                change_model = admission.changing_model(request, &task);
+                if !change_model {
+                    choice = Some(task);
+                }
+                break;
+            }
+            if blocked.is_none() {
+                blocked = Some((task.task_id, task.interactive));
+            }
+            if task.interactive {
+                break;
+            }
+        }
+        choice
+    };
+    let release_resident_model =
+        admission.note(&transaction, request, blocked.as_ref(), selected.as_ref())? || change_model;
     let Some(selected) = selected else {
         transaction.commit()?;
-        return Ok(LeaseSelection { task: None, events });
+        return Ok(LeaseSelection {
+            task: None,
+            events,
+            release_resident_model,
+        });
     };
     let next_attempt = selected
         .attempt
@@ -869,6 +928,7 @@ pub(super) fn lease_next_task_for_worker(
     }
     transaction.commit()?;
     Ok(LeaseSelection {
+        release_resident_model: false,
         task: Some(LeasedTask {
             project_id: selected.project_id,
             job_id: selected.job_id,
@@ -915,6 +975,8 @@ pub(super) fn lease_next_task(
             now_unix_millis: now,
             expires_unix_millis: expires,
             capacity,
+            machine: capacity,
+            residency: crate::jobs::WorkerResidency::Stateless,
             worker_id: "builtin-fixture".to_owned(),
             capabilities: [
                 "probe-source",
@@ -1673,6 +1735,7 @@ pub(super) fn list_events(
     connection: &Connection,
     after_event_id: u64,
     filter: &EventFilter,
+    limit: i64,
 ) -> Result<Vec<TaskEventRecord>, StoreError> {
     let after = sqlite_u64(after_event_id, "event cursor")?;
     let mut statement = connection.prepare(
@@ -1683,10 +1746,10 @@ pub(super) fn list_events(
          WHERE event_id > ?1
            AND (?2 IS NULL OR project_id = ?2)
            AND (?3 IS NULL OR job_id = ?3)
-         ORDER BY event_id ASC",
+         ORDER BY event_id ASC LIMIT ?4",
     )?;
     let rows = statement.query_map(
-        params![after, filter.project_id, filter.job_id],
+        params![after, filter.project_id, filter.job_id, limit],
         event_from_row,
     )?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)

@@ -1746,3 +1746,73 @@ impl From<clipmill_contracts::proto::ipc::v1::AssetV1> for AssetView {
         }
     }
 }
+
+/// An agent a person connected.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentClientView {
+    pub client_id: String,
+    pub name: String,
+    pub scopes: Vec<String>,
+    pub created_unix_millis: u64,
+    pub revoked_unix_millis: u64,
+    pub last_used_unix_millis: u64,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::AgentClientV1> for AgentClientView {
+    fn from(client: clipmill_contracts::proto::ipc::v1::AgentClientV1) -> Self {
+        Self {
+            client_id: client.client_id,
+            name: client.name,
+            scopes: client.scopes,
+            created_unix_millis: client.created_unix_millis,
+            revoked_unix_millis: client.revoked_unix_millis,
+            last_used_unix_millis: client.last_used_unix_millis,
+        }
+    }
+}
+
+/// The connected agents, and the `clipmill` command they are started with.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentsView {
+    pub clients: Vec<AgentClientView>,
+    /// Absent when this installation carries no `clipmill` command.
+    pub cli_path: Option<String>,
+}
+
+/// A newly connected agent and its token, which is never shown again.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentCreatedView {
+    pub client: Option<AgentClientView>,
+    pub token: String,
+    pub cli_path: Option<String>,
+}
+
+/// One engine API call in the audit log.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineAuditView {
+    pub at_unix_millis: u64,
+    pub client_id: String,
+    pub client_name: String,
+    pub operation: String,
+    pub target: String,
+    pub outcome: String,
+    pub detail: String,
+}
+
+impl From<clipmill_contracts::proto::ipc::v1::EngineAuditEntryV1> for EngineAuditView {
+    fn from(entry: clipmill_contracts::proto::ipc::v1::EngineAuditEntryV1) -> Self {
+        Self {
+            at_unix_millis: entry.at_unix_millis,
+            client_id: entry.client_id,
+            client_name: entry.client_name,
+            operation: entry.operation,
+            target: entry.target,
+            outcome: entry.outcome,
+            detail: entry.detail,
+        }
+    }
+}

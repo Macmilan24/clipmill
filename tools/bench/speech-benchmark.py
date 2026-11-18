@@ -30,9 +30,9 @@ import argparse
 import json
 import os
 import platform
-import resource
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 import wave
@@ -64,6 +64,7 @@ class Candidate:
 CANDIDATES = (
     Candidate("clipmill-worker-vad@0.1.0", "vad", "silero-vad"),
     Candidate("clipmill-worker-asr@0.1.0", "asr", "whisper-base"),
+    Candidate("clipmill-worker-parakeet@0.1.0", "asr", "parakeet-tdt-v3"),
     Candidate("clipmill-worker-speech-mlx@0.1.0/asr", "asr", "qwen3-asr-mlx"),
     Candidate("clipmill-worker-align@0.1.0", "forced-align", "wav2vec2-ctc-en"),
     Candidate("clipmill-worker-speech-mlx@0.1.0/align", "forced-align", "qwen3-aligner-mlx"),
@@ -248,6 +249,13 @@ def _run(candidate: Candidate, model: VerifiedModel, audio: np.ndarray) -> None:
     if candidate.implementation.startswith("clipmill-worker-speech-mlx"):
         _run_mlx(candidate, model, audio, windows)
         return
+    if candidate.model == "parakeet-tdt-v3":
+        from clipmill_worker_asr_parakeet.recognizer import ParakeetRecognizer
+
+        recognizer = ParakeetRecognizer(model)
+        for start, end in windows:
+            recognizer.decode(audio[start:end])
+        return
     if candidate.capability == "asr":
         from clipmill_worker_asr_whispercpp import weights_file
         from clipmill_worker_asr_whispercpp.engine import WhisperCppRecognizer
@@ -354,6 +362,36 @@ def _load_fixture(fixture: Path) -> tuple[np.ndarray, float]:
 
 
 def _peak_resident_bytes() -> int:
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        class ProcessMemoryCounters(ctypes.Structure):
+            _fields_ = [
+                ("size", wintypes.DWORD),
+                ("page_fault_count", wintypes.DWORD),
+                ("peak_working_set", ctypes.c_size_t),
+                ("working_set", ctypes.c_size_t),
+                ("peak_paged_pool", ctypes.c_size_t),
+                ("paged_pool", ctypes.c_size_t),
+                ("peak_nonpaged_pool", ctypes.c_size_t),
+                ("nonpaged_pool", ctypes.c_size_t),
+                ("pagefile", ctypes.c_size_t),
+                ("peak_pagefile", ctypes.c_size_t),
+            ]
+
+        counters = ProcessMemoryCounters()
+        counters.size = ctypes.sizeof(counters)
+        current = ctypes.WinDLL("kernel32").GetCurrentProcess
+        current.restype = wintypes.HANDLE
+        memory = ctypes.WinDLL("psapi", use_last_error=True).GetProcessMemoryInfo
+        memory.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessMemoryCounters), wintypes.DWORD]
+        if not memory(current(), ctypes.byref(counters), counters.size):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return counters.peak_working_set
+
+    import resource
+
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     # Linux reports kibibytes; macOS reports bytes. Getting this backwards
     # would make one platform's models look a thousand times cheaper.
@@ -374,15 +412,19 @@ def _write(path: Path, document: dict) -> None:
     daemon reads out of its own state."""
 
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".partial")
-    payload = json.dumps(document, indent=2, sort_keys=True).encode("utf-8") + b"\n"
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".")
+    temporary = Path(name)
     try:
-        os.write(descriptor, payload)
-        os.fsync(descriptor)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
     finally:
-        os.close(descriptor)
-    os.replace(temporary, path)
+        temporary.unlink(missing_ok=True)
+    if os.name == "nt":
+        return
     directory = os.open(path.parent, os.O_RDONLY)
     try:
         os.fsync(directory)

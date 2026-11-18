@@ -10,12 +10,14 @@ setup:
     cd workers/echo && uv sync
     cd workers/vad && uv sync
     cd workers/asr-whispercpp && uv sync
+    cd workers/asr-parakeet && uv sync
     cd workers/align && uv sync
     cd workers/speakers && uv sync
     cd workers/speech-mlx && uv sync
     cd workers/shots && uv sync
     cd workers/faces && uv sync
     cd workers/audio-events && uv sync
+    cd workers/embed && uv sync
     cd workers/editorial && uv sync
     cd integrations/youtube-import && uv sync --frozen
     cd eval/harness && uv sync
@@ -50,12 +52,14 @@ test:
     cd workers/echo && uv run pytest
     cd workers/vad && uv run pytest
     cd workers/asr-whispercpp && uv run pytest
+    cd workers/asr-parakeet && uv run pytest
     cd workers/align && uv run pytest
     cd workers/speakers && uv run pytest
     cd workers/speech-mlx && uv run pytest
     cd workers/shots && uv run pytest
     cd workers/faces && uv run pytest
     cd workers/audio-events && uv run pytest
+    cd workers/embed && uv run pytest
     cd workers/editorial && uv run pytest
     cd integrations/youtube-import && uv run --frozen pytest
     cd eval/harness && uv run pytest
@@ -178,6 +182,12 @@ gate-tokens:
     pnpm --filter @clipmill/desktop typecheck
     pnpm --filter @clipmill/desktop test
     pnpm --filter @clipmill/desktop build
+
+# Exercise the official MCP client against a disposable local daemon and gateway.
+gate-mcp:
+    cargo build -p clipmill-cli -p clipmilld --bins
+    npm ci --ignore-scripts --prefix tools/drills/mcp-tasks
+    uv run --locked --project eval/harness python tools/drills/mcp-tasks/drive.py
 
 # Verify native daemon queries and disconnect reporting after forced termination.
 gate-shell:

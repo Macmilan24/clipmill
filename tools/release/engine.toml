@@ -24,6 +24,14 @@ module = "clipmill_worker_asr_whispercpp"
 platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
 
 [[part]]
+name = "asr-parakeet"
+title = "Parakeet transcription and word timing"
+family = "parakeet"
+command = "clipmill-worker-parakeet"
+module = "clipmill_worker_asr_parakeet"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
+[[part]]
 name = "align"
 title = "Word timing"
 family = "speech-align"
@@ -61,6 +69,14 @@ title = "Audio events"
 family = "audio-events"
 command = "clipmill-worker-audio-events"
 module = "clipmill_worker_audio_events"
+platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
+
+[[part]]
+name = "embed"
+title = "Meaning search"
+family = "embed"
+command = "clipmill-worker-embed"
+module = "clipmill_worker_embed"
 platforms = ["macos-arm64", "linux-x86_64", "windows-x86_64"]
 
 # Apple silicon only: MLX runs on Metal.

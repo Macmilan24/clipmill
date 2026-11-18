@@ -1,0 +1,54 @@
+# Meaning search: one vector per sentence and per remembered event, so "where
+# do they talk about pricing" also finds "what it costs". A 118M-parameter
+# multilingual encoder (about 100 languages), quantized to 8 bits, on
+# onnxruntime on every platform.
+name = "multilingual-e5-small"
+capability = "embed"
+family = "e5"
+runtime = "onnxruntime"
+backend = "onnx-cpu"
+quantization = "int8"
+
+# How the model library presents it. Prose, not identity: the digest
+# ignores this table, so rewording it re-keys nothing.
+[catalog]
+title = "E5 small (multilingual)"
+summary = "Small and fast. Lets search find moments by meaning, in about 100 languages."
+recommended = true
+
+[source]
+provider = "https://huggingface.co"
+repo = "Xenova/multilingual-e5-small"
+revision = "761b726dd34fb83930e26aab4e9ac3899aa1fa78"
+
+[license]
+# An ONNX export that states no licence of its own; its base model states MIT.
+source = "inherited"
+spdx = "MIT"
+class = "permissive"
+
+[license.inherited_from]
+repo = "intfloat/multilingual-e5-small"
+revision = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+spdx = "MIT"
+
+[memory]
+# Exact on-disk bytes of the three files, and onnxruntime's allowance for a
+# batch of sentences on top.
+weights_bytes = 135391573
+runtime_overhead_bytes = 268435456
+
+[[files]]
+path = "onnx/model_quantized.onnx"
+sha256 = "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193"
+bytes = 118308185
+
+[[files]]
+path = "tokenizer.json"
+sha256 = "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+bytes = 17082730
+
+[[files]]
+path = "config.json"
+sha256 = "cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1"
+bytes = 658

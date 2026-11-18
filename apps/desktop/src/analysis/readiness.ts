@@ -92,7 +92,11 @@ export function waitingReasons(
  * has stages waiting, a submission held back — and off once it cannot change
  * anything, so a finished run does not go on asking.
  */
-export function useReadiness(poll: boolean, api: ShellApi = daemonApi): ReadinessState {
+export function useReadiness(
+  poll: boolean,
+  api: ShellApi = daemonApi,
+  language = '',
+): ReadinessState {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -104,7 +108,7 @@ export function useReadiness(poll: boolean, api: ShellApi = daemonApi): Readines
     let timer: ReturnType<typeof setTimeout> | null = null;
     const read = async () => {
       try {
-        const answer = await api.fetchReadiness();
+        const answer = await api.fetchReadiness(language);
         if (live) {
           setReadiness(answer);
           setProblem(null);
@@ -125,7 +129,7 @@ export function useReadiness(poll: boolean, api: ShellApi = daemonApi): Readines
         clearTimeout(timer);
       }
     };
-  }, [api, poll, tick]);
+  }, [api, language, poll, tick]);
 
   return { readiness, problem, refresh };
 }

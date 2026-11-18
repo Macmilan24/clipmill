@@ -114,19 +114,19 @@ fn the_transcript_names_every_stage_that_produced_it() {
     assert!(assembled.document.producers[3].model_digest.is_none());
 }
 
-/// The check the generated type cannot make. `timing_authority` is a JSON
-/// Schema `const`, and typify carries constants without validating them — so
-/// a recognizer claiming its own token positions are authoritative parses
-/// fine, and has to be refused here or nowhere.
+/// A duration prediction must travel with the alignment derived from that ASR artifact.
 #[test]
-fn a_recognizer_claiming_its_own_timing_cannot_be_assembled() {
-    let mut smuggled = recognized();
-    smuggled.timing_authority = serde_json::json!("decoder_hint");
-    let refused = assemble(&activity(), &smuggled, &alignment(), inputs(), ASSEMBLER);
+fn transducer_timing_cannot_use_an_unrelated_forced_alignment() {
+    let mut asr = recognized();
+    asr.timing_authority =
+        clipmill_contracts::schemas::speech_asr::SpeechAsrTimingAuthority::Transducer;
     assert!(matches!(
-        refused,
+        assemble(&activity(), &asr, &alignment(), inputs(), ASSEMBLER),
         Err(AssemblyError::TimingAuthority { .. })
     ));
+    let mut timing = alignment();
+    timing.producer.implementation = crate::implementations::TDT_IMPLEMENTATION.parse().unwrap();
+    assert!(assemble(&activity(), &asr, &timing, inputs(), ASSEMBLER).is_ok());
 }
 
 /// A pass that never ran is not a recording with nothing in it. Assembling one

@@ -8,7 +8,7 @@
 export type Sha256 = string;
 
 /**
- * What was said, from a recognizer batched over voice activity (book ch. 13). Text and token confidence only: the intervals here are the decoder's own bookkeeping and are named as hints because word timing comes from forced alignment, never from decoder token positions. One contract serves every implementation — whisper.cpp on any CPU, an accelerated primary where one is available — so the daemon can choose between them by measured benchmark rather than by brand.
+ * What was said, from a recognizer batched over voice activity (book ch. 13). The utterance intervals are decode-window hints. A recognizer with an acoustic duration head may also supply measured word intervals and declare transducer timing. Other recognizers defer all word placement to forced alignment.
  */
 export interface SpeechAsr {
   schema_version: "clipmill.speech.asr.v1";
@@ -44,9 +44,9 @@ export interface SpeechAsr {
     initial_prompt_digest?: string;
   };
   /**
-   * Stated once, at the top, so no consumer can reach the hint fields below without having read this: the intervals in this artifact are decoder bookkeeping. Word timing is the forced aligner's output and nothing else.
+   * The source of word timing. Only an acoustic duration model may emit transducer_words. Window hints are never word timing.
    */
-  timing_authority: "forced_alignment";
+  timing_authority: "forced_alignment" | "transducer";
   coverage: Coverage;
   segments: AsrSegment[];
   /**
@@ -90,6 +90,10 @@ export interface AsrSegment {
   text: string;
   confidence: Confidence;
   /**
+   * Measured intervals in source ticks from an acoustic duration head, in transcript order. A zero-duration emission has no measured interval.
+   */
+  transducer_words?: TransducerWord[];
+  /**
    * Per-token confidences, kept because a segment average hides the one hallucinated proper noun that ranking would otherwise quote.
    */
   tokens: Token[];
@@ -100,6 +104,12 @@ export interface AsrSegment {
 export interface Confidence {
   p50: number;
   p10: number;
+}
+export interface TransducerWord {
+  text: string;
+  start_ticks: number;
+  end_ticks: number;
+  confidence: Confidence;
 }
 export interface Token {
   text: string;

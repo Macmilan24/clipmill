@@ -189,7 +189,7 @@ export interface ShellApi extends PublishingApi, ModelLibraryApi, ComponentsApi 
   exportArchive(projectId: string, destinationDir: string): Promise<ArchiveResult>;
   fetchLocalLock(): Promise<LocalLock>;
   /** Whether an analysis could run right now, stage by stage. */
-  fetchReadiness(): Promise<Readiness>;
+  fetchReadiness(language?: string): Promise<Readiness>;
   chooseExportFolder(): Promise<string | null>;
 }
 

@@ -239,6 +239,16 @@ const REGISTRY: &[Recipe] = &[
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
+    // Publish the duration head's word intervals without loading a second model.
+    Recipe {
+        kind: implementations::TDT_TIMING,
+        output_kind: "speech.alignment.v1",
+        semantic_version: "clipmill.speech.alignment.v1",
+        executor: Executor::Worker,
+        capability: None,
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
     // Telling voices apart. Beside the chain rather than in it: it reads the
     // audio and the voice activity, and nothing downstream of the transcript
     // waits for it. Re-pinning the voice-print model re-keys speakers alone.
@@ -280,6 +290,24 @@ const REGISTRY: &[Recipe] = &[
         semantic_version: "clipmill.timeline.index.v1",
         executor: Executor::Builtin,
         capability: None,
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "text-embed",
+        output_kind: "text.embeddings.v1",
+        semantic_version: "clipmill.text.embeddings.v1",
+        executor: Executor::Worker,
+        capability: Some("embed"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
+        kind: "text-embed-query",
+        output_kind: "text.query_vector.v1",
+        semantic_version: "clipmill.text.query_vector.v1",
+        executor: Executor::Worker,
+        capability: Some("embed"),
         network: NetworkPolicy::LocalLock,
         tools: &[],
     },
@@ -720,7 +748,7 @@ mod tests {
     /// Two stages sharing an artifact kind would collide on one content
     /// address whenever their other inputs happened to match.
     #[test]
-    fn only_the_named_editorial_alternative_shares_an_artifact_kind() {
+    fn only_registered_alternatives_share_an_artifact_kind() {
         let mut outputs = REGISTRY
             .iter()
             .map(|recipe| recipe.output_kind)
@@ -730,8 +758,16 @@ mod tests {
         outputs.dedup();
         assert_eq!(
             outputs.len(),
-            total - 3,
-            "only the two discovery routes may share a kind"
+            total - 4,
+            "only the declared alternatives may share a kind"
+        );
+        assert_eq!(
+            REGISTRY
+                .iter()
+                .filter(|r| r.output_kind == "speech.alignment.v1")
+                .map(|r| r.kind)
+                .collect::<Vec<_>>(),
+            ["speech-align", crate::implementations::TDT_TIMING]
         );
         assert_eq!(
             REGISTRY

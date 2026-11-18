@@ -440,7 +440,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clipmill-artifacts"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-contracts",
  "clipmill-core",
@@ -454,7 +454,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-captions"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-contracts",
  "serde_json",
@@ -462,8 +462,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipmill-cli"
+version = "0.5.0"
+dependencies = [
+ "base64 0.22.1",
+ "clap",
+ "clipmill-contracts",
+ "clipmilld",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "prost",
+ "serde_json",
+ "time",
+ "tokio",
+ "ulid",
+]
+
+[[package]]
 name = "clipmill-contracts"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "prost",
  "regress",
@@ -473,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "hex",
  "thiserror 2.0.19",
@@ -482,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-director"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-captions",
  "clipmill-contracts",
@@ -496,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-discovery"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-contracts",
  "clipmill-evidence",
@@ -508,7 +526,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-edit-ir"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-captions",
  "serde",
@@ -519,7 +537,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-editorial"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-contracts",
  "clipmill-discovery",
@@ -532,7 +550,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-evidence"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-contracts",
  "serde",
@@ -542,7 +560,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-export"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-captions",
  "clipmill-contracts",
@@ -556,7 +574,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-hub"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "reqwest",
  "rustls",
@@ -571,7 +589,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-mind"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-contracts",
  "serde_json",
@@ -580,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-reframe"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-contracts",
  "serde_json",
@@ -589,7 +607,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-render"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-captions",
  "clipmill-contracts",
@@ -602,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-shell"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clipmill-captions",
  "clipmill-contracts",
@@ -623,7 +641,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-timeline"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "rusqlite",
  "tempfile",
@@ -632,7 +650,7 @@ dependencies = [
 
 [[package]]
 name = "clipmill-youtube"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.4.3",
@@ -650,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "clipmilld"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "clipmill-artifacts",
@@ -1833,6 +1851,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
+name = "httpdate"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
 name = "hybrid-array"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1854,6 +1878,7 @@ dependencies = [
  "http",
  "http-body",
  "httparse",
+ "httpdate",
  "itoa",
  "pin-project-lite",
  "smallvec",

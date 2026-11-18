@@ -30,9 +30,8 @@ pub(crate) struct Implementation {
     /// Empty means any machine will do, which is what makes a candidate the
     /// portable one.
     pub accelerator_class: &'static str,
-    /// Whether this implementation runs on every supported platform. Exactly
-    /// one candidate per capability is portable: it is what an unmeasured
-    /// device falls back to, and what the offline exit gate rests on.
+    /// The default portable fallback for an unmeasured device. Other CPU
+    /// implementations may cover a narrower set of languages or cost more memory.
     pub portable: bool,
     /// Never chosen by measurement; planned only when a person picks its
     /// model. A benchmark ranks speed, and these candidates are here for
@@ -55,6 +54,30 @@ pub(crate) struct Implementation {
 /// meant "best first" would be the static default this table exists to
 /// replace.
 const IMPLEMENTATIONS: &[Implementation] = &[
+    Implementation {
+        name: "clipmill-worker-embed@0.1.0",
+        capability: "embed",
+        stage: "text-embed",
+        model: "multilingual-e5-small",
+        worker: "embed",
+        backend: "onnx-cpu",
+        accelerator_class: "",
+        portable: true,
+        opt_in: false,
+        accuracy: 1,
+    },
+    Implementation {
+        name: "clipmill-worker-embed@0.1.0/query",
+        capability: "embed",
+        stage: "text-embed-query",
+        model: "multilingual-e5-small",
+        worker: "embed",
+        backend: "onnx-cpu",
+        accelerator_class: "",
+        portable: true,
+        opt_in: false,
+        accuracy: 1,
+    },
     Implementation {
         name: "clipmill-worker-audio-events@0.1.0",
         capability: "audio-events",
@@ -105,6 +128,18 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         portable: false,
         opt_in: true,
         accuracy: 3,
+    },
+    Implementation {
+        name: "clipmill-worker-parakeet@0.1.0",
+        capability: "asr",
+        stage: "speech-asr",
+        model: PARAKEET_MODEL,
+        worker: "parakeet",
+        backend: "onnx-cpu",
+        accelerator_class: "",
+        portable: false,
+        opt_in: false,
+        accuracy: 2,
     },
     Implementation {
         name: "clipmill-worker-speech-mlx@0.1.0/asr",
@@ -621,7 +656,15 @@ pub(crate) fn candidates_for_capability(
 pub(crate) fn measured_candidates_for_capability(
     capability: &str,
 ) -> impl Iterator<Item = &'static Implementation> {
-    candidates_for_capability(capability).filter(|implementation| !implementation.opt_in)
+    // Benchmark one operation per model. The library binds the winning
+    // model to the other stages of the same job (e.g. query and passage).
+    let primary = crate::library::JOBS
+        .iter()
+        .find(|job| job.capability == capability)
+        .and_then(|job| job.stages.first().copied());
+    candidates_for_capability(capability).filter(move |implementation| {
+        !implementation.opt_in && Some(implementation.stage) == primary
+    })
 }
 
 /// The implementation a task was planned with.
@@ -673,13 +716,55 @@ pub(crate) fn foreign_to(family: &str, stages: &[String]) -> Vec<&'static str> {
         .collect()
 }
 
+pub(crate) const PARAKEET_MODEL: &str = "parakeet-tdt-v3";
+pub(crate) const TDT_TIMING: &str = "speech-tdt-timing";
+pub(crate) const TDT_IMPLEMENTATION: &str = "clipmill-worker-parakeet@0.1.0/timing";
+
+/// NVIDIA's v3 checkpoint covers these 25 languages, including regional subtags.
+pub(crate) fn parakeet_language(language: &str) -> bool {
+    let primary = language
+        .split('-')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    matches!(
+        primary.as_str(),
+        "bg" | "cs"
+            | "da"
+            | "de"
+            | "el"
+            | "en"
+            | "es"
+            | "et"
+            | "fi"
+            | "fr"
+            | "hr"
+            | "hu"
+            | "it"
+            | "lt"
+            | "lv"
+            | "mt"
+            | "nl"
+            | "pl"
+            | "pt"
+            | "ro"
+            | "ru"
+            | "sk"
+            | "sl"
+            | "sv"
+            | "uk"
+    )
+}
+
 /// What a person calls a worker family, for sentences that say which one to
 /// start.
 pub(crate) fn worker_title(family: &str) -> &'static str {
     match family {
         "speech-vad" => "speech-detection worker",
         "audio-events" => "audio events worker",
+        "embed" => "meaning search worker",
         "speech-asr" => "whisper.cpp worker",
+        "parakeet" => "Parakeet speech worker",
         "speech-align" => "word-timing worker",
         "speech-mlx" => "MLX speech worker",
         "editorial" => "editorial worker",
@@ -710,10 +795,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        IMPLEMENTATIONS, candidates_for_capability, candidates_for_capability_names,
-        candidates_for_stage, custom_runtime, for_model, for_stage_and_model, foreign_to, lookup,
-        measured_candidates_for_capability, portable_for_stage, register_custom, runs,
-        worker_title,
+        IMPLEMENTATIONS, candidates_for_capability_names, candidates_for_stage, custom_runtime,
+        for_model, for_stage_and_model, foreign_to, lookup, measured_candidates_for_capability,
+        portable_for_stage, register_custom, runs, worker_title,
     };
 
     #[test]
@@ -733,26 +817,17 @@ mod tests {
     /// reduces to this: every capability keeps one candidate that needs
     /// nothing special, and it is the one an unmeasured device takes.
     #[test]
-    fn every_capability_has_exactly_one_portable_candidate() {
-        for capability in IMPLEMENTATIONS
+    fn every_portable_stage_has_one_cpu_default() {
+        for stage in IMPLEMENTATIONS
             .iter()
-            .filter(|implementation| implementation.capability != "editorial")
-            .map(|implementation| implementation.capability)
+            .filter(|i| i.capability != "editorial")
+            .map(|i| i.stage)
             .collect::<BTreeSet<_>>()
         {
-            let portable = candidates_for_capability(capability)
-                .filter(|implementation| implementation.portable)
-                .collect::<Vec<_>>();
-            assert_eq!(
-                portable.len(),
-                1,
-                "{capability} has {} portable candidates",
-                portable.len()
-            );
-            assert!(
-                portable[0].accelerator_class.is_empty(),
-                "{capability}'s portable candidate demands an accelerator"
-            );
+            let mut defaults = candidates_for_stage(stage).filter(|i| i.portable);
+            let default = defaults.next().expect("portable implementation");
+            assert!(default.accelerator_class.is_empty(), "{stage}");
+            assert!(defaults.next().is_none(), "multiple defaults for {stage}");
         }
     }
 
@@ -761,9 +836,8 @@ mod tests {
     #[test]
     fn an_accelerated_candidate_names_the_class_it_needs() {
         for implementation in IMPLEMENTATIONS {
-            // An opt-in candidate is chosen by a person, never by measurement,
-            // and one of them runs on the CPU on purpose.
-            if implementation.portable || implementation.opt_in {
+            // Several CPU implementations may be measured alongside the portable fallback.
+            if matches!(implementation.backend, "cpu" | "onnx-cpu") || implementation.opt_in {
                 continue;
             }
             assert!(
@@ -774,25 +848,29 @@ mod tests {
         }
     }
 
-    /// Candidates for one capability must agree on which stage runs them, or
-    /// selection would bind a capability to an implementation the plan never
-    /// asks for.
+    /// Every stage has a library job. A device benchmark compares models
+    /// on that job's primary operation, never two operations on one model.
     #[test]
-    fn a_capability_is_served_by_one_stage() {
+    fn every_candidate_serves_a_stage_of_its_library_job() {
         for implementation in IMPLEMENTATIONS {
-            if implementation.capability == "editorial" {
-                continue;
-            } // one chosen model serves three operations
-            let stages = candidates_for_capability(implementation.capability)
-                .map(|candidate| candidate.stage)
-                .collect::<BTreeSet<_>>();
-            assert_eq!(
-                stages.len(),
-                1,
-                "{} is served by {stages:?}",
-                implementation.capability
+            let job = crate::library::JOBS
+                .iter()
+                .find(|job| job.capability == implementation.capability)
+                .expect("registered job");
+            assert!(
+                job.stages.contains(&implementation.stage),
+                "{}",
+                implementation.name
             );
+            assert!(for_stage_and_model(job.stages[0], implementation.model).is_some());
         }
+        assert_eq!(measured_candidates_for_capability("embed").count(), 1);
+        assert_eq!(
+            for_stage_and_model("text-embed-query", "multilingual-e5-small")
+                .expect("query implementation")
+                .stage,
+            "text-embed-query"
+        );
     }
 
     /// Every model named here must be one the published registry pins, since
@@ -885,6 +963,7 @@ mod tests {
                 "asr",
                 "audio-events",
                 "detect-faces",
+                "embed",
                 "forced-align",
                 "speaker-embed",
                 "vad"
@@ -897,6 +976,7 @@ mod tests {
                 "asr",
                 "audio-events",
                 "detect-faces",
+                "embed",
                 "forced-align",
                 "speaker-embed",
                 "vad"
@@ -914,7 +994,7 @@ mod tests {
                 .iter()
                 .filter(|implementation| implementation.stage == "speech-asr")
                 .count(),
-            3
+            4
         );
         assert_eq!(
             IMPLEMENTATIONS
@@ -923,8 +1003,8 @@ mod tests {
                     |implementation| implementation.stage == "speech-asr" && !implementation.opt_in
                 )
                 .count(),
-            2,
-            "a benchmark ranks the base model against the accelerated one"
+            3,
+            "Whisper base, Parakeet and MLX speech can be measured"
         );
         assert_eq!(
             portable_for_stage("speech-asr").expect("a fallback").model,

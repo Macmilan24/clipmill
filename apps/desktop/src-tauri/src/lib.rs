@@ -782,13 +782,95 @@ async fn export_archive(
 /// about the ones that could not.
 #[tauri::command]
 async fn readiness(
+    language: Option<String>,
     supervisor: State<'_, Arc<DaemonSupervisor>>,
 ) -> Result<views::ReadinessView, String> {
     supervisor
         .client()
-        .readiness()
+        .readiness(language.unwrap_or_default())
         .await
         .map(Into::into)
+        .map_err(|error| error.to_string())
+}
+
+/// The `clipmill` command beside this app, for an agent's configuration.
+fn cli_path() -> Option<String> {
+    if let Some(explicit) = std::env::var_os("CLIPMILL_CLI_BIN") {
+        return Some(std::path::PathBuf::from(explicit).display().to_string());
+    }
+    let executable = std::env::current_exe().ok()?;
+    #[cfg(target_os = "linux")]
+    if let Some(image) = packaged::appimage_path(&executable) {
+        return Some(image.display().to_string());
+    }
+    let directory = executable.parent()?;
+    let sibling = directory.join(format!("clipmill{}", std::env::consts::EXE_SUFFIX));
+    sibling.is_file().then(|| sibling.display().to_string())
+}
+
+/// The agents a person connected.
+#[tauri::command]
+async fn list_agents(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+) -> Result<views::AgentsView, String> {
+    let clients = supervisor
+        .client()
+        .agent_clients()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(views::AgentsView {
+        clients: clients.into_iter().map(Into::into).collect(),
+        cli_path: cli_path(),
+    })
+}
+
+/// Connect an agent with the scopes the person chose.
+#[tauri::command]
+async fn create_agent(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    name: String,
+    scopes: Vec<String>,
+) -> Result<views::AgentCreatedView, String> {
+    let created = supervisor
+        .client()
+        .create_agent_client(name, scopes)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(views::AgentCreatedView {
+        client: created.client.map(Into::into),
+        token: created.token,
+        cli_path: cli_path(),
+    })
+}
+
+/// Disconnect an agent: its token stops working at once.
+#[tauri::command]
+async fn revoke_agent(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    client_id: String,
+) -> Result<views::AgentsView, String> {
+    let clients = supervisor
+        .client()
+        .revoke_agent_client(client_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(views::AgentsView {
+        clients: clients.into_iter().map(Into::into).collect(),
+        cli_path: cli_path(),
+    })
+}
+
+/// What agents and the `clipmill` command asked the engine to do.
+#[tauri::command]
+async fn engine_audit(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    limit: u32,
+) -> Result<Vec<views::EngineAuditView>, String> {
+    supervisor
+        .client()
+        .engine_audit(limit)
+        .await
+        .map(|entries| entries.into_iter().map(Into::into).collect())
         .map_err(|error| error.to_string())
 }
 
@@ -971,6 +1053,15 @@ async fn stream_task_events(supervisor: Arc<DaemonSupervisor>, app: tauri::AppHa
     reason = "Tauri command registration is kept together in the app builder"
 )]
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--print-cli-path")) {
+        println!(
+            "{}",
+            cli_path().ok_or("The bundled ClipMill command is missing")?
+        );
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
+    packaged::forward_appimage_cli()?;
     let config = clipmilld::Config::resolve(None, None)?;
     let socket = config.paths.socket.clone();
     tracing::info!(socket = %socket.display(), "resolved daemon socket");
@@ -1072,6 +1163,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             export_archive,
             local_lock,
             readiness,
+            list_agents,
+            create_agent,
+            revoke_agent,
+            engine_audit,
             choose_export_folder,
             reveal_path,
             solve_crop_path,

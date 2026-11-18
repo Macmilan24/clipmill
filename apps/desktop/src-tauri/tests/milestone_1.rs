@@ -197,7 +197,10 @@ async fn wait_for_health(client: &DaemonClient, timeout: Duration) {
 async fn wait_for_readiness(client: &DaemonClient, timeout: Duration) -> GetReadinessResponse {
     let deadline = Instant::now() + timeout;
     loop {
-        let report = client.readiness().await.expect("read readiness");
+        let report = client
+            .readiness(String::new())
+            .await
+            .expect("read readiness");
         if report
             .stages
             .iter()
@@ -600,7 +603,7 @@ async fn an_older_projects_clip_survives_the_whole_workflow() {
     let client = daemon.client();
     wait_for_health(&client, Duration::from_secs(30)).await;
 
-    let before = client.readiness().await.expect("readiness");
+    let before = client.readiness(String::new()).await.expect("readiness");
     assert!(!before.ready, "nothing has connected yet");
     assert!(before.decoder_present, "the pinned decoder is installed");
     assert!(before.workers.is_empty());

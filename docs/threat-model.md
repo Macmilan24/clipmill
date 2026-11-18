@@ -183,6 +183,21 @@ Residual: a process running as the same user can read the server's
 environment, and so its key, as it can read the endpoint secrets (R68). A
 graphics driver's Vulkan implementation runs inside the server process.
 
+## Worker memory reservations
+
+A registered local editorial worker reports whether it holds a model between
+leases. The scheduler accounts for the working set declared by the registered
+implementation. An unload request takes effect when the worker confirms the
+release on its next authenticated poll. Active leases and competing worker
+claims are evaluated in the same SQLite transaction. On reconnection, a warm
+worker whose previous reservation is unknown must unload before admission.
+
+These limits cover declared resource use by cooperating local workers. A worker
+that misreports physical allocations and memory used by other applications can
+still increase system pressure. The scheduler tests exercise a 12 GiB admission
+budget on a 16 GiB machine, with concurrent worker, built-in and idle-model
+claims.
+
 ## Update notice
 
 Once a day, while the person leaves "Say when a new version is out" on, the app
@@ -329,3 +344,28 @@ the code is risk-free.
   | A model deciding where the camera points | The crop path is derived from face boxes, and a detector that produced different boxes on a busy machine would make two runs of one recording disagree while sharing one content address — which is the failure a content-addressed store cannot detect afterwards. The session is single-threaded and sequential, the decoding is deterministic arithmetic with a stable suppression order, and the JPEG decoder is the pinned FFmpeg the daemon names on the lease rather than an imaging library the worker chose. Weights arrive verified through the lease, so a stage cannot resolve its own model and publish under an address claiming the pinned one produced these boxes. The solve itself reads one artifact through the same refusal ladder every artifact read runs and writes nothing at all, so a malicious or malformed face track can produce a bad proposal and never a bad edit. | `gate-reframe` runs the decoding against tensors built by hand, the real pinned graph for its shape and its determinism, and the solver against trajectories built one behaviour each — bounded jerk, containment, a crop that never leaves the frame, and a speed the camera never exceeds. The gate that refuses to follow a face is tested from both ends: the decision and the sentence it produces. |
   | Text from a recording, rendered as markup | Captions are the one place a recording's own words become a file format with syntax. A transcript is attacker-influenced text — anybody can say the characters that open an ASS override block — and it reaches three writers whose payloads are parsed rather than displayed. The render already refuses a caption carrying ASS markup rather than rewriting it, and WebVTT payloads are escaped; the caption engine adds nothing that bypasses either, because it stores line breaks as token ranges instead of as text with separators in it. A cue's words are a slice of the published token array, so there is no path where a string assembled here reaches a writer without going through the same refusal. `gate-captions` parses the sidecars back rather than diffing them, which is what catches a payload that changed meaning instead of merely changing bytes.
   | A renderer that can create documents and record decisions | The Inspector reaches three new commands, and each is a place the WebView could ask for something it should not have. All three parse their project and source ids at the boundary and refuse a source belonging to another project before touching the store, which is the same check every other project-scoped call makes. Directing is the only one that writes an edit document, and it cannot be pointed at arbitrary bytes: it reads artifacts this project published, resolved through the store's own verification, and a boundary supplied by the caller is snapped to the candidate's lattice and then re-checked against it rather than trusted. A decision word the shell does not recognize crosses as the unspecified code and is refused rather than defaulted into one of the three real answers, so a malformed request cannot silently approve a clip. The crop solve writes nothing at all, which is why the Inspector may ask for one on every selection without that being a mutation the user did not intend.
+
+## Local engine clients
+
+The CLI uses the daemon's account-private endpoint. A connected client uses a
+revocable token whose digest is stored in SQLite. Calls check the operation's
+scope before dispatch. Mutating retries are scoped to the client and operation.
+The desktop alone manages tokens. The explicitly started HTTP gateway binds
+to loopback, validates Host and Origin, and limits body size and concurrency.
+Local network access to this gateway grants no engine scope on its own.
+
+MCP task ownership is recorded inside the transaction that creates the job.
+Every poll, input acknowledgement and cancellation rechecks the credential and
+owner. Cancellation checks the scope for the original operation. Older jobs
+have no implicit task owner. Modern HTTP requests also verify that the mirrored
+protocol, method and name headers agree with the request body before dispatch.
+Export form state authenticates the caller, destination and original arguments
+with a daemon-private HMAC, a random nonce and a five-minute expiry. Reusing a
+confirmed request uses the same engine retry key. Edit resource URLs resolve
+through the read-scoped engine operation using an edit ID.
+
+Search resolves a completed analysis within its project and source before
+opening the published timeline and vectors. A lease pins each artifact as the
+search reads it. A query vector must have the recording's model digest and
+dimensions. Query embedding stays local. Search text can be retained in the
+project's local job and artifact storage.

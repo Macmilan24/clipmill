@@ -18,7 +18,7 @@ use clipmill_contracts::proto::{
         IndexTranscriptPayloadV1, IngestSourcePayloadV1, JobState, ProbeSourcePayloadV1,
         RankCandidatesPayloadV1, RankStagePayloadV1, ShotsStagePayloadV1, SkippedStageV1,
         SpeechAlignmentV1, SpeechDetectionV1, SpeechRecognitionV1, SpeechStagePayloadV1,
-        TranscribeSourcePayloadV1, YoutubeMetadataTaskPayloadV1,
+        TextEmbedPayloadV1, TranscribeSourcePayloadV1, YoutubeMetadataTaskPayloadV1,
     },
     worker::v1::{FailureClass, ProgressUnits},
 };
@@ -49,6 +49,9 @@ use crate::{
 /// Key version every speech stage payload carries, so a worker can refuse a
 /// payload the daemon never meant for it.
 pub(crate) const SPEECH_STAGE_KEY_VERSION: &str = "clipmill.speech-stage.v1";
+
+/// Key version both embedding stages' payload carries.
+pub(crate) const TEXT_EMBED_KEY_VERSION: &str = "clipmill.text-embed-stage.v1";
 
 /// Key version the audio events stage payload carries.
 pub(crate) const AUDIO_EVENTS_STAGE_KEY_VERSION: &str = "clipmill.audio-events-stage.v1";
@@ -151,7 +154,8 @@ impl ResourceCapacity {
         }
     }
 
-    /// Apply headroom to a memory budget and bound built-in parallelism.
+    /// Size the shared budget for all leases. The built-in executor bounds its
+    /// task count separately; workers can use the rest of a wider host.
     ///
     /// Disk is a parameter rather than a constant because it used to be one:
     /// a flat 512 MiB, on every machine, whatever it had free. Delivery
@@ -165,9 +169,8 @@ impl ResourceCapacity {
         available_memory_bytes: u64,
         available_disk_bytes: u64,
     ) -> Self {
-        let maximum_threads = u32::try_from(MAX_BUILTIN_TASKS).unwrap_or(u32::MAX);
         Self {
-            cpu_threads: logical_cores.clamp(1, maximum_threads),
+            cpu_threads: logical_cores.max(1),
             ram_bytes: available_memory_bytes
                 .saturating_mul(3)
                 .checked_div(4)
@@ -206,6 +209,7 @@ impl ResourceCapacity {
         self
     }
 
+    #[cfg(test)]
     fn reserve(&mut self, resources: &ResourceDeclaration) -> bool {
         let accelerator_available = if resources.accelerator_class.is_empty() {
             resources.vram_bytes == 0
@@ -233,6 +237,7 @@ impl ResourceCapacity {
         }
     }
 
+    #[cfg(test)]
     fn release(&mut self, resources: &ResourceDeclaration) {
         self.cpu_threads = self.cpu_threads.saturating_add(resources.cpu_threads);
         self.ram_bytes = self.ram_bytes.saturating_add(resources.ram_bytes);
@@ -526,6 +531,7 @@ pub(crate) struct AnalyzeSource<'a> {
     pub source_fingerprint: &'a str,
     pub has_video: bool,
     pub has_audio: bool,
+    pub embed_transcript: bool,
 }
 
 /// One shot-detection task, shared by the standalone job and the analyze DAG so
@@ -842,6 +848,46 @@ fn speech_chain(
     // Whisper writes fillers out unless it is asked not to, and only the
     // whisper.cpp family has a way to be asked.
     let verbatim = speech_implementation("speech-asr", bindings).worker == "speech-asr";
+    let alignment = if speech_implementation("speech-asr", bindings).model
+        == crate::implementations::PARAKEET_MODEL
+    {
+        TaskSpec {
+            task_id: align.clone(),
+            ordinal: 2,
+            kind: crate::implementations::TDT_TIMING.to_owned(),
+            input_kinds: vec!["speech.asr.v1".to_owned()],
+            dependencies: vec![asr.clone()],
+            input_artifact_ids: Vec::new(),
+            output_kind: "speech.alignment.v1".to_owned(),
+            payload: stage_payload(crate::implementations::TDT_TIMING, &|_| {}),
+            resources: ResourceDeclaration {
+                cpu_threads: 1,
+                ram_bytes: 128 * 1024 * 1024,
+                disk_bytes: 64 * 1024 * 1024,
+                network_policy: "local-lock".to_owned(),
+                thermal_class: "light".to_owned(),
+                determinism_class: "deterministic".to_owned(),
+                preemption_cost: 1,
+                accelerator_class: String::new(),
+                vram_bytes: 0,
+                checkpoint_support: false,
+            },
+            implementation: crate::implementations::TDT_IMPLEMENTATION.to_owned(),
+            max_attempts: 3,
+            is_final: false,
+        }
+    } else {
+        leased(
+            align.clone(),
+            2,
+            "speech-align",
+            Some((asr.as_str(), "speech.asr.v1")),
+            "speech.alignment.v1",
+            stage_payload("speech-align", &|payload| {
+                payload.alignment = Some(SpeechAlignmentV1 { min_score: 0.0 });
+            }),
+        )
+    };
     let tasks = vec![
         leased(
             vad.clone(),
@@ -867,16 +913,7 @@ fn speech_chain(
                 });
             }),
         ),
-        leased(
-            align.clone(),
-            2,
-            "speech-align",
-            Some((asr.as_str(), "speech.asr.v1")),
-            "speech.alignment.v1",
-            stage_payload("speech-align", &|payload| {
-                payload.alignment = Some(SpeechAlignmentV1 { min_score: 0.0 });
-            }),
-        ),
+        alignment,
         TaskSpec {
             task_id: transcript.clone(),
             ordinal: 3,
@@ -1024,6 +1061,39 @@ fn ingest_fan_out(
 }
 
 impl JobPlan {
+    /// A search's words as a vector, for meaning search over a recording.
+    pub(crate) fn embed_query(
+        project_id: &ProjectId,
+        payload: Vec<u8>,
+        models: &crate::models::ModelRegistry,
+        bindings: &crate::selection::Bindings,
+        now: u64,
+    ) -> Self {
+        let implementation = speech_implementation("text-embed-query", bindings);
+        Self {
+            job_id: JobId::new().to_string(),
+            project_id: project_id.to_string(),
+            kind: "embed-query".to_owned(),
+            source_id: None,
+            payload: payload.clone(),
+            created_unix_millis: now,
+            tasks: vec![TaskSpec {
+                task_id: TaskId::new().to_string(),
+                ordinal: 0,
+                kind: "text-embed-query".to_owned(),
+                input_kinds: Vec::new(),
+                output_kind: "text.query_vector.v1".to_owned(),
+                payload,
+                dependencies: Vec::new(),
+                input_artifact_ids: Vec::new(),
+                resources: speech_resources(implementation, models, 1),
+                implementation: implementation.name.to_owned(),
+                max_attempts: 2,
+                is_final: true,
+            }],
+        }
+    }
+
     /// Render as one FFmpeg graph. Splitting the encode would require a joiner
     /// that preserves timestamps, colour, and audio continuity.
     ///
@@ -1805,10 +1875,24 @@ impl JobPlan {
                     tasks.extend(mind_tasks(
                         &timeline_id,
                         request,
-                        models,
-                        bindings,
+                        (models, bindings),
                         &mut stages,
                     )?);
+                }
+
+                if source.embed_transcript {
+                    let embed = embedding_task(
+                        &index,
+                        stages
+                            .iter()
+                            .find(|(kind, _)| kind == "mind.memory.v1")
+                            .map(|(_, id)| id.as_str()),
+                        source.source_fingerprint,
+                        models,
+                        bindings,
+                    );
+                    stages.push((embed.output_kind.clone(), embed.task_id.clone()));
+                    tasks.push(embed);
                 }
 
                 // The windows an editorial model reads.
@@ -2229,13 +2313,49 @@ fn editorial_duration(request: &AnalyzeSourcePayloadV1) -> ClipDurationV1 {
     }
 }
 
+fn embedding_task(
+    index_id: &str,
+    memory_id: Option<&str>,
+    source_fingerprint: &str,
+    models: &crate::models::ModelRegistry,
+    bindings: &crate::selection::Bindings,
+) -> TaskSpec {
+    // Meaning search over the speech and what the memory remembered.
+    let implementation = speech_implementation("text-embed", bindings);
+    let mut dependencies = vec![index_id.to_owned()];
+    let mut input_kinds = vec!["index.transcript.v1".to_owned()];
+    if let Some(memory) = memory_id {
+        dependencies.push(memory.to_owned());
+        input_kinds.push("mind.memory.v1".to_owned());
+    }
+    TaskSpec {
+        task_id: TaskId::new().to_string(),
+        ordinal: 0,
+        kind: "text-embed".to_owned(),
+        input_kinds,
+        output_kind: "text.embeddings.v1".to_owned(),
+        payload: TextEmbedPayloadV1 {
+            key_version: TEXT_EMBED_KEY_VERSION.to_owned(),
+            stage: "text-embed".to_owned(),
+            source_fingerprint: source_fingerprint.to_owned(),
+            query: String::new(),
+        }
+        .encode_to_vec(),
+        dependencies,
+        input_artifact_ids: Vec::new(),
+        resources: speech_resources(implementation, models, 1),
+        implementation: implementation.name.to_owned(),
+        max_attempts: 3,
+        is_final: false,
+    }
+}
+
 /// The mind's stages over one Timeline Index: script, memory and markup in
 /// parallel on the editorial model, then the cutter.
 fn mind_tasks(
     timeline_id: &str,
     request: &AnalyzeSourcePayloadV1,
-    models: &crate::models::ModelRegistry,
-    bindings: &crate::selection::Bindings,
+    (models, bindings): (&crate::models::ModelRegistry, &crate::selection::Bindings),
     stages: &mut Vec<(String, String)>,
 ) -> Result<Vec<TaskSpec>, &'static str> {
     let payload = |stage: &str| {
@@ -2753,8 +2873,17 @@ pub(crate) struct LeasedTask {
 
 #[derive(Clone, Debug)]
 pub(crate) struct LeaseSelection {
+    pub release_resident_model: bool,
     pub task: Option<LeasedTask>,
     pub events: Vec<TaskEventRecord>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum WorkerResidency {
+    Stateless,
+    Legacy,
+    Cold,
+    Warm,
 }
 
 #[derive(Clone, Debug)]
@@ -2764,6 +2893,9 @@ pub(crate) struct LeaseRequest {
     pub now_unix_millis: u64,
     pub expires_unix_millis: u64,
     pub capacity: ResourceCapacity,
+    /// Verified host ceiling, shared by every worker and built-in task.
+    pub machine: ResourceCapacity,
+    pub residency: WorkerResidency,
     pub worker_id: String,
     pub capabilities: Vec<String>,
     /// Implementations of the declared stages that another worker family
@@ -2982,19 +3114,15 @@ async fn run_scheduler(
     let mut schedule = interval(SCHEDULER_TICK);
     schedule.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut running = JoinSet::new();
-    let mut available_capacity = capacity;
+    let mut machine_capacity = capacity;
     let builtin_capabilities = builtin_capabilities(builtin_fixture_executor);
     loop {
         tokio::select! {
             biased;
             _ = &mut stop => break,
             joined = running.join_next(), if !running.is_empty() => {
-                match joined {
-                    Some(Ok(resources)) => available_capacity.release(&resources),
-                    Some(Err(error)) => {
-                        tracing::warn!(%error, "built-in task executor stopped unexpectedly");
-                    }
-                    None => {}
+                if let Some(Err(error)) = joined {
+                    tracing::warn!(%error, "built-in task executor stopped unexpectedly");
                 }
             }
             () = notify.notified() => {}
@@ -3007,18 +3135,17 @@ async fn run_scheduler(
         {
             events.publish_all(expired);
         }
-        if running.is_empty()
-            && let Ok(mut pending) = capacity_update.lock()
+        if let Ok(mut pending) = capacity_update.lock()
             && let Some(measured) = pending.take()
         {
-            available_capacity = measured;
+            machine_capacity = measured;
             tracing::info!(
                 cpu_threads = measured.cpu_threads,
                 ram_bytes = measured.ram_bytes,
                 "scheduler applied verified device profile capacity"
             );
         }
-        while running.len() < MAX_BUILTIN_TASKS && available_capacity.cpu_threads > 0 {
+        while running.len() < MAX_BUILTIN_TASKS {
             let now = now_millis();
             let lease = LeaseId::new().to_string();
             let leased = database
@@ -3027,7 +3154,9 @@ async fn run_scheduler(
                     daemon_epoch: daemon_epoch.clone(),
                     now_unix_millis: now,
                     expires_unix_millis: now.saturating_add(duration_millis(LEASE_TTL)),
-                    capacity: available_capacity,
+                    capacity: machine_capacity,
+                    machine: machine_capacity,
+                    residency: WorkerResidency::Stateless,
                     worker_id: "builtin-fixture".to_owned(),
                     capabilities: builtin_capabilities.clone(),
                     foreign_implementations: Vec::new(),
@@ -3040,22 +3169,13 @@ async fn run_scheduler(
             let Some(task) = selection.task else {
                 break;
             };
-            let resources = task.resources.clone();
-            policy.note_task_start(&resources.network_policy);
-            if !available_capacity.reserve(&resources) {
-                tracing::error!(
-                    task_id = task.task_id,
-                    "database admitted an over-capacity task"
-                );
-                break;
-            }
+            policy.note_task_start(&task.resources.network_policy);
             let executors = executors.clone();
             let events = events.clone();
             let notify = Arc::clone(&notify);
             running.spawn(async move {
                 execute_task(executors, events, task).await;
                 notify.notify_one();
-                resources
             });
         }
     }
@@ -3872,6 +3992,14 @@ mod resource_tests {
     }
 
     #[test]
+    fn machine_threads_are_independent_of_the_builtin_task_pool() {
+        for (reported, expected) in [(0, 1), (2, 2), (4, 4), (10, 10)] {
+            let capacity = ResourceCapacity::measured(reported, 16 << 30, 10 << 30);
+            assert_eq!(capacity.cpu_threads, expected);
+        }
+    }
+
+    #[test]
     fn macos_admission_survives_low_free_memory_and_profile_refresh() {
         let startup = ResourceCapacity::for_device("macos", 4, 24 << 30, 2 << 30, 10 << 30);
         let handle = super::SchedulerHandle {
@@ -4413,6 +4541,7 @@ mod analyze_tests {
                 source_fingerprint: FINGERPRINT,
                 has_video,
                 has_audio,
+                embed_transcript: false,
             },
             &request(),
             &models(),
@@ -4438,6 +4567,7 @@ mod analyze_tests {
                 source_fingerprint: FINGERPRINT,
                 has_video: true,
                 has_audio: true,
+                embed_transcript: true,
             },
             request,
             &models(),
@@ -4599,6 +4729,44 @@ mod analyze_tests {
         }
     }
 
+    #[test]
+    fn parakeet_uses_its_duration_head_without_loading_a_forced_aligner() {
+        let mut bindings = crate::selection::Bindings::portable();
+        let parakeet =
+            crate::implementations::for_stage_and_model("speech-asr", "parakeet-tdt-v3").unwrap();
+        bindings.set(crate::selection::Binding::decided(parakeet, "chosen"));
+        let plan = JobPlan::analyze_source(
+            &ProjectId::new(),
+            AnalyzeSource {
+                source_id: SOURCE,
+                source_fingerprint: FINGERPRINT,
+                has_video: false,
+                has_audio: true,
+                embed_transcript: false,
+            },
+            &request(),
+            &models(),
+            &bindings,
+            BOM,
+            7,
+        )
+        .unwrap();
+        assert!(!plan.tasks.iter().any(|task| task.kind == "speech-align"));
+        assert_eq!(task(&plan, "speech-asr").implementation, parakeet.name);
+        let timing = task(&plan, crate::implementations::TDT_TIMING);
+        assert_eq!(
+            timing.dependencies,
+            [task(&plan, "speech-asr").task_id.clone()]
+        );
+        assert_eq!(timing.input_kinds, ["speech.asr.v1"]);
+        assert_eq!(timing.output_kind, "speech.alignment.v1");
+        assert!(
+            task(&plan, "speech-transcript")
+                .dependencies
+                .contains(&timing.task_id)
+        );
+    }
+
     /// The property the whole declared-input mechanism exists for: a leased stage
     /// reached by both routes must be handed the same inputs in the same order,
     /// because that order is part of its artifact key. If this drifts, one
@@ -4752,6 +4920,7 @@ mod analyze_tests {
                 source_fingerprint: FINGERPRINT,
                 has_video: false,
                 has_audio: false,
+                embed_transcript: false,
             },
             &request(),
             &models(),

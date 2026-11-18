@@ -39,6 +39,7 @@ class Kind(StrEnum):
     mind_memory_v1 = 'mind.memory.v1'
     mind_unit_scores_v1 = 'mind.unit_scores.v1'
     mind_candidates_v1 = 'mind.candidates.v1'
+    text_embeddings_v1 = 'text.embeddings.v1'
     editorial_windows_v1 = 'editorial.windows.v1'
     editorial_proposals_v1 = 'editorial.proposals.v1'
     discovery_candidates_v1 = 'discovery.candidates.v1'

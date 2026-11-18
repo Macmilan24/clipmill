@@ -1392,12 +1392,12 @@ export interface Readiness {
   readonly workers: readonly WorkerPresence[];
 }
 
-export async function fetchReadiness(): Promise<Readiness> {
+export async function fetchReadiness(language = ''): Promise<Readiness> {
   if (!isTauri()) {
     throw new Error(NOT_IN_SHELL.reason);
   }
   const { invoke } = await core();
-  return invoke<Readiness>('readiness');
+  return invoke<Readiness>('readiness', { language });
 }
 
 /** Whether this installation is offline, and the evidence for it. */

@@ -57,15 +57,8 @@ def test_invalid_fixtures_are_rejected(kind: str) -> None:
             model.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def test_a_recognizer_cannot_declare_its_own_timing_authoritative() -> None:
-    """The refusal the Rust type cannot make.
-
-    `timing_authority` is a fixed value, and the generated Rust type carries
-    fixed values without checking them. Here it is checked, which matters
-    because the workers that write these documents are Python: the shape that
-    would let decoder positions pass for word timing cannot be written by the
-    code most likely to write it.
-    """
+def test_decode_window_hints_cannot_be_a_timing_authority() -> None:
+    """The portable recognizer still sends its text to forced alignment."""
 
     raw = (
         FIXTURES / "speech.asr" / "invalid" / "decoder_claimed_as_timing_authority.json"
@@ -73,7 +66,7 @@ def test_a_recognizer_cannot_declare_its_own_timing_authoritative() -> None:
     with pytest.raises(ValidationError):
         SpeechAsr.model_validate_json(raw)
 
-    # And the only accepted value is the stage that actually measures timing.
+    # Whisper continues to defer to forced alignment.
     good = SpeechAsr.model_validate_json(
         (FIXTURES / "speech.asr" / "valid" / "two_utterances.json").read_text(encoding="utf-8")
     )

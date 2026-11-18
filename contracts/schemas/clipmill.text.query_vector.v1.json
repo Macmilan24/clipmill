@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipmill.dev/schemas/clipmill.text.query_vector.v1.json",
+  "title": "TextQueryVector",
+  "description": "A search query as a vector from the same model as a recording's embeddings, normalized to length one, so searching is a dot product against them.",
+  "type": "object",
+  "required": ["schema_version", "model_digest", "query", "vector"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "clipmill.text.query_vector.v1"
+    },
+    "model_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "vector": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "type": "number"
+      }
+    }
+  }
+}
