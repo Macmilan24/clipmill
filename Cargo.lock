@@ -664,6 +664,7 @@ dependencies = [
  "clipmill-evidence",
  "clipmill-export",
  "clipmill-hub",
+ "clipmill-mind",
  "clipmill-reframe",
  "clipmill-render",
  "clipmill-timeline",
