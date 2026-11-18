@@ -12,6 +12,7 @@ ACTION_PATTERN = re.compile(
 )
 JOB_PATTERN = re.compile(r"^  ([a-zA-Z0-9_-]+):\s*$", re.MULTILINE)
 PIN_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+WORKFLOW_CALL = re.compile(r"^    uses:[ \t]+([^\s#]+)[ \t]*$", re.MULTILINE)
 # The one place a workflow may write: the release workflow's publish job,
 # which turns what the read-only build jobs produced into a draft release.
 # It may run no third-party action but the artifact download, so nothing
@@ -23,6 +24,7 @@ def main() -> int:
     workflows = sorted(Path(".github/workflows").glob("*.y*ml"))
     if not workflows:
         return fail("no GitHub Actions workflows found")
+    local_workflows = {f"./{workflow.as_posix()}" for workflow in workflows}
     errors: list[str] = []
     for path in workflows:
         text = path.read_text(encoding="utf-8")
@@ -45,7 +47,13 @@ def main() -> int:
             end = matches[index + 1].start() if index + 1 < len(matches) else len(jobs_text)
             block = jobs_text[match.end() : end]
             job = match.group(1)
-            if re.search(r"^\s{4}timeout-minutes:\s+[1-9][0-9]*\s*$", block, re.MULTILINE) is None:
+            call = WORKFLOW_CALL.search(block)
+            # A caller has no runner or timeout of its own. Every job of a
+            # same-commit local workflow is checked by this same outer loop.
+            if call:
+                if call[1] not in local_workflows:
+                    errors.append(f"{path}:{job}: called workflow must be local and checked")
+            elif not re.search(r"^    timeout-minutes:\s+[1-9][0-9]*\s*$", block, re.MULTILINE):
                 errors.append(f"{path}:{job}: explicit timeout-minutes is missing")
             if "actions/checkout@" in block and not re.search(
                 r"^\s+persist-credentials:\s+false\s*$", block, re.MULTILINE
@@ -57,6 +65,7 @@ def main() -> int:
                 if (
                     path.name != name
                     or job != allowed_job
+                    or call
                     or not re.search(r"^\s+contents:\s+write\s*$", block, re.MULTILINE)
                     or re.search(r"^\s+(?!contents)[a-zA-Z_-]+:\s+write\s*$", block, re.MULTILINE)
                     or not used <= allowed_actions
