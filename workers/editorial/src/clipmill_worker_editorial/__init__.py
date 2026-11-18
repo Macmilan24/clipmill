@@ -197,7 +197,7 @@ def execute_mind(context, inputs, model, payload, operation):
     from clipmill_worker_sdk.gen.schemas.mind_unit_scores import MindUnitScores
 
     from .memory import build_memory
-    from .runtime import open_runtime
+    from .runtime import acquire_runtime
     from .score import score_units
 
     script_input = inputs.require("mind.script.v1")
@@ -206,7 +206,9 @@ def execute_mind(context, inputs, model, payload, operation):
     identity = {"route": "local", "model": {"name": model.name, "digest": model.digest}}
     implementation = f"clipmill-worker-editorial@0.2.0/{operation}{implementation_suffix(model)}"
     traces = []
-    runtime = open_runtime(model, context.cancellation) if script["windows"] else None
+    # Borrowed from the resident model, so memory, markup and the stages after
+    # them reuse one load; closing hands it back.
+    runtime = acquire_runtime(model, context.cancellation) if script["windows"] else None
     try:
         build, schema, output = (
             (build_memory, MindMemory, "memory.json")
