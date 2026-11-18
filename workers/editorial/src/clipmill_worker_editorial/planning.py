@@ -11,6 +11,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
+from .comparison import missing_comparison
 from .inference import call
 
 ShortText = Annotated[str, Field(min_length=1, max_length=240)]
@@ -263,6 +264,42 @@ def end_on_point(original, transcript, length, brief):
     return plan
 
 
+def preserve_comparison(plan, transcript, length):
+    """Put a required measurement back at its original, validated source boundary."""
+    if len(plan["parts"]) == 1 and not plan["parts"][0].get("removed"):
+        return plan
+    missing = {j["after"] for j in transcript.evidence(plan)["splices"] if missing_comparison(j)}
+    if not missing:
+        return plan
+    restored = copy.deepcopy(plan)
+    for part in restored["parts"]:
+        retained_cuts = []
+        for i, cut in enumerate(part.get("removed", []), start=1):
+            boundary = f"{part['part_id']}.cut{i}"
+            if boundary in missing:
+                missing.remove(boundary)
+                restored["duration_ticks"] += cut["end_ticks"] - cut["start_ticks"]
+            else:
+                retained_cuts.append(cut)
+        if len(retained_cuts) == len(part.get("removed", [])):
+            continue
+        if retained_cuts:
+            part["removed"] = retained_cuts
+        else:
+            del part["removed"]
+        part["units"] = [
+            line["unit"] for line in transcript.evidence({"parts": [part]})["playback"]
+        ]
+    # Inter-part omissions need an alternative validated geometry. Restoring a
+    # long omitted passage may also exceed the requested programme length.
+    if missing or not length["min_ticks"] <= restored["duration_ticks"] <= length["max_ticks"]:
+        return None
+    if len(restored["parts"]) == 1 and not restored["parts"][0].get("removed"):
+        restored["form"] = "straight"
+    restored["plan_id"] = geometry_id(restored)
+    return restored
+
+
 def variants(original, transcript, length, alternatives=(), brief=""):
     """Offer only geometries derived from the cutter's validated sentence boundaries."""
     result = {"original": copy.deepcopy(original)}
@@ -298,9 +335,23 @@ def variants(original, transcript, length, alternatives=(), brief=""):
     for name, plan in list(result.items()):
         if tighter := end_on_point(plan, transcript, length, brief):
             result[f"{name}_ending"] = tighter
-    if montage_requested(brief):
-        return {key: choice for key, choice in result.items() if choice["form"] == "theme_montage"}
-    return result
+    safe = {}
+    restored_ids = set()
+    montage = montage_requested(brief)
+    for name, plan in result.items():
+        if montage and plan["form"] != "theme_montage":
+            continue
+        choice = preserve_comparison(plan, transcript, length)
+        if choice is plan and plan["plan_id"] not in restored_ids:
+            safe[name] = plan
+        elif (
+            choice
+            and choice is not plan
+            and all(v["plan_id"] != choice["plan_id"] for v in safe.values())
+        ):
+            safe[f"restored_{len(safe) + 1}"] = choice
+            restored_ids.add(choice["plan_id"])
+    return safe
 
 
 def chapter_of(plan, chapters):

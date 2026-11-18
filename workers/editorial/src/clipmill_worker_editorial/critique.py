@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from .comparison import missing_comparison
 from .planning import (
     Reply,
     ShortText,
@@ -187,7 +188,9 @@ def judge(ctx, plan, transcript):
         value, failure = ctx.ask("critic.source", transition, Splice)
         if failure or not value or "effect" not in value:
             value = {"effect": "uncertain", "note": "The critic could not verify this join."}
-        if value["effect"] == "lost_qualification":
+        if comparison := missing_comparison(join):
+            value = {"effect": "changed_claim", "note": comparison}
+        elif value["effect"] == "lost_qualification":
             condition = value.get("omitted_condition", "").strip().casefold()
             original_text = transition.get("original") or [
                 *transition["original_contexts"]["at_left"],

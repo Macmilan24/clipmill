@@ -252,6 +252,103 @@ def test_an_independent_omission_passes_and_an_unsubstantiated_condition_stays_u
     assert quality["verdict"] == "reject" and "could not identify" in quality["joins"][0]["note"]
 
 
+def test_removed_comparison_is_repaired_once_without_restoring_an_unrelated_cut():
+    source = script()
+    lines = [
+        "The first trial took 240 milliseconds.",
+        "With the same input the second trial took 80 milliseconds.",
+        "That is a real improvement.",
+        "The clock was on the desk.",
+        "I had drawn a rabbit on my notebook.",
+        "We repeated the measurement the next day.",
+    ]
+    for u, words in zip(source["units"], lines, strict=True):
+        u.update(speaker="B", text=words)
+    piece = part("p1", 0, 6)
+    false_start = {"start_ticks": 5 * TICK, "end_ticks": 10 * TICK, "reason": "false_start"}
+    aside = {"start_ticks": 20 * TICK, "end_ticks": 25 * TICK, "reason": "tangent"}
+    piece["removed"] = [false_start, aside]
+    draft = plan([piece], "tightened")
+    transcript = Transcript(source)
+    row = {"candidate_id": draft["plan_id"], "plan": draft, "chapter": "Trials", "reasons": []}
+    candidates = {
+        "length": {"min_ticks": TICK, "max_ticks": 25 * TICK},
+        "candidates": [{"plan": draft}],
+    }
+
+    def affirmative(job, data):
+        if job == "critic":
+            return approval()
+        if job == "critic.edge":
+            return source_approval()
+        if job == "critic.source":
+            return {"effect": "omitted_independent_material", "note": "The aside is independent."}
+        assert [choice["choice"] for choice in data["choices"]] == ["restored_1"]
+        assert "80 milliseconds" in str(data["repair_findings"])
+        return {
+            "choice": "restored_1",
+            "title": "How long the trials took",
+            "hook_text": "",
+            "reasons": ["Both timed trials are heard."],
+            "doubts": [],
+            "joins": [],
+        }
+
+    ctx = Calls(affirmative)
+    quality = judge(ctx, draft, transcript)
+    assert quality["verdict"] == "reject" and quality["joins"][1]["verdict"] == "pass"
+    assert "80 milliseconds" in quality["joins"][0]["note"]
+    assert "240 milliseconds" in quality["joins"][0]["note"]
+    safe = variants(draft, transcript, candidates["length"])
+    assert list(safe) == ["restored_1"] and safe["restored_1"]["duration_ticks"] == 25 * TICK
+    (reviewed,) = review_batch(ctx, {"plans": [row]}, candidates, source)
+    assert reviewed["quality"]["verdict"] == "accept" and reviewed["quality"]["repaired"]
+    assert reviewed["plan"]["plan_id"] != draft["plan_id"]
+    assert reviewed["plan"]["parts"][0]["removed"] == [aside]
+    assert reviewed["plan"]["parts"][0]["units"] == ["s0", "s1", "s2", "s3", "s5"]
+    assert [name for name, _ in ctx.calls].count("plan") == 1
+
+    candidates["length"]["max_ticks"] = 20 * TICK
+    assert not variants(draft, transcript, candidates["length"])
+    (unfixable,) = review_batch(ctx, {"plans": [row]}, candidates, source)
+    assert unfixable["quality"]["verdict"] == "reject" and not unfixable["quality"]["repaired"]
+
+
+def test_a_separate_measurement_can_be_cut_when_the_actual_comparison_stays_audible():
+    source = script()
+    for u, text in zip(
+        source["units"],
+        (
+            "The express ticket cost $30.",
+            "With the same route the slower train cost $10.",
+            "For comparison I spent $8 on lunch.",
+            "That difference made the slower ticket worthwhile.",
+        ),
+        strict=False,
+    ):
+        u.update(speaker="B", text=text)
+    piece = part("p1", 0, 4)
+    piece["removed"] = [{"start_ticks": 10 * TICK, "end_ticks": 15 * TICK, "reason": "tangent"}]
+    draft = plan([piece], "tightened")
+    ctx = Calls(
+        lambda job, _: (
+            approval()
+            if job == "critic"
+            else source_approval()
+            if job == "critic.edge"
+            else {
+                "effect": "omitted_independent_material",
+                "note": "Lunch is independent of the fare comparison.",
+            }
+        )
+    )
+    transcript = Transcript(source)
+    assert judge(ctx, draft, transcript)["verdict"] == "accept"
+    assert variants(draft, transcript, {"min_ticks": TICK, "max_ticks": 15 * TICK}) == {
+        "original": draft
+    }
+
+
 def test_source_audit_can_veto_an_intelligible_unspliced_cut_missing_its_qualification():
     draft = plan([part("p1", 0, 2)])
 
