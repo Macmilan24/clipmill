@@ -575,3 +575,67 @@ fn only_a_bracket_that_closes_is_an_annotation() {
     );
     assert_eq!(super::strip_annotations("[music]"), "");
 }
+
+fn word(index: u64, segment: u64, start: u64, end: u64, measured: bool) -> transcript::Word {
+    transcript::Word {
+        index,
+        segment_index: segment,
+        text: format!("w{index}").try_into().expect("non-empty"),
+        start_ticks: start,
+        end_ticks: end,
+        confidence: transcript::Confidence { p50: 0.9, p10: 0.8 },
+        timing: if measured {
+            transcript::WordTiming::Aligned
+        } else {
+            transcript::WordTiming::Interpolated
+        },
+    }
+}
+
+fn starts_in_order(words: &[transcript::Word]) -> bool {
+    words
+        .windows(2)
+        .all(|pair| pair[0].start_ticks <= pair[1].start_ticks)
+        && words.iter().all(|word| word.end_ticks >= word.start_ticks)
+}
+
+/// Found on a real hour-long recording: an utterance's spread-out tail ("the
+/// same thing.") ran past where the next utterance's first measured word
+/// began, and the Timeline Index refused the whole analysis over one word.
+#[test]
+fn a_spread_tail_never_runs_past_the_next_utterance() {
+    let mut words = vec![
+        word(0, 1, 1_000, 1_100, true),
+        word(1, 1, 1_200, 1_300, false),
+        word(2, 1, 1_300, 1_400, false),
+        word(3, 1, 1_400, 1_500, false),
+        word(4, 2, 1_250, 1_350, true),
+        word(5, 2, 1_360, 1_400, true),
+    ];
+    super::keep_time_order(&mut words);
+    assert!(starts_in_order(&words), "{words:?}");
+    // The measured words keep their measurements; the guesses moved.
+    assert_eq!((words[4].start_ticks, words[4].end_ticks), (1_250, 1_350));
+    assert!(matches!(words[4].timing, transcript::WordTiming::Aligned));
+    assert!(words[3].start_ticks <= 1_250);
+}
+
+/// Overlapping decode windows can put a measured word before the one ahead
+/// of it; it moves up and stops counting as measured.
+#[test]
+fn a_measured_word_that_starts_too_early_moves_up_and_is_unmeasured() {
+    let mut words = vec![
+        word(0, 1, 1_000, 1_100, true),
+        word(1, 1, 1_200, 1_300, true),
+        word(2, 2, 1_150, 1_180, true),
+        word(3, 2, 1_400, 1_500, true),
+    ];
+    super::keep_time_order(&mut words);
+    assert!(starts_in_order(&words), "{words:?}");
+    assert_eq!(words[2].start_ticks, 1_200);
+    assert!(matches!(
+        words[2].timing,
+        transcript::WordTiming::Interpolated
+    ));
+    assert!(matches!(words[3].timing, transcript::WordTiming::Aligned));
+}

@@ -153,19 +153,6 @@ pub(crate) fn assemble(
         invalid.extend(loops);
         let ordered = without_annotations(ordered, |entry| entry.2.as_str());
         for (start, end, text, timing, p50, p10) in ordered {
-            if matches!(timing, transcript::WordTiming::Interpolated) {
-                invalid.push(transcript::InvalidRegion {
-                    start_ticks: start,
-                    end_ticks: end,
-                    reason: transcript::InvalidRegionReason::TimingInterpolated,
-                    detail: Some(
-                        "word timing was spread; the aligner placed nothing here"
-                            .to_owned()
-                            .try_into()
-                            .unwrap_or_else(|_| unreachable!("a non-empty literal")),
-                    ),
-                });
-            }
             words.push(transcript::Word {
                 index: u64::try_from(words.len()).unwrap_or(u64::MAX),
                 segment_index: segment.index,
@@ -198,6 +185,31 @@ pub(crate) fn assemble(
                 p10: segment.confidence.p10,
             },
         });
+    }
+
+    keep_time_order(&mut words);
+    for segment in &mut segments {
+        let first = usize::try_from(segment.first_word_index).unwrap_or(0);
+        let count = usize::try_from(segment.word_count).unwrap_or(0);
+        if let (Some(head), Some(tail)) = (words.get(first), words.get(first + count - 1)) {
+            segment.start_ticks = head.start_ticks;
+            segment.end_ticks = tail.end_ticks.max(head.start_ticks);
+        }
+    }
+    for word in &words {
+        if matches!(word.timing, transcript::WordTiming::Interpolated) {
+            invalid.push(transcript::InvalidRegion {
+                start_ticks: word.start_ticks,
+                end_ticks: word.end_ticks,
+                reason: transcript::InvalidRegionReason::TimingInterpolated,
+                detail: Some(
+                    "word timing was spread; the aligner placed nothing here"
+                        .to_owned()
+                        .try_into()
+                        .unwrap_or_else(|_| unreachable!("a non-empty literal")),
+                ),
+            });
+        }
     }
 
     // Regions the upstream stages already declared invalid travel through
@@ -318,6 +330,63 @@ pub(crate) fn assemble(
             invalid_regions: invalid,
         };
     Ok(Assembled { document })
+}
+
+/// Put the words in time order: each starts no earlier than the one before.
+///
+/// Within an utterance they already are. Across utterances they were not: the
+/// spread-out tail of one utterance could run past where the next utterance's
+/// first measured word begins, and a recognizer's overlapping decode windows
+/// can do the same. The Timeline Index refuses such a transcript, and with it
+/// the whole analysis, over one word. A run of interpolated words that breaks
+/// the order is spread again in the room its neighbours leave; a measured word
+/// that still starts too early moves to where the previous word starts and no
+/// longer counts as measured.
+fn keep_time_order(words: &mut [transcript::Word]) {
+    let interpolated =
+        |word: &transcript::Word| matches!(word.timing, transcript::WordTiming::Interpolated);
+    let mut index = 0;
+    while index < words.len() {
+        if !interpolated(&words[index]) {
+            index += 1;
+            continue;
+        }
+        let first = index;
+        while index < words.len() && interpolated(&words[index]) {
+            index += 1;
+        }
+        let floor = first
+            .checked_sub(1)
+            .map_or(0, |previous| words[previous].start_ticks);
+        let Some(ceiling) = words.get(index).map(|next| next.start_ticks) else {
+            continue;
+        };
+        let run = &mut words[first..index];
+        let in_order = run
+            .windows(2)
+            .all(|pair| pair[0].start_ticks <= pair[1].start_ticks);
+        let fits =
+            in_order && run[0].start_ticks >= floor && run[run.len() - 1].start_ticks <= ceiling;
+        if fits || ceiling < floor {
+            continue;
+        }
+        let low = run[0].start_ticks.clamp(floor, ceiling);
+        let step = (ceiling - low) / u64::try_from(run.len()).unwrap_or(u64::MAX);
+        for (offset, word) in (0_u64..).zip(run.iter_mut()) {
+            word.start_ticks = low + offset * step;
+            word.end_ticks = word.start_ticks + step.max(1);
+        }
+    }
+    let mut previous = 0;
+    for word in words.iter_mut() {
+        if word.start_ticks < previous {
+            word.start_ticks = previous;
+            word.timing = transcript::WordTiming::Interpolated;
+            word.confidence = transcript::Confidence { p50: 0.0, p10: 0.0 };
+        }
+        word.end_ticks = word.end_ticks.max(word.start_ticks);
+        previous = word.start_ticks;
+    }
 }
 
 /// The longest a collapsed word may be stretched to, when nothing measured
@@ -705,8 +774,9 @@ fn strip_annotations(text: &str) -> String {
 
 /// The task kind this module executes.
 pub(crate) const KIND_TRANSCRIPT: &str = "speech-transcript";
-/// 1.2.0 leaves out the annotations recognition writes as words.
-pub(crate) const IMPLEMENTATION: &str = "clipmill-transcript-assembly@1.2.0";
+/// 1.2.0 leaves out the annotations recognition writes as words; 1.3.0 keeps
+/// words in time order across utterances.
+pub(crate) const IMPLEMENTATION: &str = "clipmill-transcript-assembly@1.3.0";
 const OUTPUT_FILE: &str = "transcript.json";
 
 /// Read the three published artifacts and publish the transcript that fuses
