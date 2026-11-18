@@ -247,3 +247,47 @@ impl Fits for MindClipPlan {
         (min..=max).contains(&crate::programme_ticks(self))
     }
 }
+
+/// A short talk once yielded no clip at all: the markup called nearly every
+/// line a retake or an aside, and no moment had enough left. Markup is advice;
+/// each event still yields its plain moment.
+#[test]
+fn over_marked_markup_still_leaves_every_moment() {
+    let (source, words) = recording();
+    let mut scores = serde_json::to_value(scores()).unwrap();
+    for (index, row) in scores["units"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .enumerate()
+    {
+        if index % 7 != 0 {
+            row["trim"] = json!(if index % 2 == 0 { "retake" } else { "aside" });
+        }
+    }
+    let scores: MindUnitScores = serde_json::from_value(scores).unwrap();
+    let memory = memory();
+    let found = candidates(&Material {
+        source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+        source: &source,
+        words: &words,
+        scores: Some(&scores),
+        memory: Some(&memory),
+        length: (15 * S, 60 * S),
+    });
+    assert!(found.len() >= 3, "{:?}", forms(&found));
+    for candidate in &found {
+        let span: u64 = candidate
+            .plan
+            .parts
+            .iter()
+            .map(|p| p.end_ticks.get() - p.start_ticks)
+            .sum();
+        let kept = crate::programme_ticks(&candidate.plan);
+        assert!(
+            kept * 100 >= span * (100 - MAX_CUT_PERCENT),
+            "{} hollowed out",
+            candidate.plan.plan_id.as_str()
+        );
+    }
+}

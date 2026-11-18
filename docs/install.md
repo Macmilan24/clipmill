@@ -53,6 +53,15 @@ Windows support is new: try it, and report what happens.
 As on Linux, the editorial model runs in llama.cpp; see
 [the editorial model](#the-editorial-model).
 
+### Older processors
+
+The bundled Whisper recognizer needs a processor with AVX2, which most Intel
+and AMD processors made since 2013 have (Intel Haswell, AMD Excavator and
+later). On an older one, such as an Intel Core i7-3770, Models marks Whisper as
+unsupported: choose **Parakeet** for speech, which runs on any x86-64
+processor and covers English and 24 other European languages. This applies to
+Linux too.
+
 ## First run: Set up ClipMill
 
 The app arrives without its components (the programs that run the models) and
@@ -126,6 +135,9 @@ then delete the folder above to remove projects, components and models.
   output is in `logs/engine-install.log`.
 - **The window stays blank on Linux with an NVIDIA GPU** — start ClipMill with
   `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
+- **"This processor lacks AVX2"** — the processor is too old for the bundled
+  Whisper; choose Parakeet for speech in Models (see
+  [Older processors](#older-processors)).
 
 Report problems at
 [github.com/Macmilan24/clipmill/issues](https://github.com/Macmilan24/clipmill/issues).

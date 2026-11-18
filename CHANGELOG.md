@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Older processors.** On a PC whose processor lacks AVX2 (an Intel Core
+  i7-3770, for example), the bundled Whisper crashed with an illegal
+  instruction and its worker restarted forever (#140). Models now marks
+  Whisper as unsupported there and analysis uses Parakeet, which runs on any
+  x86-64 processor; a task that reaches Whisper anyway is refused with a
+  sentence saying what to do.
+- **The mind always offers its moments.** When the line markup marked most of
+  a recording as cuttable, the cutter found no moment long enough and the
+  mind proposed nothing. Markup that would cut more than a third of a moment
+  is now set aside for that moment, and every remembered event still yields
+  its plain clip.
+
 ## 0.5.0 — Word timing, recording search and connected clients
 
 - Parakeet TDT v3 recognizes and times words locally with one model for 25

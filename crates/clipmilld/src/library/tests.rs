@@ -806,3 +806,29 @@ async fn a_fresh_install_asks_for_the_editorial_model_this_platform_runs() {
         .expect("an editorial binding");
     assert_eq!(binding.model, expected);
 }
+
+/// Issue #140: an Ivy Bridge i7 has AVX but not AVX2, and the bundled
+/// whisper.cpp died on it with an illegal instruction. It is not offered there.
+#[test]
+fn whisper_cpp_is_not_offered_to_a_processor_without_avx2() {
+    let manifest = tiny_manifest("whisper-tiny", b"weights");
+    let ivy_bridge = super::CpuFeatures {
+        avx2: false,
+        fma: false,
+        f16c: true,
+    };
+    let reason = super::supported_on(&manifest, ivy_bridge).expect_err("refused");
+    assert!(
+        reason.contains("AVX2") && reason.contains("Parakeet"),
+        "{reason}"
+    );
+    let haswell = super::CpuFeatures {
+        avx2: true,
+        fma: true,
+        f16c: true,
+    };
+    assert!(super::supported_on(&manifest, haswell).is_ok());
+    let mut other = manifest;
+    other.runtime = "onnxruntime".to_owned();
+    assert!(super::supported_on(&other, ivy_bridge).is_ok());
+}

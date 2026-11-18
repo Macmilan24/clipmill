@@ -1301,10 +1301,57 @@ fn display_reason(selected_by: &str) -> &'static str {
     }
 }
 
+/// What an x86-64 processor offers that the bundled native runtimes rely on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct CpuFeatures {
+    pub avx2: bool,
+    pub fma: bool,
+    pub f16c: bool,
+}
+
+impl CpuFeatures {
+    /// This processor's, asked of the CPU itself. A processor that is not
+    /// x86-64 has nothing missing from this list.
+    pub(crate) fn here() -> Self {
+        #[cfg(target_arch = "x86_64")]
+        {
+            Self {
+                avx2: std::arch::is_x86_feature_detected!("avx2"),
+                fma: std::arch::is_x86_feature_detected!("fma"),
+                f16c: std::arch::is_x86_feature_detected!("f16c"),
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            Self {
+                avx2: true,
+                fma: true,
+                f16c: true,
+            }
+        }
+    }
+
+    /// The bundled whisper.cpp is ggml's x86-64 build with AVX2, FMA and F16C:
+    /// on a processor without them it dies on its first instruction rather
+    /// than refusing (issue #140), so it is not offered there at all.
+    pub(crate) fn runs_whisper_cpp(self) -> bool {
+        self.avx2 && self.fma && self.f16c
+    }
+}
+
 /// Whether this platform can load a model's runtime at all.
 pub(crate) fn supported(manifest: &ModelManifest) -> Result<(), &'static str> {
+    supported_on(manifest, CpuFeatures::here())
+}
+
+fn supported_on(manifest: &ModelManifest, cpu: CpuFeatures) -> Result<(), &'static str> {
     if manifest.runtime == "mlx" && !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         return Err("Runs only on Macs with Apple silicon.");
+    }
+    if manifest.runtime == "whisper.cpp" && !cpu.runs_whisper_cpp() {
+        return Err(
+            "Needs a processor with AVX2, which this one lacks. Parakeet recognizes speech on it.",
+        );
     }
     // The pinned llama.cpp server ships in the Windows and Linux builds only.
     if manifest.runtime == "llama.cpp"

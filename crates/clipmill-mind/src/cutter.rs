@@ -49,6 +49,10 @@ pub const STITCH_MIN_GAP_TICKS: u64 = 45 * SECOND;
 pub const DUPLICATE_SHARE_PERCENT: u64 = 50;
 /// The most candidates the cutter hands on, best first.
 pub const MAX_CANDIDATES: usize = 30;
+/// The most of a moment a tight cut may leave out. Markup that would cut
+/// more is not trusted for that moment: an editor tightens a moment, they do
+/// not hollow it out.
+pub const MAX_CUT_PERCENT: u64 = 35;
 
 /// Everything the cutter reads.
 #[derive(Clone, Copy, Debug)]
@@ -165,6 +169,20 @@ impl Table {
         Self { units, position }
     }
 
+    /// The same recording with every cut mark set aside, so a moment the
+    /// markup over-marked still has its plain version.
+    fn plain(&self) -> Self {
+        Self {
+            units: self
+                .units
+                .iter()
+                .cloned()
+                .map(|unit| Unit { cut: None, ..unit })
+                .collect(),
+            position: self.position.clone(),
+        }
+    }
+
     fn place(&self, unit: &str) -> Option<usize> {
         unit_index(unit).and_then(|i| self.position.get(&i).copied())
     }
@@ -253,6 +271,10 @@ impl Table {
                     break;
                 }
                 if kept < min {
+                    continue;
+                }
+                let span = self.units[end].end.saturating_sub(self.units[start].start);
+                if (span - kept.min(span)) * 100 > span * MAX_CUT_PERCENT {
                     continue;
                 }
                 // Prefer covering the moment, then strong edges, then length.
@@ -458,14 +480,22 @@ pub fn candidates(material: &Material<'_>) -> Vec<Candidate> {
     if table.units.is_empty() {
         return Vec::new();
     }
+    // Every scout also runs with the cut marks set aside: markup is advice,
+    // and a recording it over-marked must still yield its moments (a short
+    // talk once yielded none). Where both versions exist the tightened one
+    // scores higher and the duplicate goes.
+    let plain = table.plain();
     let mut found = Vec::new();
     if let Some(memory) = material.memory {
-        events(material, &table, memory, &mut found);
-        links(material, &table, memory, &mut found);
-        themes(material, &table, memory, &mut found);
+        for version in [&table, &plain] {
+            events(material, version, memory, &mut found);
+            links(material, version, memory, &mut found);
+            themes(material, version, memory, &mut found);
+        }
     }
     if found.is_empty() {
         spans(material, &table, &mut found);
+        spans(material, &plain, &mut found);
     }
     cold_opens(material, &table, &mut found);
 
