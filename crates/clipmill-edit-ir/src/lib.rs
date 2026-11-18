@@ -14,6 +14,7 @@
 
 mod command;
 mod document;
+mod parts;
 mod reflow;
 mod regroup;
 

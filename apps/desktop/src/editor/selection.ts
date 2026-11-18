@@ -24,7 +24,7 @@ export type EditorSelection =
 export const NOTHING: EditorSelection = { kind: 'clip' };
 
 /** The properties tab a selection belongs on. */
-export type PropertiesTab = 'captions' | 'text' | 'framing' | 'audio' | 'brand';
+export type PropertiesTab = 'parts' | 'captions' | 'text' | 'framing' | 'audio' | 'brand';
 
 export function tabFor(selection: EditorSelection): PropertiesTab | null {
   switch (selection.kind) {

@@ -46,6 +46,9 @@ pub struct PreviewWord {
 /// through one mapping.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewSegment {
+    pub fade_in_ticks: i64,
+    pub fade_out_ticks: i64,
+    pub room_tone_start_ticks: Option<i64>,
     pub segment_id: String,
     pub source_fingerprint: String,
     pub in_ticks: i64,
@@ -488,10 +491,14 @@ fn segments(
         .segments
         .iter()
         .zip(starts)
-        .map(|(segment, program_start_ticks)| {
+        .zip(crate::joins::edges(document))
+        .map(|((segment, program_start_ticks), edges)| {
             let first_frame = rate.frame_ceil(program_start_ticks);
             let end_frame = rate.frame_ceil(program_start_ticks + segment.duration_ticks());
             PreviewSegment {
+                fade_in_ticks: edges.fade_in,
+                fade_out_ticks: edges.fade_out,
+                room_tone_start_ticks: edges.room_tone_start,
                 segment_id: segment.segment_id.clone(),
                 source_fingerprint: segment.source_fingerprint.clone(),
                 in_ticks: segment.in_ticks,

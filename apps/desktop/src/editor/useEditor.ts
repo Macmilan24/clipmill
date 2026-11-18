@@ -56,6 +56,7 @@ export interface EditorState {
   readonly document: EditIr | null;
   /** The proxy for each source the plan names, by fingerprint, as a URL. */
   readonly proxyUrls: ReadonlyMap<string, string>;
+  readonly audioUrls: ReadonlyMap<string, string>;
   /** The face tracks a crop path is re-solved from, when the run published any. */
   readonly faceTrack: ArtifactRef | null;
   readonly transcript: Transcript | null;
@@ -354,12 +355,28 @@ export function useEditor(
     return urls;
   }, [api, plan, projectId]);
 
+  const audioUrls = useMemo(() => {
+    const entries =
+      plan?.proxies.flatMap((proxy) =>
+        projectId && proxy.audioArtifactId && proxy.audioFile
+          ? [
+              [
+                proxy.sourceFingerprint,
+                api.mediaUrl(projectId, proxy.audioArtifactId, proxy.audioFile),
+              ] as const,
+            ]
+          : [],
+      ) ?? [];
+    return new Map(entries);
+  }, [api, plan, projectId]);
+
   return {
     docId: plan ? docId : null,
     revision,
     plan,
     document,
     proxyUrls,
+    audioUrls,
     faceTrack,
     transcript,
     filmstrip,

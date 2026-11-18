@@ -9,6 +9,7 @@
 pub mod captions;
 mod cutaways;
 mod graph;
+mod joins;
 mod kinetic;
 mod manifest;
 mod music;

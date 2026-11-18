@@ -1384,6 +1384,7 @@ fn a_join_blend_fades_across_its_cut_and_changes_nothing_else() {
         kind: JoinKind::Distant,
         audio_crossfade_ticks: 5_400,
         room_tone: false,
+        room_tone_range: None,
     });
     let joined = compile(&document, &[source()], &profile).expect("compiles");
     assert!(
@@ -1426,6 +1427,7 @@ fn joins_without_blends_and_the_plan_change_nothing_the_renderer_sees() {
         kind: JoinKind::Adjacent,
         audio_crossfade_ticks: 0,
         room_tone: false,
+        room_tone_range: None,
     });
     document.plan = Some(Plan {
         plan_id: "plan_00000000000000c3".to_owned(),

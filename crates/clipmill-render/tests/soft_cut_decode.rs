@@ -220,3 +220,98 @@ fn soft_cuts_match_preview_weights_without_shortening_or_retiming_the_clip() {
     }
     std::fs::remove_dir_all(work).unwrap();
 }
+
+/// The kept ranges are silent. The only signal in the recording lies between
+/// them, so a sample heard at the cut must come from the selected room tone.
+#[test]
+#[ignore = "requires pinned FFmpeg; decodes the room track against the sample envelope used in preview"]
+fn a_verified_room_sample_plays_across_the_join_on_the_preview_clock() {
+    use clipmill_edit_ir::{Join, JoinKind};
+    let binary = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.cache/bin/ffmpeg")
+        .canonicalize()
+        .unwrap();
+    let work = tempfile::tempdir().unwrap();
+    ffmpeg(
+        &binary,
+        work.path(),
+        &args(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "aevalsrc=exprs='if(between(t,0.7,1.2),0.125,0)|if(between(t,0.7,1.2),0.125,0)':s=48000:d=2",
+            "-c:a",
+            "pcm_s16le",
+            "room.wav",
+        ]),
+    );
+    let fingerprint = format!("sha256:{}", "1".repeat(64));
+    let mut document = EditDocument::default();
+    let mut section: VideoSegment = serde_json::from_value(serde_json::json!({
+        "segment_id": "opening", "source_fingerprint": fingerprint, "in_ticks":0, "out_ticks":45000,
+        "layout":{"state":"fit"}
+    }))
+    .unwrap();
+    document.video.segments.push(section.clone());
+    section.segment_id = "answer".to_owned();
+    section.in_ticks = 135_000;
+    section.out_ticks = 180_000;
+    section.join = Some(Join {
+        kind: JoinKind::Distant,
+        audio_crossfade_ticks: 9_000,
+        room_tone: true,
+        room_tone_range: Some([72_000, 81_000]),
+    });
+    document.video.segments.push(section);
+    let sources = [SourceInput {
+        fingerprint,
+        path: work.path().join("room.wav").to_str().unwrap().to_owned(),
+        width: 160,
+        height: 160,
+        has_audio: true,
+        duration_ticks: 180_000,
+        keyframe_ticks: vec![],
+    }];
+    let profile = RenderProfile::default();
+    let plan = compile(&document, &sources, &profile).unwrap();
+    let preview = preview_plan(&document, &profile).unwrap();
+    assert_eq!(preview.segments[0].fade_out_ticks, 4_500);
+    assert_eq!(preview.segments[1].fade_in_ticks, 4_500);
+    assert_eq!(preview.segments[1].room_tone_start_ticks, Some(72_000));
+    let mut command = plan.measurement_args();
+    let filter = command
+        .iter()
+        .position(|arg| arg == "-filter_complex")
+        .unwrap();
+    // Inspect the pre-normalisation stereo samples that draft auditions.
+    let graph = &command[filter + 1];
+    let loudness = graph.find("loudnorm=").unwrap();
+    command[filter + 1] = format!("{}anull[aout]", &graph[..loudness]);
+    command.truncate(filter + 2);
+    command.extend(args(&[
+        "-map",
+        "[aout]",
+        "-f",
+        "f32le",
+        "-c:a",
+        "pcm_f32le",
+        "-",
+    ]));
+    let pcm = ffmpeg(&binary, work.path(), &command).stdout;
+    assert_eq!(pcm.len(), 48_000 * 2 * 4);
+    let amplitude =
+        |frame: usize| f32::from_le_bytes(pcm[frame * 8..frame * 8 + 4].try_into().unwrap());
+    for (frame, expected) in [
+        (18_000, 0.),
+        (22_800, 0.125 * std::f32::consts::FRAC_1_SQRT_2),
+        (24_000, 0.125),
+        (25_200, 0.125 * std::f32::consts::FRAC_1_SQRT_2),
+        (27_000, 0.),
+    ] {
+        assert!(
+            (amplitude(frame) - expected).abs() < 0.0002,
+            "frame {frame}: {} instead of {expected}",
+            amplitude(frame)
+        );
+    }
+}

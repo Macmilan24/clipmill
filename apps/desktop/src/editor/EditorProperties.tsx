@@ -15,6 +15,7 @@ import {
   Copy,
   Crop,
   Minus,
+  ListVideo,
   PanelLeft,
   PanelTop,
   PictureInPicture2,
@@ -66,6 +67,7 @@ import {
   switchCommands,
   viewports,
 } from './layouts.js';
+import { PlanParts } from './PlanParts.js';
 import { CueTiming } from './CueTiming.js';
 import { TextTab } from './TextTab.js';
 import type { AssetAccess } from './brand.js';
@@ -163,6 +165,12 @@ export function EditorProperties(props: EditorPropertiesProps) {
         className="review-tabs"
       >
         <TabsList className="review-tab-list">
+          {props.document?.plan && (
+            <TabsTrigger value="parts">
+              <ListVideo aria-hidden="true" />
+              Parts
+            </TabsTrigger>
+          )}
           <TabsTrigger value="captions">
             <CaptionsIcon aria-hidden="true" />
             Captions
@@ -184,6 +192,17 @@ export function EditorProperties(props: EditorPropertiesProps) {
             Brand
           </TabsTrigger>
         </TabsList>
+        {props.document?.plan && (
+          <TabsContent value="parts" className="review-tab-panel">
+            <PlanParts
+              document={props.document}
+              plan={props.plan}
+              onApply={props.onApply}
+              onSeek={props.onSeek}
+              busy={props.busy}
+            />
+          </TabsContent>
+        )}
         <TabsContent value="captions" className="review-tab-panel">
           <div
             className="review-segmented edit-wide mx-3 mt-3"

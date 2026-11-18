@@ -72,7 +72,7 @@ pub fn direct_plan(
 ) -> Result<EditDocument, DirectError> {
     check(evidence, request)?;
     let plan = request.plan;
-    let ranges = ranges(plan);
+    let ranges = ranges(plan, evidence.transcript);
     // The single-span director's request shape: frame, shape and style are
     // all the shared helpers read from it.
     let single = Request {
@@ -217,21 +217,7 @@ fn assemble(
         },
         ..EditDocument::default()
     };
-    document.plan = Some(Plan {
-        plan_id: plan.plan_id.to_string(),
-        form: form(plan.form),
-        removed: plan
-            .parts
-            .iter()
-            .flat_map(|part| part.removed.iter())
-            .map(|range| RemovedRange {
-                source_fingerprint: fingerprint.to_owned(),
-                in_ticks: crate::as_i64(range.start_ticks),
-                out_ticks: crate::as_i64(range.end_ticks.get()),
-                reason: format!("{:?}", range.reason).to_lowercase(),
-            })
-            .collect(),
-    });
+    document.plan = Some(plan_record(plan, fingerprint));
     document.title = plan.title.as_ref().map(|title| title.as_str().to_owned());
     document.rationale = Some(Rationale {
         candidate_id: None,
@@ -243,9 +229,29 @@ fn assemble(
     Ok(document)
 }
 
+fn plan_record(plan: &MindClipPlan, fingerprint: &str) -> Plan {
+    Plan {
+        plan_id: plan.plan_id.to_string(),
+        form: form(plan.form),
+        removed: plan
+            .parts
+            .iter()
+            .flat_map(|part| {
+                part.removed.iter().map(move |range| RemovedRange {
+                    part_id: Some(part.part_id.to_string()),
+                    source_fingerprint: fingerprint.to_owned(),
+                    in_ticks: crate::as_i64(range.start_ticks),
+                    out_ticks: crate::as_i64(range.end_ticks.get()),
+                    reason: range.reason.to_string(),
+                })
+            })
+            .collect(),
+    }
+}
+
 /// Every kept range of the plan in programme order: each part split around
 /// what was removed from it, with the joins between them.
-fn ranges(plan: &MindClipPlan) -> Vec<Range> {
+fn ranges(plan: &MindClipPlan, transcript: &SpeechTranscript) -> Vec<Range> {
     let mut ranges = Vec::new();
     for (index, part) in plan.parts.iter().enumerate() {
         let reference = PartRef {
@@ -271,6 +277,7 @@ fn ranges(plan: &MindClipPlan) -> Vec<Range> {
                         kind: JoinKind::Removed,
                         audio_crossfade_ticks: REMOVED_CROSSFADE_TICKS,
                         room_tone: false,
+                        room_tone_range: None,
                     }),
                     piece % 2 == 1,
                 )
@@ -286,6 +293,17 @@ fn ranges(plan: &MindClipPlan) -> Vec<Range> {
                             .crossfade_ms
                             .map_or(0, |ms| ms.clamp(0, 500) * 90),
                         room_tone: planned.room_tone.unwrap_or(false),
+                        room_tone_range: planned
+                            .room_tone
+                            .unwrap_or(false)
+                            .then(|| {
+                                quiet_range(
+                                    transcript,
+                                    start_ticks,
+                                    planned.crossfade_ms.unwrap_or(0).clamp(0, 500) * 90,
+                                )
+                            })
+                            .flatten(),
                     }),
                     planned.framing == Some(JoinFraming::PunchIn),
                 )
@@ -304,6 +322,55 @@ fn ranges(plan: &MindClipPlan) -> Vec<Range> {
         }
     }
     ranges
+}
+
+/// Use the closest verified silence, leaving 40 ms clear of both ends.
+fn quiet_range(transcript: &SpeechTranscript, near: i64, requested: i64) -> Option<[i64; 2]> {
+    const MARGIN: u64 = 3_600;
+    let duration = if requested > 0 {
+        requested.cast_unsigned()
+    } else {
+        5_400
+    };
+    let near = u64::try_from(near).ok()?;
+    transcript
+        .silences
+        .iter()
+        .filter_map(|silence| {
+            let low = silence
+                .start_ticks
+                .max(transcript.coverage.start_ticks)
+                .checked_add(MARGIN)?;
+            let high = silence
+                .end_ticks
+                .min(transcript.coverage.end_ticks)
+                .checked_sub(MARGIN + duration)?;
+            if low > high {
+                return None;
+            }
+            let start = near.saturating_sub(duration / 2).clamp(low, high);
+            let end = start.checked_add(duration)?;
+            let next = transcript
+                .words
+                .partition_point(|word| word.end_ticks <= start);
+            if transcript
+                .words
+                .get(next)
+                .is_some_and(|word| word.start_ticks < end)
+                || transcript
+                    .invalid_regions
+                    .iter()
+                    .any(|span| span.start_ticks < end && span.end_ticks > start)
+            {
+                return None;
+            }
+            Some((
+                start.abs_diff(near),
+                [i64::try_from(start).ok()?, i64::try_from(end).ok()?],
+            ))
+        })
+        .min_by_key(|entry| entry.0)
+        .map(|entry| entry.1)
 }
 
 /// Move a section in closer: a punch across a followed picture, a zoom on a
