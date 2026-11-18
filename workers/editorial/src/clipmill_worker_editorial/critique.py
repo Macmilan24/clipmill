@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, create_model
+from pydantic import Field
 
 from .planning import (
     Reply,
@@ -18,9 +18,12 @@ from .planning import (
 
 
 class Splice(Reply):
-    note: str = Field(min_length=1, max_length=140)
+    original_claim: str = Field(min_length=1, max_length=160)
+    edited_claim: str = Field(min_length=1, max_length=160)
+    omitted_condition: str = Field(max_length=180)
     effect: Literal[
         "preserved",
+        "omitted_independent_material",
         "different_answer",
         "lost_qualification",
         "changed_claim",
@@ -28,6 +31,7 @@ class Splice(Reply):
         "concealed_sponsorship",
         "uncertain",
     ]
+    note: str = Field(min_length=1, max_length=140)
 
 
 class Finding(Reply):
@@ -71,56 +75,105 @@ FAILURES = {
     "title_accuracy": "The title changes the meaning of the spoken words.",
     "sponsorship": "The edit misrepresents sponsored material.",
 }
+UNRELATED_ENDING = "The clip continues into unrelated promotion after its conclusion."
 
 
-def judge(ctx, plan, transcript):
-    evidence = transcript.evidence(plan)
-    ids = [boundary["after"] for boundary in evidence["splices"]]
-    if len(ids) > 64:
-        return rejected(
-            "This edit exceeds the number of joins the critic can independently review."
-        )
-    # The viewer must not hear the rest of the episode. A separate source audit
-    # can read the omitted context and veto even a convincing-sounding edit.
+def spoken_turns(lines):
     turns = []
-    for line in evidence["playback"]:
+    for line in lines:
         if turns and turns[-1]["speaker"] == line["speaker"]:
             turns[-1]["text"] += " " + line["text"]
         else:
             turns.append({"speaker": line["speaker"], "text": line["text"]})
+    return turns
+
+
+def judge(ctx, plan, transcript):
+    evidence = transcript.evidence(plan)
+    if len(evidence["splices"]) > 64:
+        return rejected(
+            "This edit exceeds the number of joins the critic can independently review."
+        )
+    # The viewer never hears unplayed words. A source check can veto even a
+    # convincing-sounding cut, including a continuous span clipped at an edge.
+    turns = spoken_turns(evidence["playback"])
     viewer, failure = ctx.ask("critic", {"public_title": plan["title"], "playback": turns}, Review)
     if failure:
         return rejected("The critic could not verify the edit.")
-    # A fixed property per boundary also covers the empty set. An open-ended list
-    # encouraged small models to invent splices or silently skip a difficult one.
-    boundaries = create_model(
-        "SpliceJudgments", __base__=Reply, **{key: (Splice, ...) for key in ids}
-    )
-    reply = create_model("CutSourceReview", __base__=SourceReview, joins=(boundaries, ...))
-    audit, failure = ctx.ask("critic.source", evidence, reply)
+    edges = {
+        "check": "outer_edges",
+        "playback": turns,
+        "recorded_before_opening": spoken_turns(evidence["opening_source"]["before"]),
+        "recorded_after_ending": spoken_turns(evidence["closing_source"]["after"]),
+    }
+    audit, failure = ctx.ask("critic.source", edges, SourceReview)
     if failure:
         return rejected("The critic could not verify the edit.")
     findings = [*viewer["issues"], *audit["edge_issues"]]
     reservations = [finding["detail"] for finding in findings]
     problem_areas = {finding["aspect"] for finding in findings}
     issues = []
-    judgments = [
-        {
-            "after": key,
-            "note": value["note"],
-            "verdict": "pass" if value["effect"] == "preserved" else "reject",
+    judgments = []
+    # Present one actual cut at a time. Neighbouring passages and their
+    # judgements from a different splice must never be mistaken for this join.
+    for join in evidence["splices"]:
+        transition = {
+            "check": "one_join",
+            "after": join["after"],
+            "source_order": join["source_order"],
+            "edited": spoken_turns([*join["heard_left"], *join["heard_right"]]),
         }
-        for key, value in audit["joins"].items()
-    ]
-    addressed = list(audit["joins"])
-    complete = len(addressed) == len(ids) and set(addressed) == set(ids)
-    if not complete:
-        issues.append("The critic did not judge each edit boundary exactly once.")
+        if "removed" in join:
+            transition["original"] = spoken_turns(
+                [*join["heard_left"], *join["removed"], *join["heard_right"]]
+            )
+        else:
+            transition["original_contexts"] = {
+                "at_left": spoken_turns([*join["heard_left"], *join["left_source"]["after"]]),
+                "at_right": spoken_turns([*join["right_source"]["before"], *join["heard_right"]]),
+            }
+        heard_question = join["heard_left"][-1]["text"].strip()
+        if heard_question.endswith(("?", "\uff1f")):
+            recorded = [
+                line["text"]
+                for line in join["right_source"]["before"]
+                if line["text"].strip().endswith(("?", "\uff1f"))
+            ]
+            if recorded:
+                transition["question_before_reply_in_edit"] = heard_question
+                transition["question_before_reply_in_source"] = recorded[-1]
+        value, failure = ctx.ask("critic.source", transition, Splice)
+        if failure or not value or "effect" not in value:
+            value = {"effect": "uncertain", "note": "The critic could not verify this join."}
+        if value["effect"] == "lost_qualification":
+            condition = value.get("omitted_condition", "").strip().casefold()
+            original_text = transition.get("original") or [
+                *transition["original_contexts"]["at_left"],
+                *transition["original_contexts"]["at_right"],
+            ]
+            if (
+                not condition
+                or not any(condition in line["text"].casefold() for line in original_text)
+                or any(condition in line["text"].casefold() for line in transition["edited"])
+            ):
+                value = {
+                    "effect": "uncertain",
+                    "note": "The source audit could not identify the omitted qualification.",
+                }
+        judgments.append(
+            {
+                "after": join["after"],
+                "note": value["note"],
+                "verdict": "pass"
+                if value["effect"] in ("preserved", "omitted_independent_material")
+                else "reject",
+            }
+        )
     for area, reason in FAILURES.items():
         if area in problem_areas or viewer.get(area) == "reject":
             issues.append(reason)
     if unrelated_signoff(evidence["playback"], ctx.brief) is not None:
-        issues.append("The clip continues into unrelated promotion after its conclusion.")
+        issues.append(UNRELATED_ENDING)
     if viewer["hook"] == "weak":
         reservations.append("The opening may need a stronger hook.")
     issues.extend(join["note"] for join in judgments if join["verdict"] == "reject")
@@ -155,6 +208,7 @@ def review_batch(ctx, plans, candidates, script, chapters=()):
             choices = {k: v for k, v in choices.items() if v["plan_id"] != plan["plan_id"]}
             if (
                 FAILURES["title_accuracy"] in quality["issues"]
+                and UNRELATED_ENDING not in quality["issues"]
                 and all(j["verdict"] == "pass" for j in quality["joins"])
                 and not any(
                     message in quality["issues"]

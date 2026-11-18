@@ -301,6 +301,36 @@ fn an_exhaustive_montage_reaches_a_sixth_mention_when_all_fit() {
 }
 
 #[test]
+fn adjacent_mentions_retain_the_short_connective_between_them() {
+    let (mut source, words) = recording();
+    for line in [5, 30, 32] {
+        source.sentences[line].text = "Pricing changed that year.".into();
+    }
+    source.sentences[31].text = "And excluded the basic plan.".into();
+    let matches = super::candidates_for_brief(
+        &Material {
+            source_fingerprint: &format!("sha256:{}", "b".repeat(64)),
+            source: &source,
+            words: &words,
+            scores: None,
+            memory: None,
+            length: (15 * S, 60 * S),
+        },
+        "Every time they discuss pricing",
+    );
+    let montage = find(&matches, MindClipPlanForm::ThemeMontage);
+    assert_eq!(montage.plan.parts.len(), 2);
+    assert_eq!(montage.plan.joins.len(), 1);
+    assert!(
+        montage.plan.parts[1]
+            .units
+            .iter()
+            .any(|id| id.as_str() == "s31")
+    );
+    assert_eq!(montage.plan.parts[1].units.last().unwrap().as_str(), "s32");
+}
+
+#[test]
 fn a_montage_keeps_qualified_mentions_even_when_the_global_markup_would_trim_them() {
     let (mut source, words) = recording();
     // s13 and s14 were marked as tangents to the source overall. Together

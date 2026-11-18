@@ -6,6 +6,7 @@ import bisect
 import copy
 import hashlib
 import re
+import textwrap
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
@@ -13,6 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, create_model
 from .inference import call
 
 ShortText = Annotated[str, Field(min_length=1, max_length=240)]
+SENTENCE_END = re.compile(r"[.!?\u3002\uff01\uff1f][\"'\u2019\u201d)]*$")
+EXHAUSTIVE = re.compile(r"\b(?:every time|all (?:the )?(?:times|mentions))\b", re.IGNORECASE)
 
 
 class Reply(BaseModel):
@@ -54,6 +57,20 @@ class Transcript:
     def segment(self, start, end):
         return [self.line(i) for i in self.in_range(start, end)]
 
+    def opening_quote(self, plan):
+        part = plan["parts"][0]
+        removed = part.get("removed", [])
+        end = removed[0]["start_ticks"] if removed else part["end_ticks"]
+        lines = self.segment(part["start_ticks"], end)
+        words = []
+        for line in lines:
+            if line["speaker"] != lines[0]["speaker"]:
+                break
+            words.append(line["text"].strip())
+            if SENTENCE_END.search(words[-1]):
+                break
+        return textwrap.shorten(" ".join(words), width=160, placeholder="")
+
     def evidence(self, plan):
         """Played words, both source neighbours and every omitted word at a splice.
 
@@ -70,9 +87,10 @@ class Transcript:
                 kept = self.in_range(start, end)
                 if not kept:
                     raise ValueError("An edit segment contains no complete spoken sentence.")
-                first, last = kept[0], kept[-1]
+                first = kept[0]
                 if previous is not None:
-                    prev, after = previous
+                    earlier, after = previous
+                    prev = earlier[-1]
                     join = {
                         "after": after,
                         "source_order": (
@@ -84,15 +102,17 @@ class Transcript:
                         ),
                         "left_source": self.neighbours(prev),
                         "right_source": self.neighbours(first),
+                        "heard_left": [self.line(i) for i in earlier[-4:]],
+                        "heard_right": [self.line(i) for i in kept[:4]],
                     }
-                    if cut_index:
+                    if cut_index or prev < first <= prev + 9:
                         join["removed"] = [self.line(i) for i in range(prev + 1, first)]
                     joins.append(join)
                 played.extend(self.line(i) for i in kept)
                 label = (
                     part["part_id"] if resume is None else f"{part['part_id']}.cut{cut_index + 1}"
                 )
-                previous = (last, label)
+                previous = (kept, label)
                 start = resume
         return {
             "playback": played,
@@ -100,7 +120,7 @@ class Transcript:
             "opening_source": self.neighbours(
                 self.in_range(plan["parts"][0]["start_ticks"], plan["parts"][0]["end_ticks"])[0]
             ),
-            "closing_source": self.neighbours(previous[0]),
+            "closing_source": self.neighbours(previous[0][-1]),
         }
 
     def neighbours(self, i):
@@ -144,8 +164,9 @@ def montage_requested(brief):
     if re.search(r"\b(?:no|avoid|without|skip|not (?:a |the )?)\s*montage\b", text):
         return False
     return bool(
-        re.search(
-            r"\b(?:every time|all (?:the )?(?:times|mentions)|montage of|"
+        EXHAUSTIVE.search(text)
+        or re.search(
+            r"\b(?:montage of|"
             r"(?:make|build|create|assemble|as|into|want) (?:a |the )?(?:short |theme )?montage)\b",
             text,
         )
@@ -168,10 +189,18 @@ def end_on_point(original, transcript, length, brief):
         return None
     last_unit = played[split - 1]["unit"]
     source_id = int(last_unit[1:])
-    end = transcript.by_id[source_id]["end_ticks"]
+    unit = transcript.by_id[source_id]
+    end = unit["end_ticks"]
     plan = copy.deepcopy(original)
+    retained = next(
+        i + 1
+        for i, part in enumerate(plan["parts"])
+        if part["start_ticks"] <= unit["start_ticks"] and end <= part["end_ticks"]
+    )
+    plan["parts"] = plan["parts"][:retained]
+    plan["joins"] = plan["joins"][: retained - 1]
     last = plan["parts"][-1]
-    if not last["start_ticks"] + 108_000 <= end < last["end_ticks"]:
+    if end - last["start_ticks"] < 108_000:
         return None
     last["end_ticks"] = end
     omitted = [r for r in last.get("removed", []) if r["end_ticks"] < end]
@@ -184,8 +213,11 @@ def end_on_point(original, transcript, length, brief):
         last["units"] = [u for u in last["units"] if u not in discarded]
     if "evidence" in plan:
         plan["evidence"] = [u for u in plan["evidence"] if u not in discarded]
-    if len(plan["parts"]) == 1 and not omitted and plan["form"] == "tightened":
-        plan["form"] = "straight"
+    if retained == 1:
+        plan["form"] = "tightened" if omitted else "straight"
+        last["role"] = "body"
+    elif plan["form"] == "stitch" and all(j["kind"] != "distant" for j in plan["joins"]):
+        return None
     duration = sum(
         p["end_ticks"]
         - p["start_ticks"]
@@ -287,12 +319,6 @@ class Calls:
                 "Choose a self-contained moment in any topic or offered form."
             )
         prompt_schema = PlanReply.model_json_schema() if operation == "plan" else None
-        if operation == "critic.source":
-            prompt_schema = reply.model_json_schema()
-            prompt_schema["$defs"]["SpliceJudgments"] = {
-                "type": "object",
-                "description": "Judge each given splice ID. Empty for uninterrupted speech.",
-            }
         return call(
             self.runtime,
             operation,
@@ -350,10 +376,10 @@ def plan_one(ctx, options, transcript, repair=None):
     plan = copy.deepcopy(options[answer["choice"]])
     plan["title"] = answer["title"].strip()
     # Generated titles can be new. A quote cannot be new or moved from later on.
-    first = transcript.evidence(plan)["playback"][0]["text"]
+    first = transcript.opening_quote(plan)
     hook = answer["hook_text"].strip()
-    if first.strip():
-        plan["hook_text"] = hook if hook and hook in first else first[:160]
+    if first:
+        plan["hook_text"] = hook if hook and first.startswith(hook) else first
     else:
         plan.pop("hook_text", None)
     plan["doubts"] = answer["doubts"]
@@ -369,14 +395,40 @@ def plan_one(ctx, options, transcript, repair=None):
     return plan, answer["reasons"]
 
 
+def covers_named_entity(plan, entities, brief):
+    evidence = set(plan.get("evidence", []))
+    for entity in entities:
+        events = set(entity["events"])
+        if entity["entity_id"] not in evidence or not events or not events <= evidence:
+            continue
+        labels = [entity["name"], *entity.get("aliases", [])]
+        if any(
+            re.search(rf"(?<!\w){re.escape(label)}(?!\w)", brief, re.IGNORECASE)
+            for label in labels
+            if label
+        ):
+            return True
+    return False
+
+
 def plan_batch(ctx, candidates, memory, script, count):
     transcript = Transcript(script)
     chapters = memory["chapters"]
     pool = candidates["candidates"]
     if montage_requested(ctx.brief):
-        pool = [row for row in pool if row["plan"]["form"] == "theme_montage"]
-        requested = [row for row in pool if row["scout"] == "brief"]
-        pool = requested or pool
+        montages = [row for row in pool if row["plan"]["form"] == "theme_montage"]
+        requested = [row for row in montages if row["scout"] == "brief"]
+        if not requested and EXHAUSTIVE.search(ctx.brief):
+            # Generic theme scouting may select just five highlights. Only use
+            # that fallback for an explicitly named entity if every event it
+            # cites in recording memory survived in the proposed montage.
+            pool = [
+                row
+                for row in montages
+                if covers_named_entity(row["plan"], memory.get("entities", []), ctx.brief)
+            ]
+        else:
+            pool = requested or montages
     sources = shortlist(pool, chapters, min(30, count * 2 + 2))
     rows = []
     for index, source in enumerate(sources):

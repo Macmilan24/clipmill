@@ -11,7 +11,7 @@
 //!   and its delivery, joined across the minutes between them;
 //! - **cold open**: the moment's strongest line lifted to the front, then the
 //!   moment from its start;
-//! - **theme montage**: three or more short moments about one person, product
+//! - **theme montage**: short moments about one person, product
 //!   or idea;
 //! - **straight**: a moment that needs nothing removed.
 //!
@@ -40,7 +40,8 @@ pub const EXTEND_UNITS: usize = 8;
 pub const MAX_LIFT_TICKS: u64 = 10 * SECOND;
 /// The shortest moment worth a place in a montage.
 pub const MIN_MONTAGE_ITEM_TICKS: u64 = 3 * SECOND;
-/// The most moments a montage strings together.
+const MIN_SCOUTED_MONTAGE_MOMENTS: usize = 3;
+/// The most moments in a montage scouted without an exhaustive brief.
 pub const MAX_MONTAGE_PARTS: usize = 5;
 // The clip-plan contract allows twelve parts. A requested exhaustive montage
 // may need more moments than the five normally scouted for an unsolicited one.
@@ -834,7 +835,7 @@ fn themes(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &m
         sightings.sort_unstable();
         sightings.dedup_by_key(|line| line.0);
         let chapters: BTreeSet<&str> = sightings.iter().filter_map(|line| line.2).collect();
-        if sightings.len() < MIN_MONTAGE_PARTS || chapters.len() < 2 {
+        if sightings.len() < MIN_SCOUTED_MONTAGE_MOMENTS || chapters.len() < 2 {
             continue;
         }
         sightings.truncate(MAX_MONTAGE_PARTS);
@@ -857,7 +858,7 @@ fn themes(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &m
             });
             evidence.push(id.to_owned());
         }
-        if pieces.len() < MIN_MONTAGE_PARTS {
+        if pieces.len() < MIN_SCOUTED_MONTAGE_MOMENTS {
             continue;
         }
         let total: u64 = pieces.iter().map(|p| table.kept(p.a, p.b)).sum();
@@ -1086,6 +1087,9 @@ fn brief_montage(
             && next.start.saturating_sub(table.units[b].end) <= ADJACENT_GAP_TICKS
         {
             b = spoken_sentence(table, b + 1).1;
+            if quoted.kept(a, b) > material.length.1 {
+                return;
+            }
         }
         let following = (b + 1 < table.units.len()).then(|| spoken_sentence(table, b + 1).1);
         if let Some(left) = prior
@@ -1104,7 +1108,12 @@ fn brief_montage(
             return;
         }
         if let Some(previous) = pieces.last_mut()
-            && a <= previous.b + 1
+            && (a <= previous.b
+                || (a == previous.b + 1
+                    && table.units[a]
+                        .start
+                        .saturating_sub(table.units[previous.b].end)
+                        <= ADJACENT_GAP_TICKS))
         {
             // Keep consecutive mentions in their original uninterrupted passage.
             // A mention already inside it still contributes its own citation.
@@ -1123,14 +1132,15 @@ fn brief_montage(
         }
         evidence.push(format!("s{}", table.units[line].index));
     }
-    if pieces.len() < MIN_MONTAGE_PARTS {
+    let regions = coalesce_connectives(&quoted, pieces, material.length.1);
+    if regions.len() < MIN_MONTAGE_PARTS {
         return;
     }
     let theme = terms.iter().cloned().collect::<Vec<_>>().join(" ");
-    let links = vec![Some(format!("theme:{theme}")); pieces.len() - 1];
+    let links = vec![Some(format!("theme:{theme}")); regions.len() - 1];
     let draft = Draft {
         form: "theme_montage",
-        pieces,
+        pieces: regions,
         links,
         title: Some(&theme),
         evidence,
@@ -1142,6 +1152,37 @@ fn brief_montage(
         Scout::Brief,
         50,
     ));
+}
+
+/// Keep a short connective and its original pause between neighbouring
+/// moments, preserving them as one continuous source region.
+fn coalesce_connectives(table: &Table, pieces: Vec<Piece>, max_ticks: u64) -> Vec<Piece> {
+    let mut duration: u64 = pieces.iter().map(|p| table.kept(p.a, p.b)).sum();
+    let mut regions: Vec<Piece> = Vec::new();
+    for piece in pieces {
+        if let Some(previous) = regions.last_mut()
+            && piece.a == previous.b + 2
+            && table.units[piece.a - 1]
+                .text
+                .to_lowercase()
+                .starts_with("and ")
+            && table.units[piece.a]
+                .start
+                .saturating_sub(table.units[piece.a - 1].end)
+                <= ADJACENT_GAP_TICKS
+        {
+            let added = table.units[piece.a]
+                .start
+                .saturating_sub(table.units[previous.b].end);
+            if duration.saturating_add(added) <= max_ticks {
+                previous.b = piece.b;
+                duration += added;
+                continue;
+            }
+        }
+        regions.push(piece);
+    }
+    regions
 }
 
 /// Explicit conditions and consequences can extend a punctuated source claim.

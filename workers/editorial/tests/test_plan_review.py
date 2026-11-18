@@ -1,7 +1,7 @@
 """Behavior at the edit boundaries a span-based reviewer would never see."""
 
 from clipmill_worker_editorial.critique import judge, review_batch
-from clipmill_worker_editorial.planning import Transcript, plan_one, variants
+from clipmill_worker_editorial.planning import Transcript, covers_named_entity, plan_one, variants
 from clipmill_worker_editorial.rank_plans import rank_batch, strengths
 
 TICK = 90_000
@@ -86,13 +86,8 @@ def approval():
     }
 
 
-def source_approval(boundaries=()):
-    return {
-        "edge_issues": [],
-        "joins": {
-            b["after"]: {"effect": "preserved", "note": "Meaning holds."} for b in boundaries
-        },
-    }
+def source_approval():
+    return {"edge_issues": []}
 
 
 def test_wrong_question_is_checked_against_original_question_without_planner_reasons():
@@ -106,15 +101,18 @@ def test_wrong_question_is_checked_against_original_question_without_planner_rea
             assert "profitable" not in str(evidence["playback"])
             return approval()
         assert "public_title" not in evidence
-        (boundary,) = evidence["splices"]
-        assert "profitable" in boundary["right_source"]["before"][-1]["text"]
-        assert "five dollars" in boundary["left_source"]["line"]["text"]
-        assert "Private planner" not in str(evidence) and "authoritative" not in str(evidence)
-        response = source_approval([boundary])
-        response["joins"][boundary["after"]].update(
-            effect="different_answer", note="The answer belonged to a different question."
+        if evidence["check"] == "outer_edges":
+            return source_approval()
+        assert "profitable" in str(evidence["original"]) and "profitable" not in str(
+            evidence["edited"]
         )
-        return response
+        assert "five dollars" in evidence["edited"][0]["text"]
+        assert "profitable" in evidence["question_before_reply_in_source"]
+        assert "Private planner" not in str(evidence) and "authoritative" not in str(evidence)
+        return {
+            "effect": "different_answer",
+            "note": "The answer belonged to a different question.",
+        }
 
     result = judge(Calls(answer), draft, Transcript(script()))
     assert result["verdict"] == "reject" and "different question" in result["issues"][0]
@@ -138,15 +136,14 @@ def test_removed_qualification_can_be_restored_once_and_independently_rechecked(
                 "doubts": [],
                 "joins": [],
             }
-        if data["splices"]:
-            (join,) = data["splices"]
-            assert join["after"] == "p1.cut1" and "first month" in join["removed"][0]["text"]
-            issue = source_approval([join])
-            issue["joins"][join["after"]].update(
-                effect="lost_qualification", note="A price qualification was removed."
-            )
-            return issue
-        assert any("first month" in line["text"] for line in data["playback"])
+        if data["check"] == "one_join":
+            assert data["after"] == "p1.cut1" and "first month" in str(data["original"])
+            assert "first month" not in str(data["edited"])
+            return {
+                "effect": "lost_qualification",
+                "omitted_condition": "But only for the first month.",
+                "note": "A price qualification was removed.",
+            }
         return source_approval()
 
     ctx = Calls(answer)
@@ -166,6 +163,7 @@ def test_removed_qualification_can_be_restored_once_and_independently_rechecked(
     assert [name for name, _ in ctx.calls] == [
         "critic",
         "critic.source",
+        "critic.source",
         "plan",
         "critic",
         "critic.source",
@@ -184,6 +182,54 @@ def test_missing_boundary_fails_closed_and_no_rejected_plan_is_ranked():
     assert result["clips"] == [] and result["cutoff_reason"]
 
 
+def test_consecutive_spoken_lines_get_the_identical_original_and_edited_text_at_the_join():
+    draft = plan([part("p1", 0, 2), part("p2", 2, 4)], "tightened")
+    draft["joins"][0]["kind"] = "adjacent"
+
+    def answer(job, data):
+        if job == "critic":
+            return approval()
+        if data["check"] == "outer_edges":
+            return source_approval()
+        assert data["source_order"] == "consecutive" and data["original"] == data["edited"]
+        assert "profitable" not in str(data)
+        return {
+            "effect": "preserved",
+            "note": "The original price and its qualification remain together.",
+        }
+
+    result = judge(Calls(answer), draft, Transcript(script()))
+    assert result["verdict"] == "accept" and result["joins"][0]["after"] == "p1"
+
+
+def test_an_independent_omission_passes_and_an_unsubstantiated_condition_stays_unverified():
+    source = script()
+    for unit, text in zip(
+        source["units"],
+        ["Tickets cost ten dollars.", "I grew up by the river.", "The show starts at nine."],
+        strict=False,
+    ):
+        unit["text"] = text
+    draft = plan([part("p1", 0, 1), part("p2", 2, 3)], "stitch")
+    vote = {
+        "effect": "omitted_independent_material",
+        "note": "The personal anecdote never changes the ticket price or start time.",
+    }
+
+    def answer(job, data):
+        if job == "critic":
+            return approval()
+        if data["check"] == "outer_edges":
+            return source_approval()
+        assert "river" in str(data["original"]) and "river" not in str(data["edited"])
+        return vote
+
+    assert judge(Calls(answer), draft, Transcript(source))["verdict"] == "accept"
+    vote.update(effect="lost_qualification", omitted_condition="except on weekends")
+    quality = judge(Calls(answer), draft, Transcript(source))
+    assert quality["verdict"] == "reject" and "could not identify" in quality["joins"][0]["note"]
+
+
 def test_source_audit_can_veto_an_intelligible_unspliced_cut_missing_its_qualification():
     draft = plan([part("p1", 0, 2)])
 
@@ -191,11 +237,10 @@ def test_source_audit_can_veto_an_intelligible_unspliced_cut_missing_its_qualifi
         if job == "critic":
             assert "first month" not in str(data)
             return approval()
-        assert data["splices"] == []
-        assert "first month" in data["closing_source"]["after"][0]["text"]
+        assert data["check"] == "outer_edges"
+        assert "first month" in data["recorded_after_ending"][0]["text"]
         return {
             "edge_issues": [{"aspect": "meaning", "detail": "The original price was temporary."}],
-            "joins": {},
         }
 
     result = judge(Calls(answer), draft, Transcript(script()))
@@ -323,3 +368,42 @@ def test_explicit_montage_brief_cannot_be_fulfilled_by_a_single_span():
         brief="Make a montage of every time they talk about pricing",
     )
     assert not choices
+
+
+def test_an_exhaustive_entity_montage_must_include_all_its_known_recording_events():
+    entity = {
+        "entity_id": "e1",
+        "name": "Northwind",
+        "aliases": ["NW"],
+        "events": ["m1", "m3", "m8"],
+    }
+    assert not covers_named_entity(
+        {"evidence": ["e1", "m1", "m3"]}, [entity], "Every time they mention NW"
+    )
+    complete = {"evidence": ["e1", "m1", "m3", "m8"]}
+    assert covers_named_entity(complete, [entity], "Every time they mention NW")
+    assert not covers_named_entity(
+        complete, [entity], "Every time they mention a different company"
+    )
+
+
+def test_a_separate_promotion_part_can_be_removed_at_its_join():
+    source = script()
+    source["units"][-1]["text"] = "Subscribe for part two."
+    draft = plan([part("p1", 0, 4), part("p2", 5, 6)], "stitch")
+    result = variants(draft, Transcript(source), {"min_ticks": 10 * TICK, "max_ticks": 60 * TICK})[
+        "original_ending"
+    ]
+    assert result["parts"] == [draft["parts"][0]]
+    assert result["form"] == "straight" and result["joins"] == []
+    assert result["duration_ticks"] == source["units"][3]["end_ticks"]
+
+
+def test_opening_quote_rejoins_asr_fragments_from_the_same_spoken_sentence_only():
+    source = script()
+    source["units"][0].update(text="A large model", speaker="B")
+    source["units"][1]["text"] = "needs memory for its weights."
+    full = Transcript(source).opening_quote(plan([part("p1", 0, 4)]))
+    assert full == "A large model needs memory for its weights."
+    clipped = Transcript(source).opening_quote(plan([part("p1", 0, 1), part("p2", 5, 6)], "stitch"))
+    assert clipped == "A large model"
