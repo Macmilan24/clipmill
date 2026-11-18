@@ -90,6 +90,28 @@ def source_approval():
     return {"edge_issues": []}
 
 
+def test_planner_receives_the_edited_runtime_and_discards_incorrect_duration_claims():
+    original = part("p1", 0, 5)
+    original["removed"] = [{"start_ticks": 10 * TICK, "end_ticks": 15 * TICK, "reason": "tangent"}]
+    draft = plan([original], "tightened")
+    genuine = ["The cut runs 20 seconds.", "The speaker's 46-second wait needs context."]
+
+    def answer(job, data):
+        assert [choice["duration_seconds"] for choice in data["choices"]] == [20, 25]
+        return {
+            "choice": "original",
+            "title": draft["title"],
+            "hook_text": "",
+            "reasons": ["The speaker gives the original price."],
+            "doubts": ["The clip runs 46 seconds, exceeding the limit.", *genuine],
+            "joins": [],
+        }
+
+    options = {"original": draft, "uncut": plan([part("p1", 0, 5)])}
+    selected, _ = plan_one(Calls(answer), options, Transcript(script()))
+    assert selected["doubts"] == genuine
+
+
 def test_wrong_question_is_checked_against_original_question_without_planner_reasons():
     draft = plan([part("p1", 0, 1), part("p2", 5, 6)], "stitch")
     draft["parts"][0]["why"] = "Private planner justification must never reach the critic."

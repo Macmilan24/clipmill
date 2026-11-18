@@ -16,6 +16,11 @@ from .inference import call
 ShortText = Annotated[str, Field(min_length=1, max_length=240)]
 SENTENCE_END = re.compile(r"[.!?\u3002\uff01\uff1f][\"'\u2019\u201d)]*$")
 EXHAUSTIVE = re.compile(r"\b(?:every time|all (?:the )?(?:times|mentions))\b", re.IGNORECASE)
+STATED_RUNTIME = re.compile(
+    r"\b(?:clip|cut|edit|montage|runtime|duration)\s+(?:is|of|runs(?: for)?|lasts|clocks in at)"
+    r"\s+(?:(?:only|about|around|roughly|just)\s+)?(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?)\b",
+    re.IGNORECASE,
+)
 
 
 class Reply(BaseModel):
@@ -360,6 +365,18 @@ class Calls:
         )
 
 
+def matches_runtime(note, seconds):
+    """A spoken time or a pacing concern is distinct from a claim about clip length."""
+    for match in STATED_RUNTIME.finditer(note):
+        number, unit = match.groups()
+        scale = 60 if unit.lower().startswith("m") else 1
+        decimals = len(number.partition(".")[2])
+        tolerance = 0.5 * scale * 10**-decimals
+        if abs(float(number) * scale - seconds) > tolerance + 0.001:
+            return False
+    return True
+
+
 def plan_one(ctx, options, transcript, repair=None):
     presentations = []
     lines = {}
@@ -379,6 +396,7 @@ def plan_one(ctx, options, transcript, repair=None):
             {
                 "choice": name,
                 "form": plan["form"],
+                "duration_seconds": round(plan["duration_ticks"] / 90_000, 3),
                 "parts_in_playback_order": parts,
             }
         )
@@ -422,7 +440,8 @@ def plan_one(ctx, options, transcript, repair=None):
         plan["hook_text"] = hook if hook and first.startswith(hook) else first
     else:
         plan.pop("hook_text", None)
-    plan["doubts"] = answer["doubts"]
+    seconds = plan["duration_ticks"] / 90_000
+    plan["doubts"] = [note for note in answer["doubts"] if matches_runtime(note, seconds)]
     plan["provenance"] = {
         "by": "mind",
         "models": [ctx.identity["model"]["name"]],
