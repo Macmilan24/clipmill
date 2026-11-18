@@ -54,7 +54,7 @@ def client_token(local, name):
         pb.Request(
             create_agent_client=pb.CreateAgentClientRequest(
                 name=name,
-                scopes=["read", "edit"],
+                scopes=["read", "edit", "render"],
             )
         )
     ).agent_client_created
@@ -206,7 +206,21 @@ def main():
         with process(daemon, env) as child:
             wait_for(local.health, child)
             project = local.create_project("MCP conformance").project_id
-            source = local.register_source(project, media).source.source_id
+            registered = local.register_source(project, media).source
+            source = registered.source_id
+            fixture = (ROOT / "contracts/fixtures/edit_ir/valid/clip.json").read_text()
+            fixture = fixture.replace("sha256:" + "1" * 64, registered.source_fingerprint)
+            doc = local._call(
+                pb.Request(
+                    create_edit_doc=pb.CreateEditDocRequest(
+                        project_id=project,
+                        source_id=source,
+                        document_json=fixture,
+                    )
+                )
+            ).create_edit_doc.doc
+            destination = work / "exports"
+            destination.mkdir()
             owner, token = client_token(local, "owner")
             _, other = client_token(local, "other")
             args = dict(socket=str(ipc), cli=str(TARGET / "clipmill"), token=token)
@@ -228,6 +242,12 @@ def main():
                 args.update(started, url=f"http://127.0.0.1:{port}/mcp")
                 sdk(phase="other", **{**args, "token": other})
                 sdk(phase="cancel", **args)
+                exports_before = sum(job.kind == "export-clip" for job in local.list_jobs(project))
+                sdk(phase="export-forms", docId=doc.doc_id, destination=str(destination), **args)
+                exports_after = sum(job.kind == "export-clip" for job in local.list_jobs(project))
+                assert exports_after == exports_before + 1, (
+                    "Only the accepted form may create a job"
+                )
                 test_http_retries(f"http://127.0.0.1:{port}", token)
                 if options.with_workers:
                     finish_analysis(local, args, project, source, work, env)

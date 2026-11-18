@@ -359,6 +359,10 @@ Every poll, input acknowledgement and cancellation rechecks the credential and
 owner. Cancellation checks the scope for the original operation. Older jobs
 have no implicit task owner. Modern HTTP requests also verify that the mirrored
 protocol, method and name headers agree with the request body before dispatch.
+Export form state authenticates the caller, destination and original arguments
+with a daemon-private HMAC, a random nonce and a five-minute expiry. Reusing a
+confirmed request uses the same engine retry key. Edit resource URLs resolve
+through the read-scoped engine operation using an edit ID.
 
 Search resolves a completed analysis within its project and source before
 opening the published timeline and vectors. A lease pins each artifact as the

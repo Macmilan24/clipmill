@@ -36,8 +36,10 @@ const TOKEN_PREFIX: &str = "cmt_";
 const READ_CHUNK: u64 = 4 * 1024 * 1024;
 
 /// Every operation and the scope it needs.
-pub(crate) const OPERATIONS: [(&str, &str); 21] = [
+pub(crate) const OPERATIONS: [(&str, &str); 23] = [
     ("whoami", "authenticated"),
+    ("mcp_export_consent", "render"),
+    ("read_edit_resource", "read"),
     ("status", "read"),
     ("list_projects", "read"),
     ("create_project", "edit"),
@@ -399,6 +401,33 @@ impl Service {
     ) -> ApiResult {
         match op {
             "whoami" => Ok(json!({"client_id": caller.client_id, "scopes": caller.scopes})),
+            "mcp_export_consent" => super::mcp_consent::export_consent(&caller.client_id, args),
+            "read_edit_resource" => {
+                let body = self
+                    .v1(
+                        request::Body::GetEditDoc(
+                            clipmill_contracts::proto::ipc::v1::GetEditDocRequest {
+                                doc_id: arg_str(args, "doc_id")?.to_owned(),
+                            },
+                        ),
+                        None,
+                    )
+                    .await?;
+                let response::Body::GetEditDoc(found) = body else {
+                    return Err(ApiError::new(
+                        "internal",
+                        "unexpected edit document response",
+                    ));
+                };
+                let doc = found
+                    .doc
+                    .ok_or_else(|| ApiError::not_found("edit not found"))?;
+                let document: Value = serde_json::from_str(&doc.document_json)
+                    .map_err(|_| ApiError::new("internal", "invalid stored edit document"))?;
+                Ok(
+                    json!({"doc_id":doc.doc_id,"revision":doc.revision,"project_id":doc.project_id,"document":document}),
+                )
+            }
             "status" => {
                 let health = self
                     .v1(request::Body::Health(HealthRequest {}), None)

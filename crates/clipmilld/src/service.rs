@@ -2,6 +2,7 @@ mod api_v2;
 mod assets;
 mod batch;
 mod engine;
+mod mcp_consent;
 mod models;
 mod search;
 mod storage;
