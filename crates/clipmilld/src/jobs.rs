@@ -4732,6 +4732,7 @@ mod analyze_tests {
                 source_fingerprint: FINGERPRINT,
                 has_video: false,
                 has_audio: true,
+                embed_transcript: false,
             },
             &request(),
             &models(),
