@@ -1176,6 +1176,7 @@ fn runnable_here(registry: &std::path::Path) -> usize {
 /// a connected agent gets what it was given, a revoked token gets nothing,
 /// and every call lands in the audit log.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[allow(clippy::too_many_lines, reason = "one scenario, step by step")]
 async fn the_engine_api_checks_scopes_and_records_every_call() {
     use clipmill_contracts::proto::ipc::v1::{
         CreateAgentClientRequest, EngineCallRequest, ListEngineAuditRequest,
@@ -1199,22 +1200,19 @@ async fn the_engine_api_checks_scopes_and_records_every_call() {
             .expect("response")
         }
     };
-    let call = |id: &'static str, token: String, json: serde_json::Value| {
-        let ask = ask.clone();
-        async move {
-            let response = ask(
-                id,
-                request::Body::EngineCall(EngineCallRequest {
-                    token,
-                    call_json: json.to_string(),
-                }),
-            )
-            .await;
-            let Some(response::Body::EngineCall(answer)) = response.body else {
-                panic!("expected an engine answer, got {:?}", response.body);
-            };
-            serde_json::from_str::<serde_json::Value>(&answer.result_json).expect("json")
-        }
+    let call = |id: &'static str, token: String, json: serde_json::Value| async move {
+        let response = ask(
+            id,
+            request::Body::EngineCall(EngineCallRequest {
+                token,
+                call_json: json.to_string(),
+            }),
+        )
+        .await;
+        let Some(response::Body::EngineCall(answer)) = response.body else {
+            panic!("expected an engine answer, got {:?}", response.body);
+        };
+        serde_json::from_str::<serde_json::Value>(&answer.result_json).expect("json")
     };
 
     let made = call(

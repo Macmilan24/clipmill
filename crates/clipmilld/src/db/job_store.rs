@@ -614,6 +614,10 @@ pub(super) fn recover_jobs(
     Ok(events)
 }
 
+/// Jobs a person is waiting on, as a comma-delimited list for SQL: they are
+/// leased before background work (resource governor, plan step 1.6).
+pub(crate) const INTERACTIVE_JOBS: &str = ",render-clip,export-clip,probe-source,youtube-metadata,";
+
 #[allow(clippy::too_many_lines)]
 pub(super) fn lease_next_task_for_worker(
     connection: &mut Connection,
@@ -698,7 +702,11 @@ pub(super) fn lease_next_task_for_worker(
                ))
                AND instr(?17, ',' || t.kind || ',') > 0
                AND (t.implementation = '' OR instr(?21, ',' || t.implementation || ',') = 0)
-             ORDER BY j.created_unix_millis, j.job_id, t.ordinal
+             -- Someone waiting goes first: a preview, an export or a
+             -- recording being added is served before background analysis,
+             -- in the order asked within each.
+             ORDER BY CASE WHEN instr(?22, ',' || j.kind || ',') > 0 THEN 0 ELSE 1 END,
+                      j.created_unix_millis, j.job_id, t.ordinal
              LIMIT 1",
             params![
                 TaskState::Planned as i32,
@@ -722,6 +730,7 @@ pub(super) fn lease_next_task_for_worker(
                 network_allowed_filter,
                 local_lock_filter,
                 foreign_filter,
+                INTERACTIVE_JOBS,
             ],
             |row| {
                 Ok(SelectedTaskRow {

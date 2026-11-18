@@ -4677,6 +4677,38 @@ mod tests {
         }
     }
 
+    /// The resource governor: a preview someone asked for is served before an
+    /// analysis that was queued first.
+    #[test]
+    fn a_job_someone_waits_on_is_leased_before_background_work() {
+        let temp = TempDir::new().unwrap();
+        let (_, mut connection) = database(&temp);
+        let p = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "governor", 10);
+        create_project(&mut connection, "p", &[1; 32], &p).unwrap();
+        let id = p.project_id.parse().unwrap();
+        let mut background = JobPlan::demo(&id, b"analysis".to_vec(), 20);
+        background.tasks.truncate(1);
+        background.tasks[0].is_final = true;
+        job_store::submit_job(&mut connection, "first", &[2; 32], &background).unwrap();
+        let mut preview = JobPlan::demo(&id, b"preview".to_vec(), 30);
+        preview.kind = "render-clip".to_owned();
+        preview.tasks.truncate(1);
+        preview.tasks[0].is_final = true;
+        job_store::submit_job(&mut connection, "second", &[3; 32], &preview).unwrap();
+        let leased = job_store::lease_next_task(
+            &mut connection,
+            &LeaseId::new().to_string(),
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            40,
+            15_040,
+            ResourceCapacity::w4_builtin(),
+        )
+        .unwrap()
+        .task
+        .expect("a task");
+        assert_eq!(leased.job_id, preview.job_id);
+    }
+
     #[test]
     fn lease_heartbeats_extend_ttl_and_stale_heartbeats_are_rejected() {
         let temp = TempDir::new().expect("tempdir");
