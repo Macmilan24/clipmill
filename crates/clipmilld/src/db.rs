@@ -46,7 +46,7 @@ mod decision_store;
 pub(crate) use decision_store::{Decision, DecisionRecord};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 15;
+const SCHEMA_VERSION: i64 = 16;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -224,16 +224,18 @@ impl DbActor {
                                         ));
                                 }
                                 Command::SubmitJob {
+                                    owner,
                                     request_id,
                                     request_hash,
                                     plan,
                                     reply,
                                 } => {
-                                    let _result = reply.send(job_store::submit_job(
+                                    let _result = reply.send(job_store::submit_job_as(
                                         &mut connection,
                                         &request_id,
                                         &request_hash,
                                         &plan,
+                                        owner.as_deref(),
                                     ));
                                 }
                                 Command::GetJob { job_id, reply } => {
@@ -957,10 +959,12 @@ impl DbHandle {
         request_id: String,
         request_hash: [u8; 32],
         plan: JobPlan,
+        owner: Option<String>,
     ) -> Result<MutationResult, StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::SubmitJob {
+                owner,
                 request_id,
                 request_hash,
                 plan,
@@ -1784,6 +1788,7 @@ enum Command {
         reply: oneshot::Sender<Result<Vec<String>, StoreError>>,
     },
     SubmitJob {
+        owner: Option<String>,
         request_id: String,
         request_hash: [u8; 32],
         plan: JobPlan,
@@ -2115,8 +2120,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(youtube_store::CREATE_V13_TABLES)?;
         transaction.execute_batch(youtube_publish_store::CREATE_V14_TABLES)?;
         transaction.execute_batch(agent_store::CREATE_V15_TABLES)?;
+        transaction.execute_batch(agent_store::CREATE_V16_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 15;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 16;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -2170,7 +2176,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 15 {
             transaction.execute_batch(agent_store::CREATE_V15_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 15;")?;
+        if version < 16 {
+            transaction.execute_batch(agent_store::CREATE_V16_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 16;")?;
         transaction.commit()?;
     }
     Ok(())

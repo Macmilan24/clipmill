@@ -339,6 +339,12 @@ The desktop alone manages tokens. The explicitly started HTTP gateway binds
 to loopback, validates Host and Origin, and limits body size and concurrency.
 Local network access to this gateway grants no engine scope on its own.
 
+MCP task ownership is recorded inside the transaction that creates the job.
+Every poll, input acknowledgement and cancellation rechecks the credential and
+owner. Cancellation checks the scope for the original operation. Older jobs
+have no implicit task owner. Modern HTTP requests also verify that the mirrored
+protocol, method and name headers agree with the request body before dispatch.
+
 Search resolves a completed analysis within its project and source before
 opening the published timeline and vectors. A lease pins each artifact as the
 search reads it. A query vector must have the recording's model digest and

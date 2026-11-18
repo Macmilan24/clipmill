@@ -704,6 +704,14 @@ jobs:
       - run: uv sync --frozen --project eval/harness
       - run: ./tools/drills/device-drill.sh 1
       - run: ./tools/drills/eval-smoke.sh 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Exercise both MCP generations over stdio and HTTP
+        run: |
+          cargo build -p clipmill-cli -p clipmilld --bins
+          npm ci --ignore-scripts --prefix tools/drills/mcp-tasks
+          uv run --locked --project eval/harness python tools/drills/mcp-tasks/drive.py
 
   network-denial:
     name: network-denial (Local Lock gate)

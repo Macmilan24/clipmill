@@ -12,6 +12,8 @@ name = "clipmill"
 path = "src/main.rs"
 
 [dependencies]
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 clap = { workspace = true, features = ["env"] }
 clipmill-contracts.workspace = true
 clipmilld.workspace = true

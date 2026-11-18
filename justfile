@@ -183,6 +183,12 @@ gate-tokens:
     pnpm --filter @clipmill/desktop test
     pnpm --filter @clipmill/desktop build
 
+# Exercise the official MCP client against a disposable local daemon and gateway.
+gate-mcp:
+    cargo build -p clipmill-cli -p clipmilld --bins
+    npm ci --ignore-scripts --prefix tools/drills/mcp-tasks
+    uv run --locked --project eval/harness python tools/drills/mcp-tasks/drive.py
+
 # Verify native daemon queries and disconnect reporting after forced termination.
 gate-shell:
     cargo build -p clipmilld

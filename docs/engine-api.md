@@ -71,6 +71,44 @@ Without a `job_id`, clip and transcript operations read the newest finished anal
 | `policy_denied`       | The Local Lock or a setting forbids it                                  |
 | `internal`            | A fault in ClipMill                                                     |
 
+## MCP tools and background jobs
+
+Run `clipmill mcp` for stdio or post to `/mcp` on the loopback gateway. HTTP
+requires a connected-client bearer token. The 2026-07-28 protocol supports
+stateless discovery with `server/discover`. Clients may also send a tool request
+directly. Include the protocol version and client capabilities in each request's
+`params._meta`. Earlier clients continue to use `initialize`, `tools/list`,
+`tools/call` and the ordinary job and wait tools.
+
+Analysis and exports can return a durable task when a
+client declares `io.modelcontextprotocol/tasks` in its per-request extension
+capabilities. A `resultType` of `task` carries the engine job ID, original
+creation time and suggested polling interval. Use `tasks/get` with that ID
+after a reconnect or daemon restart. A completed task includes the final tool
+result, including an `isError` result when a job fails. A successfully requested
+cancellation returns an empty acknowledgement; poll until the engine reports a
+terminal state.
+
+Task polling verifies the submitting identity and its current read scope.
+Cancellation requires the original edit or render scope. A client without
+read access receives the ordinary tool result. The local account is the caller
+when stdio runs without a connected-client token. These jobs never ask for
+mid-flight input. `tasks/update` therefore authenticates and acknowledges
+valid input-response maps without changing a job. Progress is available by
+polling. See the [Tasks extension](https://modelcontextprotocol.io/extensions/tasks/overview)
+and [Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http).
+
+A retried write can carry the same `Idempotency-Key` header on either HTTP
+endpoint. Over stdio, provide the key as `params._meta["io.clipmill/requestId"]`
+on a tool call. Keys accept 1 to 255 printable ASCII bytes. Reuse a key only
+with the same operation and arguments. The engine scopes it to the submitting
+identity. MCP's JSON-RPC message ID identifies one exchange.
+
+Run `just gate-mcp` with the pinned FFmpeg tools installed to verify both client
+generations and both transports. To check an inline result from a completed
+analysis, install the shots and faces workers and the YuNet model, then run
+`uv run --locked --project eval/harness python tools/drills/mcp-tasks/drive.py --with-workers`.
+
 ## Search a recording
 
 Run `clipmill find PROJECT SOURCE "where do they talk about pricing"`. Pass

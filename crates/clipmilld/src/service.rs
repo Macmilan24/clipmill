@@ -78,6 +78,8 @@ const ANALYZE_SOURCE_KEY_VERSION: &str = "clipmill.analyze-source.v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Service {
+    /// Set on the per-call service clone while dispatching scoped engine operations.
+    engine_actor: Option<String>,
     database: DbHandle,
     started_unix_millis: u64,
     events: EventHub,
@@ -166,6 +168,7 @@ impl Service {
     #[cfg(test)]
     pub(crate) fn new(database: DbHandle, started_unix_millis: u64) -> Self {
         Self {
+            engine_actor: None,
             database,
             started_unix_millis,
             events: EventHub::new(),
@@ -220,6 +223,7 @@ impl Service {
             storage.data.join("imports"),
         )));
         Self {
+            engine_actor: None,
             database,
             started_unix_millis,
             events,
@@ -1594,7 +1598,12 @@ impl Service {
         };
         match self
             .database
-            .submit_job(request_id.clone(), request_hash, plan)
+            .submit_job(
+                request_id.clone(),
+                request_hash,
+                plan,
+                self.engine_actor.clone(),
+            )
             .await
         {
             Ok(result) => {
@@ -4989,7 +4998,12 @@ impl Service {
         );
         match self
             .database
-            .submit_job(request_id.clone(), request_hash, plan)
+            .submit_job(
+                request_id.clone(),
+                request_hash,
+                plan,
+                self.engine_actor.clone(),
+            )
             .await
         {
             Ok(result) => {

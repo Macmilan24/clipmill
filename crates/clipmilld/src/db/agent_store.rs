@@ -31,6 +31,13 @@ pub(super) const CREATE_V15_TABLES: &str = "
  CREATE INDEX engine_audit_time ON engine_audit(at_unix_millis);
 ";
 
+pub(super) const CREATE_V16_TABLES: &str = "
+    CREATE TABLE engine_job_owners (
+        job_id TEXT PRIMARY KEY REFERENCES jobs(job_id) ON DELETE CASCADE,
+        client_id TEXT NOT NULL
+    ) STRICT, WITHOUT ROWID;
+";
+
 /// The audit log keeps this many entries; older ones are dropped as new ones
 /// arrive, so it cannot grow without bound on a busy agent.
 const AUDIT_KEEP: i64 = 20_000;
@@ -75,6 +82,10 @@ pub(crate) enum AgentCommand {
         token_hash: [u8; 32],
         at_unix_millis: u64,
     },
+    OwnedJob {
+        job_id: String,
+        client_id: String,
+    },
     Record(AuditEntry),
     Log {
         limit: u32,
@@ -85,6 +96,7 @@ pub(crate) enum AgentCommand {
 pub(crate) enum AgentReply {
     Clients(Vec<AgentClient>),
     Client(Option<AgentClient>),
+    OwnedJob(Option<String>),
     Recorded,
     Log(Vec<AuditEntry>),
 }
@@ -190,6 +202,17 @@ pub(super) fn execute(
                 )?;
             }
             Ok(AgentReply::Client(found))
+        }
+        AgentCommand::OwnedJob { job_id, client_id } => {
+            let kind = connection
+                .query_row(
+                    "SELECT j.kind FROM jobs j JOIN engine_job_owners o
+                ON o.job_id=j.job_id WHERE j.job_id=?1 AND o.client_id=?2",
+                    params![job_id, client_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(AgentReply::OwnedJob(kind))
         }
         AgentCommand::Record(entry) => {
             connection.execute(

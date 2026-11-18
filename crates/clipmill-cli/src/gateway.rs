@@ -95,6 +95,27 @@ fn header(request: &Request<Incoming>, name: hyper::header::HeaderName) -> Optio
         .and_then(|value| value.to_str().ok())
 }
 
+fn retry_key(headers: &hyper::HeaderMap) -> Result<Option<String>, &'static str> {
+    let mut values = headers.get_all("idempotency-key").iter();
+    let Some(header) = values.next() else {
+        return Ok(None);
+    };
+    let bad_key = "Send one Idempotency-Key with 1 to 255 printable ASCII bytes";
+    if values.next().is_some() {
+        return Err(bad_key);
+    }
+    let raw = header.to_str().map_err(|_| bad_key)?;
+    let key = if raw.starts_with('"') {
+        serde_json::from_str::<String>(raw).map_err(|_| bad_key)?
+    } else {
+        raw.to_owned()
+    };
+    if !crate::mcp::wire::valid_retry_key(&key) {
+        return Err(bad_key);
+    }
+    Ok(Some(key))
+}
+
 /// The `OpenAPI` description of every engine operation the tools expose.
 pub fn openapi(port: u16) -> Value {
     let mut paths = serde_json::Map::new();
@@ -104,6 +125,9 @@ pub fn openapi(port: u16) -> Value {
             json!({
                 "post": {
                     "operationId": tool.op,
+                    "parameters": [{ "in": "header", "name": "Idempotency-Key", "required": false,
+                        "schema": { "type": "string", "minLength": 1, "maxLength": 255 },
+                        "description": "Reuse this key to retry the same write with the same arguments." }],
                     "summary": tool.title,
                     "description": tool.description,
                     "requestBody": { "required": true, "content": { "application/json": { "schema": (tool.input)() } } },
@@ -222,18 +246,17 @@ async fn answer(shared: Arc<Shared>, request: Request<Incoming>) -> Answer {
         );
     };
     let engine = Engine::new(shared.settings.socket.clone(), token);
-    let body = match body_json(request).await {
+    let headers = request.headers().clone();
+    let mut body = match body_json(request).await {
         Ok(body) => body,
         Err(refusal) => return refusal,
     };
+    let key = match retry_key(&headers) {
+        Ok(key) => key,
+        Err(reason) => return refuse(StatusCode::BAD_REQUEST, "invalid_argument", reason),
+    };
     if path == "/mcp" {
-        return match crate::mcp::handle(&engine, &body).await {
-            Some(reply) => respond(StatusCode::OK, &reply),
-            None => Response::builder()
-                .status(StatusCode::ACCEPTED)
-                .body(Full::new(Bytes::new()))
-                .unwrap_or_else(|_| refuse(StatusCode::INTERNAL_SERVER_ERROR, "internal", "")),
-        };
+        return mcp_answer(&engine, &headers, &mut body, key.as_deref()).await;
     }
     let Some(op) = path
         .strip_prefix("/v2/")
@@ -245,7 +268,7 @@ async fn answer(shared: Arc<Shared>, request: Request<Incoming>) -> Answer {
             "the paths are /v2/<operation> and /mcp",
         );
     };
-    match engine.call(op, body).await {
+    match engine.call_keyed(op, body, key.as_deref()).await {
         Ok(Ok(result)) => respond(StatusCode::OK, &json!({ "ok": true, "result": result })),
         Ok(Err(error)) => respond(
             status_for(error["code"].as_str().unwrap_or("internal")),
@@ -256,6 +279,73 @@ async fn answer(shared: Arc<Shared>, request: Request<Incoming>) -> Answer {
             "unavailable",
             &link.to_string(),
         ),
+    }
+}
+
+async fn mcp_answer(
+    engine: &Engine,
+    headers: &hyper::HeaderMap,
+    body: &mut Value,
+    retry_key: Option<&str>,
+) -> Answer {
+    use crate::mcp::wire;
+    match engine.call("whoami", json!({})).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(problem)) => {
+            let code = problem["code"].as_str().unwrap_or("internal");
+            return refuse(
+                status_for(code),
+                code,
+                problem["message"]
+                    .as_str()
+                    .unwrap_or("Authentication failed"),
+            );
+        }
+        Err(link) => {
+            return refuse(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "unavailable",
+                &link.to_string(),
+            );
+        }
+    }
+    let modern = wire::http_is_modern(headers, body);
+    if modern && let Some(refusal) = wire::check_http(headers, body) {
+        return respond(StatusCode::BAD_REQUEST, &refusal);
+    }
+    if let Some(key) = retry_key
+        && body["method"] == "tools/call"
+    {
+        if !body["params"].is_object()
+            || body["params"]
+                .get("_meta")
+                .is_some_and(|meta| !meta.is_object())
+            || body["params"]["_meta"]
+                .get(wire::RETRY_KEY)
+                .is_some_and(|value| value != key)
+        {
+            let error = crate::mcp::error(
+                &body["id"],
+                -32602,
+                "Invalid tool metadata or conflicting request keys",
+            );
+            return respond(StatusCode::BAD_REQUEST, &error);
+        }
+        body["params"]["_meta"][wire::RETRY_KEY] = json!(key);
+    }
+    match crate::mcp::handle(engine, body).await {
+        Some(reply) => respond(
+            if modern {
+                wire::http_status(&reply)
+            } else {
+                StatusCode::OK
+            },
+            &reply,
+        ),
+        None => Response::builder()
+            .status(StatusCode::ACCEPTED)
+            .body(Full::new(Bytes::new()))
+            .unwrap_or_else(|_| refuse(StatusCode::INTERNAL_SERVER_ERROR, "internal", "")),
     }
 }
 
@@ -310,6 +400,29 @@ mod tests {
             spec["paths"]["/v2/start_analysis"]["post"]["operationId"],
             "start_analysis"
         );
+    }
+
+    #[test]
+    fn retry_keys_accept_plain_or_quoted_values_and_reject_ambiguous_headers() {
+        let mut headers = hyper::HeaderMap::new();
+        assert_eq!(retry_key(&headers), Ok(None));
+        for input in ["export-7", "\"export-7\""] {
+            headers.insert(
+                "idempotency-key",
+                hyper::header::HeaderValue::from_static(input),
+            );
+            assert_eq!(retry_key(&headers), Ok(Some("export-7".to_owned())));
+        }
+        headers.append(
+            "idempotency-key",
+            hyper::header::HeaderValue::from_static("another"),
+        );
+        assert!(retry_key(&headers).is_err());
+        headers.insert(
+            "idempotency-key",
+            hyper::header::HeaderValue::from_static("\"\""),
+        );
+        assert!(retry_key(&headers).is_err());
     }
 
     #[test]

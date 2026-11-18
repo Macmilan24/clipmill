@@ -1,10 +1,13 @@
 //! `clipmill mcp`: ClipMill as an MCP server over stdio (R81).
 //!
-//! An agent host (Claude Desktop, an IDE, any MCP client) starts this process
+//! An MCP client starts this process
 //! and talks JSON-RPC over its stdin and stdout, one message per line. Each tool
 //! is one engine API call, so an agent works the same engine the person does,
 //! under the token the person gave it, and every call is in the audit log.
 //! Nothing is written to stdout except protocol messages.
+
+mod tasks;
+pub(crate) mod wire;
 
 use std::time::Duration;
 
@@ -36,7 +39,7 @@ fn negotiate(requested: Option<&str>) -> &'static str {
         .unwrap_or(PROTOCOL_VERSIONS[0])
 }
 
-fn error(id: &Value, code: i64, message: &str) -> Value {
+pub(crate) fn error(id: &Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
@@ -67,7 +70,16 @@ fn tool_result(result: Result<Value, String>) -> Value {
 }
 
 async fn engine_result(engine: &Engine, op: &str, args: Value) -> Result<Value, String> {
-    match engine.call(op, args).await {
+    keyed_engine_result(engine, op, args, None).await
+}
+
+async fn keyed_engine_result(
+    engine: &Engine,
+    op: &str,
+    args: Value,
+    key: Option<&str>,
+) -> Result<Value, String> {
+    match engine.call_keyed(op, args, key).await {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(refusal)) => Err(format!(
             "{} ({})",
@@ -99,48 +111,87 @@ async fn wait_for_job(engine: &Engine, args: &Value) -> Result<Value, String> {
     }
 }
 
+async fn call_tool(engine: &Engine, params: &Value, modern: bool) -> Result<Value, String> {
+    let name = params["name"].as_str().unwrap_or_default();
+    let arguments = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let tool = TOOLS
+        .iter()
+        .find(|tool| tool.name == name)
+        .ok_or_else(|| format!("Unknown tool: {name}"))?;
+    if !arguments.is_object() {
+        return Err("Tool arguments must be an object".to_owned());
+    }
+    let key = match params["_meta"].get(wire::RETRY_KEY) {
+        None => None,
+        Some(value) => Some(
+            value
+                .as_str()
+                .filter(|key| wire::valid_retry_key(key))
+                .ok_or_else(|| {
+                    "The request key must be 1 to 255 printable ASCII bytes".to_owned()
+                })?,
+        ),
+    };
+    let result = if tool.op.is_empty() {
+        wait_for_job(engine, &arguments).await
+    } else {
+        keyed_engine_result(engine, tool.op, arguments, key).await
+    };
+    let ordinary = tool_result(result);
+    if modern && wire::offers_tasks(params) && tasks::creates_job(tool.op) {
+        Ok(tasks::after_submit(engine, ordinary).await)
+    } else {
+        Ok(ordinary)
+    }
+}
+
 /// The answer to one message, or nothing for a notification.
 pub async fn handle(engine: &Engine, message: &Value) -> Option<Value> {
-    let id = message.get("id").cloned();
-    let Some(method) = message.get("method").and_then(Value::as_str) else {
-        // A response to something this server never asks, or garbage.
-        return id.map(|id| error(&id, -32600, "Invalid Request"));
+    let id = message.get("id")?;
+    if message["jsonrpc"] != "2.0" || !(id.is_string() || id.is_i64() || id.is_u64()) {
+        return Some(error(&Value::Null, -32600, "Invalid Request"));
+    }
+    let Some(method) = message["method"].as_str() else {
+        return Some(error(id, -32600, "Invalid Request"));
     };
-    let id = id?;
-    let params = message.get("params").cloned().unwrap_or(Value::Null);
-    Some(match method {
-        "initialize" => reply(
-            &id,
-            &json!({
-                "protocolVersion": negotiate(params["protocolVersion"].as_str()),
-                "capabilities": { "tools": { "listChanged": false } },
-                "serverInfo": { "name": "clipmill", "title": "ClipMill", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": INSTRUCTIONS,
-            }),
-        ),
-        "ping" => reply(&id, &json!({})),
-        "tools/list" => reply(
-            &id,
-            &json!({ "tools": TOOLS.iter().map(listing).collect::<Vec<_>>() }),
-        ),
-        "tools/call" => {
-            let name = params["name"].as_str().unwrap_or_default();
-            let arguments = params
-                .get("arguments")
-                .cloned()
-                .unwrap_or_else(|| json!({}));
-            let Some(tool) = TOOLS.iter().find(|tool| tool.name == name) else {
-                return Some(error(&id, -32602, &format!("Unknown tool: {name}")));
-            };
-            let result = if tool.op.is_empty() {
-                wait_for_job(engine, &arguments).await
-            } else {
-                engine_result(engine, tool.op, arguments).await
-            };
-            reply(&id, &tool_result(result))
+    let params = &message["params"];
+    let modern = wire::is_modern(message);
+    if modern && let Err(invalid) = wire::check_request(message) {
+        return Some(invalid);
+    }
+    let result = match method {
+        "server/discover" => wire::discovery(),
+        "initialize" if !modern => json!({
+            "protocolVersion": negotiate(params["protocolVersion"].as_str()),
+            "capabilities": { "tools": { "listChanged": false } },
+            "serverInfo": wire::server_info(),
+            "instructions": INSTRUCTIONS,
+        }),
+        "ping" => json!({}),
+        "tools/list" => {
+            let mut page = json!({ "tools": TOOLS.iter().map(listing).collect::<Vec<_>>() });
+            if modern {
+                page["ttlMs"] = json!(60_000);
+                page["cacheScope"] = json!("private");
+            }
+            page
         }
-        _ => error(&id, -32601, &format!("Method not found: {method}")),
-    })
+        "tools/call" => match call_tool(engine, params, modern).await {
+            Ok(result) => result,
+            Err(message) => return Some(error(id, -32602, &message)),
+        },
+        "tasks/get" | "tasks/update" | "tasks/cancel" if modern => {
+            return Some(tasks::handle(engine, id, method, params).await);
+        }
+        _ => return Some(error(id, -32601, &format!("Method not found: {method}"))),
+    };
+    Some(reply(
+        id,
+        &if modern { wire::finish(result) } else { result },
+    ))
 }
 
 /// Serve until the client closes stdin.
@@ -196,6 +247,51 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(newer["result"]["protocolVersion"], PROTOCOL_VERSIONS[0]);
+    }
+
+    fn modern(method: &str, caps: &Value) -> Value {
+        json!({"jsonrpc":"2.0","id":7,"method":method,"params":{"_meta":{
+            (wire::PROTOCOL):wire::VERSION,(wire::CAPABILITIES):caps
+        }}})
+    }
+
+    #[tokio::test]
+    async fn discovery_and_capabilities_are_stateless() {
+        let engine = engine();
+        let caps = json!({"extensions":{(wire::TASKS):{}}});
+        let result = handle(&engine, &modern("server/discover", &caps))
+            .await
+            .unwrap();
+        assert_eq!(result["result"]["resultType"], "complete");
+        assert_eq!(result["result"]["supportedVersions"][0], wire::VERSION);
+        assert_eq!(
+            result["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+            "clipmill"
+        );
+        assert!(result["result"]["capabilities"]["extensions"][wire::TASKS].is_object());
+        for method in ["tasks/get", "tasks/update", "tasks/cancel"] {
+            let denied = handle(&engine, &modern(method, &json!({}))).await.unwrap();
+            assert_eq!(denied["error"]["code"], -32021);
+            assert_eq!(denied["error"]["data"]["requiredCapabilities"], caps);
+        }
+        let page = handle(&engine, &modern("tools/list", &json!({})))
+            .await
+            .unwrap();
+        assert_eq!(page["result"]["resultType"], "complete");
+        assert!(page["result"]["tools"].is_array());
+    }
+
+    #[tokio::test]
+    async fn missing_metadata_and_unknown_modern_versions_are_protocol_errors() {
+        let mut call = modern("server/discover", &json!({}));
+        call["params"]["_meta"][wire::PROTOCOL] = json!("2099-01-01");
+        let unavailable = handle(&engine(), &call).await.unwrap();
+        assert_eq!(unavailable["error"]["code"], -32022);
+        assert_eq!(unavailable["error"]["data"]["requested"], "2099-01-01");
+        assert_eq!(unavailable["error"]["data"]["supported"][0], wire::VERSION);
+        call["params"]["_meta"] = json!({});
+        let invalid = handle(&engine(), &call).await.unwrap();
+        assert_eq!(invalid["error"]["code"], -32602);
     }
 
     #[tokio::test]

@@ -127,6 +127,7 @@ pub const TOOLS: &[Tool] = &[
                     "min_seconds": { "type": "number", "description": "Optional: the shortest clip wanted." },
                     "max_seconds": { "type": "number", "description": "Optional: the longest clip wanted." },
                     "language": string("Optional: the spoken language as a BCP 47 code, such as en."),
+                    "editorial": {"type": "string", "enum": ["local", "none"], "description": "Use local editorial inference or skip it."},
                 }),
                 &["project_id", "source_id"],
             )

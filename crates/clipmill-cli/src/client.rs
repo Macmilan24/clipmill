@@ -85,7 +85,21 @@ impl Engine {
     /// One engine API call: the result on success, the engine's refusal as
     /// `Err(Value)` with its code and message.
     pub async fn call(&self, op: &str, args: Value) -> Result<Result<Value, Value>, LinkError> {
-        let call = json!({ "op": op, "args": args });
+        self.call_keyed(op, args, None).await
+    }
+
+    /// An explicit retry key survives reconnects. Transport request IDs are
+    /// independent, since clients may reuse JSON-RPC IDs on a new connection.
+    pub async fn call_keyed(
+        &self,
+        op: &str,
+        args: Value,
+        key: Option<&str>,
+    ) -> Result<Result<Value, Value>, LinkError> {
+        let mut call = json!({ "op": op, "args": args });
+        if let Some(key) = key {
+            call["request_id"] = json!(key);
+        }
         let request = Request {
             request_id: format!("cli_{}", ulid::Ulid::new().to_string().to_lowercase()),
             body: Some(request::Body::EngineCall(EngineCallRequest {

@@ -36,7 +36,8 @@ const TOKEN_PREFIX: &str = "cmt_";
 const READ_CHUNK: u64 = 4 * 1024 * 1024;
 
 /// Every operation and the scope it needs.
-pub(crate) const OPERATIONS: [(&str, &str); 18] = [
+pub(crate) const OPERATIONS: [(&str, &str); 21] = [
+    ("whoami", "authenticated"),
     ("status", "read"),
     ("list_projects", "read"),
     ("create_project", "edit"),
@@ -44,6 +45,8 @@ pub(crate) const OPERATIONS: [(&str, &str); 18] = [
     ("list_sources", "read"),
     ("start_analysis", "edit"),
     ("get_job", "read"),
+    ("get_owned_job", "read"),
+    ("cancel_owned_job", "edit"),
     ("list_jobs", "read"),
     ("cancel_job", "edit"),
     ("get_transcript", "read"),
@@ -177,6 +180,8 @@ fn job_json(job: &Job) -> Value {
         "job_id": job.job_id,
         "project_id": job.project_id,
         "kind": job.kind,
+        "created_unix_millis": job.created_unix_millis,
+        "updated_unix_millis": job.updated_unix_millis,
         "state": job_state(job.state),
         "progress": { "done": done, "total": job.tasks.len() },
         "stages": stages,
@@ -265,7 +270,12 @@ impl Service {
                     .collect::<Vec<_>>()
                     .join(", ")
             ))),
-            Some((_, scope)) if !caller.scopes.iter().any(|held| held == scope) => {
+            Some((_, scope))
+                if *scope != "authenticated"
+                    && !caller.scopes.iter().any(|held| held == scope)
+                    && !(parsed.op == "cancel_owned_job"
+                        && caller.scopes.iter().any(|s| s == "render")) =>
+            {
                 Err(ApiError::new(
                     "out_of_scope",
                     format!(
@@ -275,15 +285,19 @@ impl Service {
                 ))
             }
             Some(_) => {
-                self.dispatch(
-                    &parsed.op,
-                    &parsed.args,
-                    parsed
-                        .request_id
-                        .as_deref()
-                        .map(|key| request_key(&caller.client_id, &parsed.op, key)),
-                )
-                .await
+                let mut service = self.clone();
+                service.engine_actor = Some(caller.client_id.clone());
+                service
+                    .dispatch(
+                        &caller,
+                        &parsed.op,
+                        &parsed.args,
+                        parsed
+                            .request_id
+                            .as_deref()
+                            .map(|key| request_key(&caller.client_id, &parsed.op, key)),
+                    )
+                    .await
             }
         };
         let (status, detail) = match &outcome {
@@ -376,8 +390,15 @@ impl Service {
         clippy::too_many_lines,
         reason = "one arm per operation, each a translation onto a v1 request"
     )]
-    async fn dispatch(&self, op: &str, args: &Value, id: Option<String>) -> ApiResult {
+    async fn dispatch(
+        &self,
+        caller: &Caller,
+        op: &str,
+        args: &Value,
+        id: Option<String>,
+    ) -> ApiResult {
         match op {
+            "whoami" => Ok(json!({"client_id": caller.client_id, "scopes": caller.scopes})),
             "status" => {
                 let health = self
                     .v1(request::Body::Health(HealthRequest {}), None)
@@ -463,6 +484,41 @@ impl Service {
                 })).collect::<Vec<_>>() }))
             }
             "start_analysis" => self.start_analysis(args, id).await,
+            "get_owned_job" | "cancel_owned_job" => {
+                let job_id = arg_str(args, "job_id")?;
+                let owned = self
+                    .database
+                    .agents(AgentCommand::OwnedJob {
+                        job_id: job_id.to_owned(),
+                        client_id: caller.client_id.clone(),
+                    })
+                    .await
+                    .map_err(|e| ApiError::new("unavailable", e.to_string()))?;
+                let AgentReply::OwnedJob(Some(kind)) = owned else {
+                    return Err(ApiError::not_found("unknown task"));
+                };
+                if op == "cancel_owned_job" {
+                    let scope = if matches!(kind.as_str(), "export-clip" | "render-clip") {
+                        "render"
+                    } else {
+                        "edit"
+                    };
+                    if !caller.scopes.iter().any(|held| held == scope) {
+                        return Err(ApiError::new(
+                            "out_of_scope",
+                            format!("cancelling this task needs {scope}"),
+                        ));
+                    }
+                    self.v1(
+                        request::Body::CancelJob(CancelJobRequest {
+                            job_id: job_id.to_owned(),
+                        }),
+                        id,
+                    )
+                    .await?;
+                }
+                Ok(job_json(&self.job(job_id).await?))
+            }
             "get_job" => {
                 let job = self.job(arg_str(args, "job_id")?).await?;
                 Ok(job_json(&job))
@@ -1150,7 +1206,7 @@ mod tests {
     #[test]
     fn every_operation_needs_a_known_scope() {
         for (_, scope) in OPERATIONS {
-            assert!(SCOPES.contains(&scope));
+            assert!(scope == "authenticated" || SCOPES.contains(&scope));
         }
     }
 }

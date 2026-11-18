@@ -242,11 +242,22 @@ pub(super) fn artifact_is_project_output(
     Ok(found.is_some())
 }
 
+#[cfg(test)]
 pub(super) fn submit_job(
     connection: &mut Connection,
     request_id: &str,
     request_hash: &[u8; 32],
     plan: &JobPlan,
+) -> Result<MutationResult, StoreError> {
+    submit_job_as(connection, request_id, request_hash, plan, None)
+}
+
+pub(super) fn submit_job_as(
+    connection: &mut Connection,
+    request_id: &str,
+    request_hash: &[u8; 32],
+    plan: &JobPlan,
+    owner: Option<&str>,
 ) -> Result<MutationResult, StoreError> {
     validate_plan(plan)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -280,6 +291,12 @@ pub(super) fn submit_job(
         }
     }
     let events = insert_job_plan(&transaction, plan)?;
+    if let Some(client) = owner {
+        transaction.execute(
+            "INSERT INTO engine_job_owners(job_id,client_id) VALUES (?1,?2)",
+            params![plan.job_id, client],
+        )?;
+    }
     let job = get_job_tx(&transaction, &plan.job_id)?;
     let response = Response {
         request_id: request_id.to_owned(),
