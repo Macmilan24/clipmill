@@ -173,6 +173,10 @@ pub mod text_query_vector;
 pub mod mind_plans;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "../gen/schemas/mind_judgments.rs"]
+pub mod mind_judgments;
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "../gen/schemas/mind_quality_report.rs"]
 pub mod mind_quality_report;
 

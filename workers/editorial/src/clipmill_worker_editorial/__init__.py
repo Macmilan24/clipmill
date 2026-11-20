@@ -31,6 +31,7 @@ from .runtime import implementation_suffix
 
 CAPABILITIES = (
     "editorial-critic",
+    "editorial-judge",
     "editorial-look",
     "editorial-memory",
     "editorial-plan",
@@ -41,7 +42,7 @@ CAPABILITIES = (
     "youtube-metadata",
 )
 # The mind's stages: local only, and keyed on their own output budgets.
-DECISION_OPERATIONS = ("plan", "critic", "rank")
+DECISION_OPERATIONS = ("judge", "plan", "critic", "rank")
 MIND_OPERATIONS = ("memory", "score", *DECISION_OPERATIONS)
 MAX_OUTPUT_TOKENS = {"memory": 4096}
 

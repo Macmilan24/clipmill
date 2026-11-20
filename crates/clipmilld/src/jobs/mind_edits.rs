@@ -18,8 +18,17 @@ const CUT_INPUTS: &[&str] = &[
 
 const DECISIONS: &[(&str, &[&str])] = &[
     (
-        "plan",
+        "judge",
         &["mind.script.v1", "mind.memory.v1", "mind.candidates.v1"],
+    ),
+    (
+        "plan",
+        &[
+            "mind.script.v1",
+            "mind.memory.v1",
+            "mind.candidates.v1",
+            "mind.judgments.v1",
+        ],
     ),
     (
         "critic",
@@ -27,6 +36,7 @@ const DECISIONS: &[(&str, &[&str])] = &[
             "mind.script.v1",
             "mind.memory.v1",
             "mind.candidates.v1",
+            "mind.judgments.v1",
             "mind.plans.v1",
         ],
     ),
@@ -51,8 +61,8 @@ pub(super) fn validate(request: &AnalyzeSourcePayloadV1) -> Result<(), &'static 
     Ok(())
 }
 
-/// Attach the four decision stages, reading each input either from this job's task
-/// graph or from an older analysis. Only dependencies are declared as input kinds:
+/// Attach the cutter and the four decision stages (judge, plan, critic, rank),
+/// reading each input either from this job's task graph or from an older analysis. Only dependencies are declared as input kinds:
 /// the daemon separately leases and verifies pinned artifact addresses.
 pub(super) fn build(
     request: &AnalyzeSourcePayloadV1,

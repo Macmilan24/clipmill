@@ -38,6 +38,18 @@
   with a still, their form, keep score, length and where their parts sit in
   the recording, in a grid or a list. The side panel shows how the selected
   clip is built, why it was chosen and what the review found at its joins.
+- **Endings checked for meaning.** Before planning, a new step tests the
+  editorial model on endings whose answer the recording gives, such as a line
+  followed by the same speaker's "and…", or by another speaker's question.
+  Only a model that tells these apart is then asked whether a candidate clip
+  stops while its speaker is still mid-thought, and the planner drops the
+  endings it hears that way. Each such clip is also offered with a later
+  ending. A model that does not pass changes nothing. The step is listed as
+  **Check the endings** and adds a few minutes to analysis.
+- **Endings on whole thoughts.** Among the endings the rules allow, a clip
+  leans towards one where the other speaker takes over or the speaker pauses,
+  and a clip trimmed to leave out a closing sign-off now ends on the same
+  measured pause as any other edge.
 
 ## 0.5.1 — Whisper on older Windows PCs and reliable upgrades
 

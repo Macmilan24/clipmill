@@ -14,9 +14,10 @@ from .planning import (
     ShortText,
     Transcript,
     chapter_of,
+    cut_short,
     plan_one,
+    source_options,
     unrelated_signoff,
-    variants,
 )
 
 MAX_SPLICE_NOTE = 140
@@ -248,8 +249,9 @@ def judge(ctx, plan, transcript):
     }
 
 
-def review_batch(ctx, plans, candidates, script, chapters=()):
+def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None):
     transcript = Transcript(script)
+    refused = cut_short(judgments)
     originals = {c["plan"]["plan_id"]: c for c in candidates["candidates"]}
     reviewed = []
     for index, row in enumerate(plans["plans"]):
@@ -259,13 +261,7 @@ def review_batch(ctx, plans, candidates, script, chapters=()):
         reasons = row["reasons"]
         if quality["verdict"] == "reject":
             original = originals[row["candidate_id"]]
-            choices = variants(
-                original["plan"],
-                transcript,
-                candidates["length"],
-                original.get("alternatives", []),
-                ctx.brief,
-            )
+            choices = source_options(original, transcript, candidates, ctx.brief, refused)
             choices = {k: v for k, v in choices.items() if v["plan_id"] != plan["plan_id"]}
             if (
                 FAILURES["title_accuracy"] in quality["issues"]

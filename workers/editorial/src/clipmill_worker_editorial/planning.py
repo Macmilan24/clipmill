@@ -217,7 +217,16 @@ def geometry_id(plan):
     return "plan_" + hashlib.sha256("|".join(pieces).encode()).hexdigest()[:24]
 
 
-def end_on_point(original, transcript, length, brief):
+def ending_unit(plan, transcript):
+    """The last sentence a plan plays, as the listener hears it."""
+    try:
+        played = transcript.evidence(plan)["playback"]
+    except ValueError:
+        return None
+    return played[-1]["unit"] if played else None
+
+
+def end_on_point(original, transcript, length, brief, legal_ends=None):
     played = transcript.evidence(original)["playback"]
     split = unrelated_signoff(played, brief)
     if split is None:
@@ -226,6 +235,13 @@ def end_on_point(original, transcript, length, brief):
     source_id = int(last_unit[1:])
     unit = transcript.by_id[source_id]
     end = unit["end_ticks"]
+    if legal_ends is not None:
+        # The cutter lists every sentence a clip may end on, with the cut
+        # point in the pause after it; anything else would cut a word or a
+        # thought short.
+        if last_unit not in legal_ends:
+            return None
+        end = legal_ends[last_unit]
     plan = copy.deepcopy(original)
     retained = next(
         i + 1
@@ -301,7 +317,7 @@ def preserve_comparison(plan, transcript, length):
     return restored
 
 
-def variants(original, transcript, length, alternatives=(), brief=""):
+def variants(original, transcript, length, alternatives=(), brief="", legal_ends=None):
     """Offer only geometries derived from the cutter's validated sentence boundaries."""
     result = {"original": copy.deepcopy(original)}
     for i, alternate in enumerate(alternatives, start=1):
@@ -334,7 +350,7 @@ def variants(original, transcript, length, alternatives=(), brief=""):
         plan["plan_id"] = geometry_id(plan)
         result[f"part_{pos}_uncut"] = plan
     for name, plan in list(result.items()):
-        if tighter := end_on_point(plan, transcript, length, brief):
+        if tighter := end_on_point(plan, transcript, length, brief, legal_ends):
             result[f"{name}_ending"] = tighter
     safe = {}
     restored_ids = set()
@@ -546,35 +562,63 @@ def covers_named_entity(plan, entities, brief):
     return False
 
 
-def plan_batch(ctx, candidates, memory, script, count):
-    transcript = Transcript(script)
-    chapters = memory["chapters"]
+def planning_pool(candidates, memory, brief, count):
+    """The cutter's candidates the planner will choose among, in the order it reads them."""
     pool = candidates["candidates"]
-    if montage_requested(ctx.brief):
+    if montage_requested(brief):
         montages = [row for row in pool if row["plan"]["form"] == "theme_montage"]
         requested = [row for row in montages if row["scout"] == "brief"]
-        if not requested and EXHAUSTIVE.search(ctx.brief):
+        if not requested and EXHAUSTIVE.search(brief):
             # Generic theme scouting may select just five highlights. Only use
             # that fallback for an explicitly named entity if every event it
             # cites in recording memory survived in the proposed montage.
             pool = [
                 row
                 for row in montages
-                if covers_named_entity(row["plan"], memory.get("entities", []), ctx.brief)
+                if covers_named_entity(row["plan"], memory.get("entities", []), brief)
             ]
         else:
             pool = requested or montages
-    sources = shortlist(pool, chapters, min(30, count * 2 + 2))
+    return shortlist(pool, memory["chapters"], min(30, count * 2 + 2))
+
+
+def cut_short(judgments):
+    """Endings a judge that passed its self-check heard as the speaker
+    breaking off mid-thought. An ending it was not asked about stands."""
+    return {
+        ending["after_unit"]
+        for ending in (judgments or {}).get("endings", [])
+        if ending["verdict"] == "continues"
+    }
+
+
+def source_options(source, transcript, candidates, brief, refused=frozenset()):
+    """Every geometry the planner may choose for one candidate, less those
+    that end where the speaker has not finished."""
+    options = variants(
+        source["plan"],
+        transcript,
+        candidates["length"],
+        source.get("alternatives", []),
+        brief,
+        candidates.get("legal_ends"),
+    )
+    return {
+        name: plan for name, plan in options.items() if ending_unit(plan, transcript) not in refused
+    }
+
+
+def plan_batch(ctx, candidates, memory, script, count, judgments=None):
+    transcript = Transcript(script)
+    chapters = memory["chapters"]
+    sources = planning_pool(candidates, memory, ctx.brief, count)
+    refused = cut_short(judgments)
     rows = []
     for index, source in enumerate(sources):
         ctx.progress("plan_candidates", index, len(sources))
-        options = variants(
-            source["plan"],
-            transcript,
-            candidates["length"],
-            source.get("alternatives", []),
-            ctx.brief,
-        )
+        options = source_options(source, transcript, candidates, ctx.brief, refused)
+        if not options:
+            continue
         result = plan_one(ctx, options, transcript)
         if result:
             plan, reasons = result

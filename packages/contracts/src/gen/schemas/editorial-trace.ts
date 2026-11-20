@@ -45,7 +45,9 @@ export interface Call {
     | "critic.source"
     | "critic.copy"
     | "critic.omission"
-    | "compare";
+    | "compare"
+    | "judge.ending"
+    | "judge.removal";
   /**
    * The window a propose call was over.
    */

@@ -102,7 +102,9 @@ pub mod error {
 #[doc = "        \"critic.source\","]
 #[doc = "        \"critic.copy\","]
 #[doc = "        \"critic.omission\","]
-#[doc = "        \"compare\""]
+#[doc = "        \"compare\","]
+#[doc = "        \"judge.ending\","]
+#[doc = "        \"judge.removal\""]
 #[doc = "      ]"]
 #[doc = "    },"]
 #[doc = "    \"model\": {"]
@@ -417,7 +419,9 @@ impl CallFramesItem {
 #[doc = "    \"critic.source\","]
 #[doc = "    \"critic.copy\","]
 #[doc = "    \"critic.omission\","]
-#[doc = "    \"compare\""]
+#[doc = "    \"compare\","]
+#[doc = "    \"judge.ending\","]
+#[doc = "    \"judge.removal\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -461,6 +465,10 @@ pub enum CallJob {
     CriticOmission,
     #[serde(rename = "compare")]
     Compare,
+    #[serde(rename = "judge.ending")]
+    JudgeEnding,
+    #[serde(rename = "judge.removal")]
+    JudgeRemoval,
 }
 impl ::std::fmt::Display for CallJob {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -478,6 +486,8 @@ impl ::std::fmt::Display for CallJob {
             Self::CriticCopy => f.write_str("critic.copy"),
             Self::CriticOmission => f.write_str("critic.omission"),
             Self::Compare => f.write_str("compare"),
+            Self::JudgeEnding => f.write_str("judge.ending"),
+            Self::JudgeRemoval => f.write_str("judge.removal"),
         }
     }
 }
@@ -498,6 +508,8 @@ impl ::std::str::FromStr for CallJob {
             "critic.copy" => Ok(Self::CriticCopy),
             "critic.omission" => Ok(Self::CriticOmission),
             "compare" => Ok(Self::Compare),
+            "judge.ending" => Ok(Self::JudgeEnding),
+            "judge.removal" => Ok(Self::JudgeRemoval),
             _ => Err("invalid value".into()),
         }
     }

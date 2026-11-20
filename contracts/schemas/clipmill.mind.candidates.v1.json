@@ -76,6 +76,17 @@
           }
         }
       }
+    },
+    "legal_ends": {
+      "description": "Where a part may end after each sentence the cutter allows to close a clip: the sentence id and the cut point in the pause after it, in ticks. Sentences missing here cannot end a clip. Absent from candidates written before the cutter measured pauses.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^s[0-9]+$"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
     }
   },
   "$defs": {

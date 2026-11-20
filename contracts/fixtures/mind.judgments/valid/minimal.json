@@ -1,0 +1,31 @@
+{
+  "schema_version": "clipmill.mind.judgments.v1",
+  "source_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "inputs": {
+    "mind.script.v1": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "mind.candidates.v1": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "judge": { "think_tokens": 512, "prompt_version": "judge.v1/sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+  "self_check": {
+    "endings": {
+      "passed": true,
+      "separation": 0.89,
+      "cases": [
+        { "unit": "s12", "expected": "continues", "score": -0.61 },
+        { "unit": "s40", "expected": "finished", "score": 0.72 }
+      ]
+    },
+    "removals": {
+      "passed": false,
+      "separation": 0.5,
+      "cases": [
+        { "unit": "s88", "expected": "dangling", "score": 0.02 },
+        { "unit": "s91", "expected": "intact", "score": 0.03 }
+      ]
+    }
+  },
+  "endings": [
+    { "after_unit": "s143", "score": -0.57, "verdict": "continues" },
+    { "after_unit": "s210", "score": 0.31, "verdict": "finished" }
+  ]
+}

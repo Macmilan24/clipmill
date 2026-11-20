@@ -111,6 +111,17 @@ pub mod error {
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
 #[doc = "    },"]
+#[doc = "    \"legal_ends\": {"]
+#[doc = "      \"description\": \"Where a part may end after each sentence the cutter allows to close a clip: the sentence id and the cut point in the pause after it, in ticks. Sentences missing here cannot end a clip. Absent from candidates written before the cutter measured pauses.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"additionalProperties\": {"]
+#[doc = "        \"type\": \"integer\","]
+#[doc = "        \"minimum\": 0.0"]
+#[doc = "      },"]
+#[doc = "      \"propertyNames\": {"]
+#[doc = "        \"pattern\": \"^s[0-9]+$\""]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"length\": {"]
 #[doc = "      \"type\": \"object\","]
 #[doc = "      \"required\": ["]
@@ -145,6 +156,12 @@ pub mod error {
 pub struct MindCandidates {
     pub candidates: ::std::vec::Vec<MindCandidatesCandidatesItem>,
     pub inputs: MindCandidatesInputs,
+    #[doc = "Where a part may end after each sentence the cutter allows to close a clip: the sentence id and the cut point in the pause after it, in ticks. Sentences missing here cannot end a clip. Absent from candidates written before the cutter measured pauses."]
+    #[serde(
+        default,
+        skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+    )]
+    pub legal_ends: ::std::collections::HashMap<MindCandidatesLegalEndsKey, u64>,
     pub length: MindCandidatesLength,
     pub schema_version: ::serde_json::Value,
     pub source_fingerprint: Sha256,
@@ -359,6 +376,76 @@ impl MindCandidatesInputs {
         Default::default()
     }
 }
+#[doc = "`MindCandidatesLegalEndsKey`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^s[0-9]+$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct MindCandidatesLegalEndsKey(::std::string::String);
+impl ::std::ops::Deref for MindCandidatesLegalEndsKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<MindCandidatesLegalEndsKey> for ::std::string::String {
+    fn from(value: MindCandidatesLegalEndsKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for MindCandidatesLegalEndsKey {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^s[0-9]+$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^s[0-9]+$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for MindCandidatesLegalEndsKey {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for MindCandidatesLegalEndsKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for MindCandidatesLegalEndsKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for MindCandidatesLegalEndsKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 #[doc = "`MindCandidatesLength`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -474,6 +561,10 @@ pub mod builder {
             ::std::string::String,
         >,
         inputs: ::std::result::Result<super::MindCandidatesInputs, ::std::string::String>,
+        legal_ends: ::std::result::Result<
+            ::std::collections::HashMap<super::MindCandidatesLegalEndsKey, u64>,
+            ::std::string::String,
+        >,
         length: ::std::result::Result<super::MindCandidatesLength, ::std::string::String>,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
         source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
@@ -483,6 +574,7 @@ pub mod builder {
             Self {
                 candidates: Err("no value supplied for candidates".to_string()),
                 inputs: Err("no value supplied for inputs".to_string()),
+                legal_ends: Ok(Default::default()),
                 length: Err("no value supplied for length".to_string()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
                 source_fingerprint: Err("no value supplied for source_fingerprint".to_string()),
@@ -508,6 +600,18 @@ pub mod builder {
             self.inputs = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for inputs: {e}"));
+            self
+        }
+        pub fn legal_ends<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::collections::HashMap<super::MindCandidatesLegalEndsKey, u64>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.legal_ends = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for legal_ends: {e}"));
             self
         }
         pub fn length<T>(mut self, value: T) -> Self
@@ -549,6 +653,7 @@ pub mod builder {
             Ok(Self {
                 candidates: value.candidates?,
                 inputs: value.inputs?,
+                legal_ends: value.legal_ends?,
                 length: value.length?,
                 schema_version: value.schema_version?,
                 source_fingerprint: value.source_fingerprint?,
@@ -560,6 +665,7 @@ pub mod builder {
             Self {
                 candidates: Ok(value.candidates),
                 inputs: Ok(value.inputs),
+                legal_ends: Ok(value.legal_ends),
                 length: Ok(value.length),
                 schema_version: Ok(value.schema_version),
                 source_fingerprint: Ok(value.source_fingerprint),

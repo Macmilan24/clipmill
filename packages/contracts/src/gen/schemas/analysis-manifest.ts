@@ -50,6 +50,7 @@ export interface Stage {
     | "mind.memory.v1"
     | "mind.unit_scores.v1"
     | "mind.candidates.v1"
+    | "mind.judgments.v1"
     | "mind.plans.v1"
     | "mind.quality_report.v1"
     | "ranking.set.v2"

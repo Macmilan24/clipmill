@@ -520,7 +520,7 @@ import sys
 from clipmill_worker_editorial import CAPABILITIES
 from clipmill_worker_editorial.inference import call, ReviewReply
 assert CAPABILITIES == (
-    'editorial-critic', 'editorial-look', 'editorial-memory', 'editorial-plan',
+    'editorial-critic', 'editorial-judge', 'editorial-look', 'editorial-memory', 'editorial-plan',
     'editorial-propose', 'editorial-rank', 'editorial-review',
     'editorial-score', 'youtube-metadata'
 )

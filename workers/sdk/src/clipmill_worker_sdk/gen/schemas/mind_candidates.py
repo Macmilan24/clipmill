@@ -69,3 +69,7 @@ class MindCandidates(BaseModel):
     length: Length
     inputs: Inputs = Field(..., description='The artifacts the cutter read.')
     candidates: list[Candidate]
+    legal_ends: dict[constr(pattern=r'^s[0-9]+$'), conint(ge=0)] | None = Field(
+        None,
+        description='Where a part may end after each sentence the cutter allows to close a clip: the sentence id and the cut point in the pause after it, in ticks. Sentences missing here cannot end a clip. Absent from candidates written before the cutter measured pauses.',
+    )

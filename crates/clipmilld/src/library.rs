@@ -82,6 +82,7 @@ pub(crate) const JOBS: &[Job] = &[
             "editorial-look",
             "editorial-memory",
             "editorial-score",
+            "editorial-judge",
             "editorial-plan",
             "editorial-critic",
             "editorial-rank",

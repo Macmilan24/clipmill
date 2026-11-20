@@ -153,7 +153,7 @@ describe('the Analysis Progress screen', () => {
   it('shows every stage of the pipeline, named for a reader', async () => {
     show();
     const pipeline = within(await screen.findByRole('list', { name: 'Pipeline stages' }));
-    expect(pipeline.getAllByRole('listitem')).toHaveLength(26);
+    expect(pipeline.getAllByRole('listitem')).toHaveLength(27);
     for (const label of [
       'Inspect source',
       'Ingest',
@@ -167,6 +167,7 @@ describe('the Analysis Progress screen', () => {
       'Cut windows',
       'Validate candidates',
       'Rank candidates',
+      'Check the endings',
       'Check the joins',
       'Choose the strongest edits',
     ]) {

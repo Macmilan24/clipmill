@@ -279,6 +279,11 @@ const IMPLEMENTATIONS: &[Implementation] = &[
     },
     EDITORIAL_MLX_9B,
     Implementation {
+        name: "clipmill-worker-editorial@0.2.0/judge",
+        stage: "editorial-judge",
+        ..EDITORIAL_MLX_9B
+    },
+    Implementation {
         name: "clipmill-worker-editorial@0.2.0/plan",
         stage: "editorial-plan",
         ..EDITORIAL_MLX_9B
@@ -356,6 +361,11 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accuracy: 1,
     },
     EDITORIAL_MLX_4B,
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/judge/qwen3-5-4b-editorial-mlx",
+        stage: "editorial-judge",
+        ..EDITORIAL_MLX_4B
+    },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/plan/qwen3-5-4b-editorial-mlx",
         stage: "editorial-plan",
@@ -435,6 +445,11 @@ const IMPLEMENTATIONS: &[Implementation] = &[
     },
     EDITORIAL_GGUF_9B,
     Implementation {
+        name: "clipmill-worker-editorial@0.2.0/judge-llama.cpp",
+        stage: "editorial-judge",
+        ..EDITORIAL_GGUF_9B
+    },
+    Implementation {
         name: "clipmill-worker-editorial@0.2.0/plan-llama.cpp",
         stage: "editorial-plan",
         ..EDITORIAL_GGUF_9B
@@ -510,6 +525,11 @@ const IMPLEMENTATIONS: &[Implementation] = &[
         accuracy: 1,
     },
     EDITORIAL_GGUF_4B,
+    Implementation {
+        name: "clipmill-worker-editorial@0.2.0/judge-llama.cpp/qwen3-5-4b-editorial-gguf",
+        stage: "editorial-judge",
+        ..EDITORIAL_GGUF_4B
+    },
     Implementation {
         name: "clipmill-worker-editorial@0.2.0/plan-llama.cpp/qwen3-5-4b-editorial-gguf",
         stage: "editorial-plan",

@@ -37,6 +37,7 @@ export type { TextEmbeddings } from './gen/schemas/text-embeddings.js';
 export type { TextQueryVector } from './gen/schemas/text-query-vector.js';
 export type { MindUnitScores } from './gen/schemas/mind-unit-scores.js';
 export type { DiscoveryCandidates } from './gen/schemas/discovery-candidates.js';
+export type { MindJudgments } from './gen/schemas/mind-judgments.js';
 export type { MindPlans } from './gen/schemas/mind-plans.js';
 export type { MindQualityReport } from './gen/schemas/mind-quality-report.js';
 export type { RankingSetV2 } from './gen/schemas/ranking-set-v2.js';

@@ -108,6 +108,11 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
     detail: 'Stitched, tightened and cold-opened clips built from the memory',
   },
   {
+    kind: 'mind.judgments.v1',
+    label: 'Check the endings',
+    detail: 'Test the model on endings the recording answers, then ask where a speaker is cut off',
+  },
+  {
     kind: 'mind.plans.v1',
     label: 'Plan the edits',
     detail: 'Choose the titles, openings and sequence of parts',

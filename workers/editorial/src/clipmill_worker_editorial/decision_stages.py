@@ -8,6 +8,7 @@ from clipmill_worker_sdk import DeterministicTaskError, RetryableTaskError, cano
 from clipmill_worker_sdk.gen.schemas.editorial_trace import EditorialTrace
 from clipmill_worker_sdk.gen.schemas.mind_candidates import MindCandidates
 from clipmill_worker_sdk.gen.schemas.mind_clip_plan import MindClipPlan
+from clipmill_worker_sdk.gen.schemas.mind_judgments import MindJudgments
 from clipmill_worker_sdk.gen.schemas.mind_memory import MindMemory
 from clipmill_worker_sdk.gen.schemas.mind_plans import MindPlans
 from clipmill_worker_sdk.gen.schemas.mind_quality_report import MindQualityReport
@@ -15,6 +16,7 @@ from clipmill_worker_sdk.gen.schemas.mind_script import MindScript
 from clipmill_worker_sdk.gen.schemas.ranking_set_v2 import RankingSetV2
 
 from .critique import review_batch
+from .judging import judge
 from .planning import Calls, plan_batch
 from .rank_plans import rank_batch
 from .runtime import implementation_suffix, text_session
@@ -47,7 +49,7 @@ def execute(context, inputs, model, payload, operation):
 
     memory = read("mind.memory.v1", "memory.json", MindMemory)
     check_source(memory)
-    if operation in ("plan", "critic"):
+    if operation in ("judge", "plan", "critic"):
         candidates = read("mind.candidates.v1", "candidates.json", MindCandidates)
         check_source(candidates)
         if any(
@@ -63,6 +65,12 @@ def execute(context, inputs, model, payload, operation):
             for alternate in row.get("alternatives", []):
                 check_plan(alternate)
         needed = bool(candidates["candidates"])
+    judgments = None
+    if operation in ("plan", "critic") and inputs.optional("mind.judgments.v1"):
+        # Older analyses planned without a judge; their plans stand as they were.
+        judgments = read("mind.judgments.v1", "judgments.json", MindJudgments)
+        check_source(judgments)
+        check_pairing(judgments, ("mind.script.v1", "mind.memory.v1", "mind.candidates.v1"))
     if operation == "critic":
         plans = read("mind.plans.v1", "plans.json", MindPlans)
         check_source(plans)
@@ -91,10 +99,28 @@ def execute(context, inputs, model, payload, operation):
             {"title": chapter["title"], "summary": chapter["summary"][:140]}
             for chapter in memory["chapters"][:30]
         ]
-        if operation == "plan":
+        if operation == "judge":
+            kind, filename, schema = (
+                "clipmill.mind.judgments.v1",
+                "judgments.json",
+                MindJudgments,
+            )
+            row_key = None
+            document = judge(
+                runtime,
+                script,
+                candidates,
+                memory,
+                brief=ctx.brief,
+                count=count,
+                identity=ctx.identity,
+                traces=ctx.traces,
+                progress=context.report_progress,
+            )
+        elif operation == "plan":
             kind, filename, schema = "clipmill.mind.plans.v1", "plans.json", MindPlans
             row_key = "plans"
-            document = {row_key: plan_batch(ctx, candidates, memory, script, count)}
+            document = {row_key: plan_batch(ctx, candidates, memory, script, count, judgments)}
         elif operation == "critic":
             kind, filename, schema = (
                 "clipmill.mind.quality_report.v1",
@@ -102,7 +128,9 @@ def execute(context, inputs, model, payload, operation):
                 MindQualityReport,
             )
             row_key = "reviews"
-            document = {row_key: review_batch(ctx, plans, candidates, script, memory["chapters"])}
+            document = {
+                row_key: review_batch(ctx, plans, candidates, script, memory["chapters"], judgments)
+            }
         else:
             kind, filename, schema = "clipmill.ranking.set.v2", "ranking.json", RankingSetV2
             row_key = "clips"
@@ -113,7 +141,7 @@ def execute(context, inputs, model, payload, operation):
         raise RetryableTaskError(f"The editorial model did not finish every {operation} call.")
     document.update(schema_version=kind, source_fingerprint=source, inputs=inputs_by_kind)
     schema.model_validate(document)
-    for row in document[row_key]:
+    for row in document[row_key] if row_key else []:
         check_plan(row["plan"])
     implementation = f"clipmill-worker-editorial@0.2.0/{operation}{implementation_suffix(model)}"
     trace = {

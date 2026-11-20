@@ -48,6 +48,8 @@ class Job(StrEnum):
     critic_copy = 'critic.copy'
     critic_omission = 'critic.omission'
     compare = 'compare'
+    judge_ending = 'judge.ending'
+    judge_removal = 'judge.removal'
 
 
 class Route(StrEnum):

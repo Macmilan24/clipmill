@@ -148,6 +148,51 @@ class ServerModel:
             tokens["cached_input"] = int(cached.get("cached_tokens", 0))
         return text, tokens
 
+    def yes_probability(self, question, think_tokens):
+        """The same judgement as the MLX runtime's, through llama-server's
+        documented endpoints: the chat template with thinking turned on, at
+        most `think_tokens` of reasoning, then the next token's distribution
+        after the answer line."""
+        from .runtime import THINK_END, answer_prompt
+
+        self.cancellation.raise_if_cancelled()
+        messages = [{"role": "user", "content": question}]
+        templated = self._json(
+            "POST",
+            "/apply-template",
+            {"messages": messages, "chat_template_kwargs": {"enable_thinking": think_tokens > 0}},
+        )["prompt"]
+        thinking = ""
+        if think_tokens > 0:
+            thinking = self._json(
+                "POST",
+                "/completion",
+                {
+                    "prompt": templated,
+                    "n_predict": think_tokens,
+                    "temperature": 0.0,
+                    "seed": 0,
+                    "cache_prompt": True,
+                    "stop": [THINK_END],
+                },
+                timeout=CALL_SECONDS,
+            )["content"]
+        self.cancellation.raise_if_cancelled()
+        answer = self._json(
+            "POST",
+            "/completion",
+            {
+                "prompt": answer_prompt(templated, thinking, think_tokens > 0),
+                "n_predict": 1,
+                "n_probs": 20,
+                # Negative: greedy, with plain softmax probabilities.
+                "temperature": -1,
+                "cache_prompt": True,
+            },
+            timeout=CALL_SECONDS,
+        )
+        return answer_probability(answer), thinking
+
     def close(self):
         process = getattr(self, "process", None)
         if process is None or process.poll() is not None:
@@ -182,8 +227,8 @@ class ServerModel:
         templated = self._json("POST", "/apply-template", {"messages": messages})
         return len(self._json("POST", "/tokenize", {"content": templated["prompt"]})["tokens"])
 
-    def _json(self, method, path, body):
-        status, answer = self._request(method, path, body)
+    def _json(self, method, path, body, timeout=60):
+        status, answer = self._request(method, path, body, timeout=timeout)
         if status != 200:
             raise RuntimeError(f"llama-server answered {path} with {status}")
         return json.loads(answer)
@@ -270,6 +315,21 @@ class ServerModel:
         if failure:
             raise failure[0]
         return "".join(pieces), usage, timings
+
+
+def answer_probability(answer: dict) -> float:
+    """The probability of "yes" against "no" in llama-server's top tokens for
+    the first answer token; one half when neither appears."""
+    import math
+
+    probabilities = answer.get("completion_probabilities") or [{}]
+    totals = {"yes": 0.0, "no": 0.0}
+    for entry in probabilities[0].get("top_logprobs", []):
+        word = str(entry.get("token", "")).strip().lower()
+        if word in totals:
+            totals[word] += math.exp(float(entry.get("logprob", float("-inf"))))
+    total = totals["yes"] + totals["no"]
+    return totals["yes"] / total if total > 0 else 0.5
 
 
 def _abandon(stream: socket.socket) -> None:

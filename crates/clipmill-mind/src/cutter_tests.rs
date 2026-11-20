@@ -962,3 +962,95 @@ fn the_cutter_finds_filler_and_restarts_without_a_model() {
     assert_eq!(table.units[26].cut, None);
     assert_eq!(table.units[22].cut, None);
 }
+
+#[test]
+fn every_sentence_a_clip_may_end_on_is_listed_with_its_cut_point() {
+    let (mut source, words) = recording();
+    // The host goes on after s18 with "But…".
+    source.sentences[19].text = "But that was only the start.".to_owned();
+    let ends = legal_ends(&Material {
+        source_fingerprint: "",
+        source: &source,
+        words: &words,
+        lattice: None,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    });
+    assert!(!ends.contains_key("s18"));
+    // Before the guest's turn; without measured pauses, at the line's end.
+    assert_eq!(ends["s19"], 19 * 6 * S + 5 * S);
+    // The retake's two unfinished starts, s13 and s14, end nothing either.
+    let missing: Vec<u64> = (0..60)
+        .filter(|i| !ends.contains_key(&format!("s{i}")))
+        .collect();
+    assert_eq!(missing, [13, 14, 18]);
+}
+
+#[test]
+fn a_moment_that_stops_while_its_speaker_goes_on_gets_a_later_ending_too() {
+    let (source, words) = recording();
+    let material = Material {
+        source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+        source: &source,
+        words: &words,
+        lattice: None,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    };
+    let table = Table::new(&material);
+    let moment = |a, b| {
+        assemble(
+            &material,
+            &table,
+            &Draft {
+                form: "straight",
+                pieces: vec![Piece {
+                    a,
+                    b,
+                    role: "body",
+                    why: "A complete answer.".to_owned(),
+                    lifted: None,
+                }],
+                links: Vec::new(),
+                title: Some("An answer"),
+                evidence: vec![format!("s{a}")],
+            },
+        )
+        .unwrap()
+    };
+    // The guest speaks on after s30: the same moment may run to s31.
+    let later = later_ending(&material, &table, &moment(26, 30)).unwrap();
+    assert_eq!(later.parts[0].start_ticks, 26 * 6 * S);
+    assert_eq!(later.parts[0].end_ticks.get(), 31 * 6 * S + 5 * S);
+    assert_eq!(
+        later.title.as_deref().map(String::as_str),
+        Some("An answer")
+    );
+    // After s19 the guest takes over from the host: that ending needs no other.
+    assert!(later_ending(&material, &table, &moment(15, 19)).is_none());
+    // And none may run past the longest clip the brief allows.
+    assert!(later_ending(&material, &table, &moment(21, 30)).is_none());
+}
+
+#[test]
+fn a_moment_leans_towards_ending_where_the_speaker_hands_over() {
+    let (mut source, words) = recording();
+    // The guest talks without a pause from s26 to s33; the host takes over
+    // at s31.
+    for line in 26..=33 {
+        source.sentences[line].end_ticks = source.sentences[line + 1].start_ticks;
+    }
+    let length = (15 * S, 60 * S);
+    let table = plain_table(&source, &words);
+    assert_eq!(table.fit(26, 29, length), Some((26, 29)));
+    source.sentences[31].speaker = Some("host".to_owned());
+    let table = plain_table(&source, &words);
+    assert_eq!(table.fit(26, 29, length), Some((26, 30)));
+    // Two lines past the moment is too far to reach for it.
+    source.sentences[31].speaker = Some("guest".to_owned());
+    source.sentences[32].speaker = Some("host".to_owned());
+    let table = plain_table(&source, &words);
+    assert_eq!(table.fit(26, 29, length), Some((26, 29)));
+}

@@ -57,6 +57,32 @@ def text_session(model, cancellation, source, *, needed):
             runtime.close()
 
 
+#: Where a reasoning model closes its thinking.
+THINK_END = "</think>"
+#: What follows the reasoning, so the next token is the answer itself.
+ANSWER_LEAD = "Answer (one word, yes or no):"
+#: The spellings of each answer a tokenizer may start a reply with.
+YES_WORDS = ("yes", "Yes", " yes", " Yes")
+NO_WORDS = ("no", "No", " no", " No")
+
+
+def answer_prompt(prompt, thinking, thought):
+    """The templated prompt, the reasoning cut where it ended or ran out, and
+    the line that makes the next token the answer."""
+    if thought:
+        return prompt + thinking.split(THINK_END)[0] + "\n" + THINK_END + "\n\n" + ANSWER_LEAD
+    return prompt + ANSWER_LEAD
+
+
+def answer_token_ids(tokenizer):
+    """The first token of each spelling of "yes" and of "no"."""
+
+    def first(words):
+        return sorted({tokenizer.encode(word, add_special_tokens=False)[0] for word in words})
+
+    return first(YES_WORDS), first(NO_WORDS)
+
+
 def keep_warm_seconds() -> float:
     value = os.environ.get(KEEP_WARM, "").strip()
     if not value:
@@ -170,6 +196,13 @@ class _Borrowed:
     def generate(self, *args, **kwargs):
         try:
             return self._runtime.generate(*args, **kwargs)
+        except BaseException:
+            self._healthy = False
+            raise
+
+    def yes_probability(self, *args, **kwargs):
+        try:
+            return self._runtime.yes_probability(*args, **kwargs)
         except BaseException:
             self._healthy = False
             raise
@@ -345,6 +378,57 @@ class LocalModel:
         if self.cache_active and last is not None:
             tokens["cached_input"] = int(getattr(last, "cached_tokens", 0))
         return "".join(chunks), tokens
+
+    def yes_probability(self, question, think_tokens):
+        """The model's probability of "yes" against "no", after reasoning for
+        at most `think_tokens`: the answer is read from the next token's
+        distribution rather than sampled, so it is a number, not a coin flip."""
+        import mlx.core as mx
+        from mlx_vlm import stream_generate
+        from mlx_vlm.prompt_utils import apply_chat_template
+
+        tokenizer = getattr(self.processor, "tokenizer", self.processor)
+        tokenizer.stopping_criteria.reset([tokenizer.eos_token_id])
+        deadline = time.monotonic() + 600
+
+        def check_cancel(_tokens, logits):
+            self.cancellation.raise_if_cancelled()
+            if time.monotonic() > deadline:
+                raise TimeoutError("a judgement exceeded the 10-minute limit")
+            return logits
+
+        prompt = apply_chat_template(
+            self.processor,
+            self.model.config,
+            question,
+            num_images=0,
+            enable_thinking=think_tokens > 0,
+        )
+        thinking = ""
+        if think_tokens > 0:
+            for chunk in stream_generate(
+                self.model,
+                self.processor,
+                prompt,
+                max_tokens=think_tokens,
+                temperature=0.0,
+                logits_processors=[check_cancel],
+                enable_thinking=True,
+            ):
+                self.cancellation.raise_if_cancelled()
+                thinking += chunk.text
+                if THINK_END in thinking:
+                    break
+        ids = tokenizer.encode(
+            answer_prompt(prompt, thinking, think_tokens > 0), add_special_tokens=False
+        )
+        logits = self.model.language_model(mx.array([ids])).logits[0, -1].astype(mx.float32)
+        yes, no = answer_token_ids(tokenizer)
+        p_yes = mx.logsumexp(logits[mx.array(yes)])
+        p_no = mx.logsumexp(logits[mx.array(no)])
+        probability = mx.exp(p_yes - mx.logaddexp(p_yes, p_no))
+        mx.eval(probability)
+        return float(probability.item()), thinking.split(THINK_END)[0]
 
     def close(self):
         import mlx.core as mx

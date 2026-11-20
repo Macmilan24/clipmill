@@ -387,6 +387,15 @@ const REGISTRY: &[Recipe] = &[
         tools: &[],
     },
     Recipe {
+        kind: "editorial-judge",
+        output_kind: "mind.judgments.v1",
+        semantic_version: "clipmill.mind.judgments.v1",
+        executor: Executor::Worker,
+        capability: Some("editorial"),
+        network: NetworkPolicy::LocalLock,
+        tools: &[],
+    },
+    Recipe {
         kind: "editorial-plan",
         output_kind: "mind.plans.v1",
         semantic_version: "clipmill.mind.plans.v1",

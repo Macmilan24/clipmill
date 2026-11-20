@@ -43,6 +43,9 @@ use crate::{ADJACENT_GAP_TICKS, Bounds, MIN_MONTAGE_PARTS, MIN_PART_TICKS, SECON
 pub const NEEDS_REACH_UNITS: usize = 10;
 /// How far past an event's end the cutter looks for a landing.
 pub const EXTEND_UNITS: usize = 8;
+/// A pause between two lines at least this long marks the end of a thought
+/// more often than not, so the search leans towards edges at one.
+pub const THOUGHT_PAUSE_TICKS: u64 = 7 * SECOND / 10;
 /// The longest line a cold open lifts to the front.
 pub const MAX_LIFT_TICKS: u64 = 10 * SECOND;
 /// The shortest moment worth a place in a montage.
@@ -697,12 +700,15 @@ impl Table {
                 if u128::from(removed) * 100 > u128::from(span) * u128::from(MAX_CUT_PERCENT) {
                     continue;
                 }
-                // Prefer covering the moment, then strong edges, then length.
+                // Prefer covering the moment, then strong edges, then whole
+                // thoughts, then length.
                 let covered = i64::try_from(end.min(b) + 1 - start.max(a)).unwrap_or(0);
                 let past = i64::try_from(end.saturating_sub(b)).unwrap_or(0);
                 let score = 4 * i64::from(self.units[start].hook)
                     + 4 * i64::from(self.units[end].landing)
                     + 2 * covered
+                    + self.boundary_before(start)
+                    + self.boundary_before(end + 1)
                     - past
                     - i64::from(start != a);
                 if best.is_none_or(|(s, _, _)| score > s) {
@@ -716,6 +722,29 @@ impl Table {
     /// The strongest short stretch of `a..=b` that plays for at most `cap`.
     fn excerpt(&self, a: usize, b: usize, cap: u64) -> Option<(usize, usize)> {
         self.fit(a, b, (MIN_MONTAGE_ITEM_TICKS, cap))
+    }
+
+    /// How clearly a thought ends before line `place`: 2 where another
+    /// speaker takes over (or the recording starts or ends), 1 after a
+    /// pause, 0 where the same voice runs straight on. Turns and pauses are
+    /// what reliably mark the end of a spoken thought; meaning is left to
+    /// the memory's events and to the judge. A soft preference: it only
+    /// breaks ties between edges the rules already allow.
+    fn boundary_before(&self, place: usize) -> i64 {
+        let (Some(before), Some(after)) = (
+            place.checked_sub(1).and_then(|p| self.units.get(p)),
+            self.units.get(place),
+        ) else {
+            return 2;
+        };
+        if before.speaker.is_some() && after.speaker.is_some() && before.speaker != after.speaker
+        {
+            2
+        } else if after.start.saturating_sub(before.end) >= THOUGHT_PAUSE_TICKS {
+            1
+        } else {
+            0
+        }
     }
 
     fn edges(&self, a: usize, b: usize) -> i64 {
@@ -1003,12 +1032,85 @@ pub fn candidates_for_brief(material: &Material<'_>, prompt: &str) -> Vec<Candid
             .collect();
     }
     let mut selected = distinct(found);
+    for candidate in &mut selected {
+        let version = if candidate.plan.parts.iter().all(|p| p.removed.is_empty()) {
+            plain.as_ref().unwrap_or(&table)
+        } else {
+            &table
+        };
+        if let Some(later) = later_ending(material, version, &candidate.plan)
+            && candidate
+                .alternatives
+                .iter()
+                .all(|p| p.plan_id != later.plan_id)
+        {
+            candidate.alternatives.push(later);
+        }
+    }
     selected.sort_by(|a, b| {
         b.score
             .cmp(&a.score)
             .then(a.plan.plan_id.cmp(&b.plan.plan_id))
     });
     selected
+}
+
+/// Every sentence a part may end on, by id, with the cut point in the pause
+/// after it. The planner trims only to these.
+pub fn legal_ends(material: &Material<'_>) -> BTreeMap<String, u64> {
+    let table = Table::new(material);
+    (0..table.units.len())
+        .filter(|&b| table.may_end(b))
+        .map(|b| (format!("s{}", table.units[b].index), table.last(b)))
+        .collect()
+}
+
+/// Whether the same speaker goes straight on after line `b`.
+fn same_voice_goes_on(table: &Table, b: usize) -> bool {
+    let unit = &table.units[b];
+    table.units.get(b + 1).is_some_and(|next| {
+        unit.speaker.is_some()
+            && unit.speaker == next.speaker
+            && next.start.saturating_sub(unit.end) <= ADJACENT_GAP_TICKS
+    })
+}
+
+/// The same single-part moment carried on to the next sentence the rules
+/// allow to end a clip, when it stops while its speaker goes on. Text rules
+/// cannot tell "Not yet." that holds back its answer from one that is the
+/// answer; a judge may hear the first ending as cutting the speaker off, and
+/// the planner then has this one instead.
+fn later_ending(
+    material: &Material<'_>,
+    table: &Table,
+    plan: &MindClipPlan,
+) -> Option<MindClipPlan> {
+    let [part] = plan.parts.as_slice() else {
+        return None;
+    };
+    let a = table.place(part.units.first()?)?;
+    let b = table.place(part.units.last()?)?;
+    if !same_voice_goes_on(table, b) {
+        return None;
+    }
+    let start = table.first(a);
+    let later = (b + 1..table.units.len())
+        .take_while(|&end| table.last(end).saturating_sub(start) <= material.length.1)
+        .find(|&end| table.may_end(end))?;
+    let draft = Draft {
+        form: single_form(table, a, later),
+        pieces: vec![Piece {
+            a,
+            b: later,
+            role: "body",
+            why: part.why.as_deref().cloned().unwrap_or_default(),
+            lifted: None,
+        }],
+        links: Vec::new(),
+        title: plan.title.as_deref().map(String::as_str),
+        evidence: plan.evidence.iter().map(|e| e.to_string()).collect(),
+    };
+    assemble(material, table, &draft)
 }
 
 /// What a plan plays, as source ranges with its removals taken out.

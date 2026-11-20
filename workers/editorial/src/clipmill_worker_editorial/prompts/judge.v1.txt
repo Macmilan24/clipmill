@@ -1,0 +1,9 @@
+A short clip ends after the last line of the clip. The next line in the recording is shown after it.
+
+Clip ends with:
+{clip}
+
+Next line:
+{next}
+
+Has the speaker finished the thought at the end of the clip? Answer with one word: yes or no.

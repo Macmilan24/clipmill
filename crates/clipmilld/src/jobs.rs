@@ -2438,6 +2438,7 @@ fn editorial_recipe(operation: &str) -> Option<(&'static str, &'static str)> {
             "mind.memory.v1",
         ),
         "score" => (prompt!("score"), "mind.unit_scores.v1"),
+        "judge" => (prompt!("judge"), "mind.judgments.v1"),
         "plan" => (prompt!("plan"), "mind.plans.v1"),
         "critic" => (
             concat!(
@@ -2468,7 +2469,7 @@ fn editorial_worker_task(
     // computer only.
     let cloud = if matches!(
         operation,
-        "look" | "memory" | "score" | "plan" | "critic" | "rank"
+        "look" | "memory" | "score" | "judge" | "plan" | "critic" | "rank"
     ) {
         None
     } else {
@@ -2491,7 +2492,9 @@ fn editorial_worker_task(
     let (prompt, output_kind) = editorial_recipe(operation).ok_or("unknown editorial operation")?;
     // The link pass lists chapters and links for a whole recording at once.
     let max_output_tokens = if operation == "memory" { 4096 } else { 2048 };
-    let uses_brief = matches!(operation, "plan" | "critic" | "rank");
+    // The judge reads the brief and count to ask about the endings the
+    // planner will be offered.
+    let uses_brief = matches!(operation, "judge" | "plan" | "critic" | "rank");
     Ok(TaskSpec {
         task_id: TaskId::new().to_string(),
         ordinal: 0,
@@ -2527,7 +2530,10 @@ fn editorial_worker_task(
                 ..ingest_resources(1, 128, 32)
             }
         } else if implementation.backend == "mlx"
-            && matches!(operation, "memory" | "score" | "plan" | "critic" | "rank")
+            && matches!(
+                operation,
+                "memory" | "score" | "judge" | "plan" | "critic" | "rank"
+            )
         {
             // Includes the recording's private, bounded MLX prefix checkpoints.
             ResourceDeclaration {
@@ -4675,13 +4681,13 @@ mod analyze_tests {
                 t.kind.as_str(),
                 "editorial-windows" | "editorial-propose" | "editorial-review" | "editorial-look"
             )));
-        for operation in ["memory", "score", "plan", "critic", "rank"] {
+        for operation in ["memory", "score", "judge", "plan", "critic", "rank"] {
             let task = task(&plan, &format!("editorial-{operation}"));
             let payload = super::EditorialStagePayloadV1::decode(task.payload.as_slice()).unwrap();
             assert!(payload.cloud.is_none());
             assert!(payload.prompt_digest.starts_with("sha256:"));
             assert_eq!(payload.duration.unwrap().min_ticks, 20 * 90_000);
-            if matches!(operation, "plan" | "critic" | "rank") {
+            if matches!(operation, "judge" | "plan" | "critic" | "rank") {
                 assert_eq!(payload.editorial_prompt, "pricing");
                 assert_eq!(payload.editorial_taste.len(), 1);
             } else {
@@ -4694,6 +4700,15 @@ mod analyze_tests {
                 .iter()
                 .any(|k| k == "mind.quality_report.v1")
         );
+        // The planner and its critic both read the judge's verdicts on endings.
+        for stage in ["editorial-plan", "editorial-critic"] {
+            assert!(
+                task(&plan, stage)
+                    .input_kinds
+                    .iter()
+                    .any(|k| k == "mind.judgments.v1")
+            );
+        }
         assert!(
             task(&plan, "analysis-manifest")
                 .input_kinds
@@ -4737,6 +4752,7 @@ mod analyze_tests {
                 .collect::<Vec<_>>(),
             [
                 "mind-cut",
+                "editorial-judge",
                 "editorial-plan",
                 "editorial-critic",
                 "editorial-rank",
@@ -4752,6 +4768,7 @@ mod analyze_tests {
         );
         for kind in [
             "mind.candidates.v1",
+            "mind.judgments.v1",
             "mind.plans.v1",
             "mind.quality_report.v1",
             "ranking.set.v2",

@@ -97,7 +97,9 @@
             "critic.source",
             "critic.copy",
             "critic.omission",
-            "compare"
+            "compare",
+            "judge.ending",
+            "judge.removal"
           ]
         },
         "window_index": {
