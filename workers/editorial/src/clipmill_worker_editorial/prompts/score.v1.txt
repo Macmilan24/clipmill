@@ -6,9 +6,6 @@ Mark only what stands out. Every sentence you do not mark is an ordinary line th
 
 - hooks: sentences that would open a clip well for someone who has heard nothing before them: a bold claim, a surprising fact, a sharp question, the start of a story with stakes. Rate fair, good or strong. A line that only makes sense after an earlier one is not a hook.
 - landings: sentences that end a thought well: a conclusion, a punchline, a turn, a line the room reacts to. Rate fair, good or strong.
-- cuts: ranges a tight clip can leave out without changing what anyone meant: a tangent, a retake (the speaker says it again, better), a false start, filler, an aside, an ad read. Never mark a qualification, a caveat or a "but" that changes the meaning; leaving those out would misrepresent the speaker.
 - needs: sentences that cannot be understood without an earlier one in this window (the thing a pronoun points at, the question being answered). Give the earlier sentence.
-
-A false start is an abandoned or repeated attempt at the same utterance. Fresh information, a numerical example, several completed sentences or a change of topic are not false starts. Use an empty cuts list unless a specific deletion is justified.
 
 Cite only ids listed in citable_units. It is correct to mark little in a window that has little worth marking.

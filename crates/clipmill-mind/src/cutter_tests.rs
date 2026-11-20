@@ -536,10 +536,7 @@ fn edits_with_the_same_outer_edges_have_distinct_identities() {
         length: (15 * S, 60 * S),
     };
     let table = super::Table::new(&material);
-    let untrimmed = super::Table::new(&Material {
-        scores: None,
-        ..material
-    });
+    let untrimmed = table.plain();
     let body = super::Piece {
         lifted: None,
         a: 10,
@@ -715,7 +712,11 @@ fn a_clip_does_not_end_where_the_same_speaker_carries_on_nor_open_on_a_connectiv
 
 #[test]
 fn a_removal_that_saves_too_little_is_not_made_and_removals_are_spaced() {
-    let (source, words) = recording();
+    let (mut source, words) = recording();
+    // Plain lines where the shared recording has its retake.
+    for line in 13..=15 {
+        source.sentences[line].text = format!("Line {line} of the conversation.");
+    }
     let mut table = Table::new(&Material {
         source_fingerprint: "",
         source: &source,
@@ -943,4 +944,21 @@ fn a_clip_does_not_end_before_the_same_speaker_points_back_at_its_last_line() {
     source.sentences[33].speaker = Some("host".to_owned());
     let table = plain_table(&source, &words);
     assert!(table.may_end(32));
+}
+
+#[test]
+fn the_cutter_finds_filler_and_restarts_without_a_model() {
+    let (mut source, words) = recording();
+    source.sentences[21].text = "Um, you know, like.".to_owned();
+    source.sentences[23].text = "We went to the".to_owned();
+    source.sentences[24].text = "We went to the bank and asked for a loan.".to_owned();
+    // Two finished sentences that open alike stay.
+    source.sentences[26].text = "It's on you to pay.".to_owned();
+    source.sentences[27].text = "It's on you to choose.".to_owned();
+    let table = plain_table(&source, &words);
+    assert_eq!(table.units[21].cut, Some("filler"));
+    assert_eq!(table.units[23].cut, Some("false_start"));
+    assert_eq!(table.units[24].cut, None);
+    assert_eq!(table.units[26].cut, None);
+    assert_eq!(table.units[22].cut, None);
 }

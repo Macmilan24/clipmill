@@ -1,9 +1,11 @@
-"""The editor's markup: hooks, landings, cuttable ranges and dependencies.
+"""The editor's markup: hooks, landings and dependencies.
 
 The model marks only what stands out in each window of the annotated script;
-code writes the row for every sentence, so the cutter can tighten a moment
-(leave out what is marked cuttable), start a clip on its strongest line, and
-never open on a line that needs an earlier one.
+code writes the row for every sentence, so the cutter can start a clip on its
+strongest line, end it on a landing, and never open on a line that needs an
+earlier one. What a tight cut may leave out (filler, a restart the speaker
+says again) the cutter finds in code, where it can be checked; the markup no
+longer asks the model for it.
 """
 
 from __future__ import annotations
@@ -15,7 +17,6 @@ from pydantic import ConfigDict, Field, create_model
 from .inference import call, cited_window, prompt_digest
 
 LEVELS = ("none", "fair", "good", "strong")
-CUTS = ("tangent", "retake", "false_start", "filler", "aside", "ad_read")
 
 
 def markup_reply(units: list[str]):
@@ -28,13 +29,6 @@ def markup_reply(units: list[str]):
         unit=(unit, ...),
         level=(Literal[LEVELS[1:]], ...),
     )
-    cut = create_model(
-        "Cut",
-        __config__=ConfigDict(extra="forbid"),
-        first_unit=(unit, ...),
-        last_unit=(unit, ...),
-        why=(Literal[CUTS], ...),
-    )
     need = create_model(
         "Need",
         __config__=ConfigDict(extra="forbid"),
@@ -46,7 +40,6 @@ def markup_reply(units: list[str]):
         __config__=ConfigDict(extra="forbid"),
         hooks=(list[rated], Field(max_length=12)),
         landings=(list[rated], Field(max_length=12)),
-        cuts=(list[cut], Field(max_length=16)),
         needs=(list[need], Field(max_length=16)),
     )
 
@@ -56,7 +49,6 @@ def _prompt_schema(reply) -> dict:
     described = {"type": "string", "description": "a sentence id from citable_units"}
     for model, fields in (
         ("Rated", ("unit",)),
-        ("Cut", ("first_unit", "last_unit")),
         ("Need", ("unit", "on")),
     ):
         for name in fields:
@@ -67,8 +59,8 @@ def _prompt_schema(reply) -> dict:
 def apply(rows: dict[int, dict], position: dict[int, int], answer: dict) -> None:
     """Fold one window's markup into the rows for its sentences.
 
-    A sentence rated twice keeps the higher rating; a cut or a dependency that
-    runs backwards is ignored rather than guessed at.
+    A sentence rated twice keeps the higher rating; a dependency that runs
+    backwards is ignored rather than guessed at.
     """
 
     for key in ("hooks", "landings"):
@@ -77,19 +69,6 @@ def apply(rows: dict[int, dict], position: dict[int, int], answer: dict) -> None
             row = rows[int(mark["unit"][1:])]
             if LEVELS.index(mark["level"]) > LEVELS.index(row[field]):
                 row[field] = mark["level"]
-                row["trim"] = "keep"
-    for cut in answer["cuts"]:
-        first, last = int(cut["first_unit"][1:]), int(cut["last_unit"][1:])
-        width = position[last] - position[first] + 1
-        if width <= 0 or (cut["why"] in ("false_start", "filler", "retake") and width > 2):
-            continue
-        for index, row in rows.items():
-            if (
-                position[first] <= position[index] <= position[last]
-                and row["trim"] == "keep"
-                and row["hook"] == row["landing"] == "none"
-            ):
-                row["trim"] = cut["why"]
     for need in answer["needs"]:
         unit, on = int(need["unit"][1:]), int(need["on"][1:])
         if position[on] < position[unit]:

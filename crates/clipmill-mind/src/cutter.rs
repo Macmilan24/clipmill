@@ -412,6 +412,27 @@ impl Table {
             unit.cut = removal_reason(row.trim);
             unit.needs = needs;
         }
+        // What a tight cut may leave out is found here, in code, where it can
+        // be checked: a line of nothing but filler, or an abandoned start that
+        // the same speaker says again in the next line. Marks a model wrote
+        // into older markup are still read, and still confirmed before use.
+        for place in 0..units.len() {
+            if units[place].cut.is_some() {
+                continue;
+            }
+            let mark = if only_filler(&units[place].text) {
+                Some("filler")
+            } else {
+                units
+                    .get(place + 1)
+                    .filter(|next| {
+                        next.speaker == units[place].speaker
+                            && said_again(&units[place].text, &next.text)
+                    })
+                    .map(|_| "false_start")
+            };
+            units[place].cut = mark;
+        }
         // Older scorers occasionally called an entire passage a false start.
         // Do not remove a run of completed thoughts under a disfluency label.
         for run in units.chunk_by_mut(|a, b| a.cut == b.cut) {

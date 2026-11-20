@@ -27,6 +27,10 @@
   stays, and nothing is taken out when the words kept around it would point
   at it ("here's why", "that's why") or when it holds a question. A clip that
   opens on an answer is also offered with the question that prompts it.
+- **A shorter markup pass.** The markup step no longer asks the model which
+  passages a clip could leave out, which was close to half of what it wrote.
+  The cutter finds filler and abandoned restarts itself, by rules it can
+  check.
 - **One editorial path.** With a local editorial model, analysis no longer
   runs the built-in moment search and ranking alongside the planner, whose
   results were not shown. Computers without a model still use them.

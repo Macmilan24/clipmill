@@ -100,7 +100,7 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
   {
     kind: 'mind.unit_scores.v1',
     label: 'Mark up every line',
-    detail: 'Strong openings, clean landings, and what a tight cut can leave out',
+    detail: 'Strong openings, clean landings, and lines that need an earlier one',
   },
   {
     kind: 'mind.candidates.v1',

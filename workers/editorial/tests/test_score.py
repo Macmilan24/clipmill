@@ -53,10 +53,6 @@ def test_marks_become_a_row_for_every_sentence():
         {
             "hooks": [{"unit": "s1", "level": "good"}, {"unit": "s1", "level": "strong"}],
             "landings": [{"unit": "s5", "level": "strong"}],
-            "cuts": [
-                {"first_unit": "s2", "last_unit": "s3", "why": "tangent"},
-                {"first_unit": "s4", "last_unit": "s2", "why": "filler"},
-            ],
             "needs": [{"unit": "s5", "on": "s1"}, {"unit": "s1", "on": "s5"}],
         },
         "the model wandered off",
@@ -67,34 +63,21 @@ def test_marks_become_a_row_for_every_sentence():
     assert len(rows) == 12
     assert rows["s1"]["hook"] == "strong"
     assert rows["s5"]["landing"] == "strong"
-    assert [rows[f"s{i}"]["trim"] for i in range(6)] == [
-        "keep",
-        "keep",
-        "tangent",
-        "tangent",
-        "keep",
-        "keep",
-    ]
+    # What a cut may leave out is found by the cutter in code, not marked here.
+    assert all(row["trim"] == "keep" for row in rows.values())
     assert rows["s5"]["needs"] == "s1"
     assert "needs" not in rows["s1"]
     assert scores["unscored"][0]["first_unit"] == "s6"
     assert '"citable_units": "s6 to s11"' in runtime.prompts[1]
 
 
-def test_disfluency_cannot_mask_a_whole_passage_or_a_rated_anchor():
+def test_the_markup_asks_for_no_cut_labels():
     runtime = Scripted(
-        {
-            "hooks": [{"unit": "s2", "level": "strong"}],
-            "landings": [],
-            "cuts": [
-                {"first_unit": "s0", "last_unit": "s5", "why": "false_start"},
-                {"first_unit": "s1", "last_unit": "s2", "why": "retake"},
-            ],
-            "needs": [],
-        },
-        {"hooks": [], "landings": [], "cuts": [], "needs": []},
+        {"hooks": [], "landings": [], "needs": []},
+        {"hooks": [], "landings": [], "needs": []},
     )
     rows = score(runtime)["units"]
-    assert [r["trim"] for r in rows[:6]] == ["keep", "retake", "keep", "keep", "keep", "keep"]
+    assert all(row["trim"] == "keep" for row in rows)
     prompt = runtime.prompts[0]
     assert all(f"s{i} [0:00] A x" in prompt for i in range(6))
+    assert "cuts" not in prompt
