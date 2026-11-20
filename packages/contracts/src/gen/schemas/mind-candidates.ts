@@ -49,4 +49,13 @@ export interface MindCandidates {
   legal_ends?: {
     [k: string]: number;
   };
+  /**
+   * Passages code allows to be left out of a moment by meaning: whole sentences inside one speaker's turn, between two cut points, with nothing kept around them pointing at them. Whether one should be left out is decided later, by the planner and measured checks.
+   */
+  removable?: {
+    first_unit: string;
+    last_unit: string;
+    start_ticks: number;
+    end_ticks: number;
+  }[];
 }

@@ -140,6 +140,38 @@ pub mod error {
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
 #[doc = "    },"]
+#[doc = "    \"removable\": {"]
+#[doc = "      \"description\": \"Passages code allows to be left out of a moment by meaning: whole sentences inside one speaker's turn, between two cut points, with nothing kept around them pointing at them. Whether one should be left out is decided later, by the planner and measured checks.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\","]
+#[doc = "        \"required\": ["]
+#[doc = "          \"end_ticks\","]
+#[doc = "          \"first_unit\","]
+#[doc = "          \"last_unit\","]
+#[doc = "          \"start_ticks\""]
+#[doc = "        ],"]
+#[doc = "        \"properties\": {"]
+#[doc = "          \"end_ticks\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 1.0"]
+#[doc = "          },"]
+#[doc = "          \"first_unit\": {"]
+#[doc = "            \"type\": \"string\","]
+#[doc = "            \"pattern\": \"^s[0-9]+$\""]
+#[doc = "          },"]
+#[doc = "          \"last_unit\": {"]
+#[doc = "            \"type\": \"string\","]
+#[doc = "            \"pattern\": \"^s[0-9]+$\""]
+#[doc = "          },"]
+#[doc = "          \"start_ticks\": {"]
+#[doc = "            \"type\": \"integer\","]
+#[doc = "            \"minimum\": 0.0"]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"additionalProperties\": false"]
+#[doc = "      }"]
+#[doc = "    },"]
 #[doc = "    \"schema_version\": {"]
 #[doc = "      \"const\": \"clipmill.mind.candidates.v1\""]
 #[doc = "    },"]
@@ -163,6 +195,9 @@ pub struct MindCandidates {
     )]
     pub legal_ends: ::std::collections::HashMap<MindCandidatesLegalEndsKey, u64>,
     pub length: MindCandidatesLength,
+    #[doc = "Passages code allows to be left out of a moment by meaning: whole sentences inside one speaker's turn, between two cut points, with nothing kept around them pointing at them. Whether one should be left out is decided later, by the planner and measured checks."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub removable: ::std::vec::Vec<MindCandidatesRemovableItem>,
     pub schema_version: ::serde_json::Value,
     pub source_fingerprint: Sha256,
 }
@@ -482,6 +517,194 @@ impl MindCandidatesLength {
         Default::default()
     }
 }
+#[doc = "`MindCandidatesRemovableItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"end_ticks\","]
+#[doc = "    \"first_unit\","]
+#[doc = "    \"last_unit\","]
+#[doc = "    \"start_ticks\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"end_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 1.0"]
+#[doc = "    },"]
+#[doc = "    \"first_unit\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^s[0-9]+$\""]
+#[doc = "    },"]
+#[doc = "    \"last_unit\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^s[0-9]+$\""]
+#[doc = "    },"]
+#[doc = "    \"start_ticks\": {"]
+#[doc = "      \"type\": \"integer\","]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct MindCandidatesRemovableItem {
+    pub end_ticks: ::std::num::NonZeroU64,
+    pub first_unit: MindCandidatesRemovableItemFirstUnit,
+    pub last_unit: MindCandidatesRemovableItemLastUnit,
+    pub start_ticks: u64,
+}
+impl MindCandidatesRemovableItem {
+    pub fn builder() -> builder::MindCandidatesRemovableItem {
+        Default::default()
+    }
+}
+#[doc = "`MindCandidatesRemovableItemFirstUnit`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^s[0-9]+$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct MindCandidatesRemovableItemFirstUnit(::std::string::String);
+impl ::std::ops::Deref for MindCandidatesRemovableItemFirstUnit {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<MindCandidatesRemovableItemFirstUnit> for ::std::string::String {
+    fn from(value: MindCandidatesRemovableItemFirstUnit) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for MindCandidatesRemovableItemFirstUnit {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^s[0-9]+$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^s[0-9]+$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for MindCandidatesRemovableItemFirstUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for MindCandidatesRemovableItemFirstUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for MindCandidatesRemovableItemFirstUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for MindCandidatesRemovableItemFirstUnit {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`MindCandidatesRemovableItemLastUnit`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^s[0-9]+$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct MindCandidatesRemovableItemLastUnit(::std::string::String);
+impl ::std::ops::Deref for MindCandidatesRemovableItemLastUnit {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<MindCandidatesRemovableItemLastUnit> for ::std::string::String {
+    fn from(value: MindCandidatesRemovableItemLastUnit) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for MindCandidatesRemovableItemLastUnit {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^s[0-9]+$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^s[0-9]+$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for MindCandidatesRemovableItemLastUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for MindCandidatesRemovableItemLastUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for MindCandidatesRemovableItemLastUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for MindCandidatesRemovableItemLastUnit {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 #[doc = "`Sha256`"]
 #[doc = r""]
 #[doc = r" <details><summary>JSON schema</summary>"]
@@ -566,6 +789,10 @@ pub mod builder {
             ::std::string::String,
         >,
         length: ::std::result::Result<super::MindCandidatesLength, ::std::string::String>,
+        removable: ::std::result::Result<
+            ::std::vec::Vec<super::MindCandidatesRemovableItem>,
+            ::std::string::String,
+        >,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
         source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
     }
@@ -576,6 +803,7 @@ pub mod builder {
                 inputs: Err("no value supplied for inputs".to_string()),
                 legal_ends: Ok(Default::default()),
                 length: Err("no value supplied for length".to_string()),
+                removable: Ok(Default::default()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
                 source_fingerprint: Err("no value supplied for source_fingerprint".to_string()),
             }
@@ -624,6 +852,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for length: {e}"));
             self
         }
+        pub fn removable<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::MindCandidatesRemovableItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.removable = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for removable: {e}"));
+            self
+        }
         pub fn schema_version<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<::serde_json::Value>,
@@ -655,6 +893,7 @@ pub mod builder {
                 inputs: value.inputs?,
                 legal_ends: value.legal_ends?,
                 length: value.length?,
+                removable: value.removable?,
                 schema_version: value.schema_version?,
                 source_fingerprint: value.source_fingerprint?,
             })
@@ -667,6 +906,7 @@ pub mod builder {
                 inputs: Ok(value.inputs),
                 legal_ends: Ok(value.legal_ends),
                 length: Ok(value.length),
+                removable: Ok(value.removable),
                 schema_version: Ok(value.schema_version),
                 source_fingerprint: Ok(value.source_fingerprint),
             }
@@ -900,6 +1140,94 @@ pub mod builder {
             Self {
                 max_ticks: Ok(value.max_ticks),
                 min_ticks: Ok(value.min_ticks),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct MindCandidatesRemovableItem {
+        end_ticks: ::std::result::Result<::std::num::NonZeroU64, ::std::string::String>,
+        first_unit: ::std::result::Result<
+            super::MindCandidatesRemovableItemFirstUnit,
+            ::std::string::String,
+        >,
+        last_unit: ::std::result::Result<
+            super::MindCandidatesRemovableItemLastUnit,
+            ::std::string::String,
+        >,
+        start_ticks: ::std::result::Result<u64, ::std::string::String>,
+    }
+    impl ::std::default::Default for MindCandidatesRemovableItem {
+        fn default() -> Self {
+            Self {
+                end_ticks: Err("no value supplied for end_ticks".to_string()),
+                first_unit: Err("no value supplied for first_unit".to_string()),
+                last_unit: Err("no value supplied for last_unit".to_string()),
+                start_ticks: Err("no value supplied for start_ticks".to_string()),
+            }
+        }
+    }
+    impl MindCandidatesRemovableItem {
+        pub fn end_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::num::NonZeroU64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.end_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for end_ticks: {e}"));
+            self
+        }
+        pub fn first_unit<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::MindCandidatesRemovableItemFirstUnit>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.first_unit = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for first_unit: {e}"));
+            self
+        }
+        pub fn last_unit<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::MindCandidatesRemovableItemLastUnit>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.last_unit = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for last_unit: {e}"));
+            self
+        }
+        pub fn start_ticks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<u64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.start_ticks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for start_ticks: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<MindCandidatesRemovableItem> for super::MindCandidatesRemovableItem {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: MindCandidatesRemovableItem,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                end_ticks: value.end_ticks?,
+                first_unit: value.first_unit?,
+                last_unit: value.last_unit?,
+                start_ticks: value.start_ticks?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::MindCandidatesRemovableItem> for MindCandidatesRemovableItem {
+        fn from(value: super::MindCandidatesRemovableItem) -> Self {
+            Self {
+                end_ticks: Ok(value.end_ticks),
+                first_unit: Ok(value.first_unit),
+                last_unit: Ok(value.last_unit),
+                start_ticks: Ok(value.start_ticks),
             }
         }
     }

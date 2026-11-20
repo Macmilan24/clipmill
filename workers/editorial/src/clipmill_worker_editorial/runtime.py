@@ -207,6 +207,13 @@ class _Borrowed:
             self._healthy = False
             raise
 
+    def continuation_logprobs(self, *args, **kwargs):
+        try:
+            return self._runtime.continuation_logprobs(*args, **kwargs)
+        except BaseException:
+            self._healthy = False
+            raise
+
     def __getattr__(self, name):
         return getattr(self._runtime, name)
 
@@ -252,6 +259,9 @@ def implementation_suffix(model) -> str:
 
 
 class LocalModel:
+    #: It can score given text, so it can serve as the likelihood meter.
+    has_meter = True
+
     def __init__(self, root, cancellation):
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -429,6 +439,26 @@ class LocalModel:
         probability = mx.exp(p_yes - mx.logaddexp(p_yes, p_no))
         mx.eval(probability)
         return float(probability.item()), thinking.split(THINK_END)[0]
+
+    def continuation_logprobs(self, context, target):
+        """The log probability of each token of `target` when it follows
+        `context` as plain text. The model is a meter here, not a judge: the
+        same line scored after two contexts says how much it relies on what
+        one of them adds."""
+        import mlx.core as mx
+
+        self.cancellation.raise_if_cancelled()
+        tokenizer = getattr(self.processor, "tokenizer", self.processor)
+        before = tokenizer.encode(context, add_special_tokens=False)
+        after = tokenizer.encode("\n" + target, add_special_tokens=False)
+        if not before or not after:
+            raise ValueError("the meter needs a context and a line to score")
+        logits = self.model.language_model(mx.array([before + after])).logits[0].astype(mx.float32)
+        logp = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
+        rows = logp[len(before) - 1 : len(before) - 1 + len(after)]
+        picked = mx.take_along_axis(rows, mx.array(after)[:, None], axis=1)[:, 0]
+        mx.eval(picked)
+        return picked.tolist()
 
     def close(self):
         import mlx.core as mx

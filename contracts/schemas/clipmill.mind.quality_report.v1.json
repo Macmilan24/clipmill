@@ -24,6 +24,19 @@
       "items": {
         "$ref": "#/$defs/review"
       }
+    },
+    "removal_checks": {
+      "description": "How the instruments that guard a removal by meaning measured on removals whose effect the recording shows: taking out a question before its answer, or a line the speaker then points back at, leaves something dangling; taking out filler or an abandoned start does not. An instrument is used only when it passed. Absent when no clip had a passage to consider.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "meter": {
+          "$ref": "#/$defs/removal_check"
+        },
+        "judge": {
+          "$ref": "#/$defs/removal_check"
+        }
+      }
     }
   },
   "$defs": {
@@ -94,6 +107,10 @@
         },
         "repaired": {
           "type": "boolean"
+        },
+        "tightened": {
+          "description": "A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.",
+          "type": "boolean"
         }
       }
     },
@@ -112,6 +129,47 @@
         "note": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "removal_check": {
+      "type": "object",
+      "required": ["passed", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "separation": {
+          "description": "The share of (dangling, intact) pairs the instrument scored the right way round: 0.5 is chance, 1 is perfect.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["first_unit", "last_unit", "expected", "score"],
+            "additionalProperties": false,
+            "properties": {
+              "first_unit": {
+                "type": "string",
+                "pattern": "^s[0-9]+$"
+              },
+              "last_unit": {
+                "type": "string",
+                "pattern": "^s[0-9]+$"
+              },
+              "expected": {
+                "enum": ["dangling", "intact"]
+              },
+              "score": {
+                "description": "How much the instrument says the removal leaves dangling: for the meter, how much more surprising the next line becomes per token; for the judge, the probability it sees something missing.",
+                "type": "number"
+              }
+            }
+          }
         }
       }
     }

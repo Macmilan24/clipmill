@@ -87,6 +87,33 @@
         "type": "integer",
         "minimum": 0
       }
+    },
+    "removable": {
+      "description": "Passages code allows to be left out of a moment by meaning: whole sentences inside one speaker's turn, between two cut points, with nothing kept around them pointing at them. Whether one should be left out is decided later, by the planner and measured checks.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["first_unit", "last_unit", "start_ticks", "end_ticks"],
+        "additionalProperties": false,
+        "properties": {
+          "first_unit": {
+            "type": "string",
+            "pattern": "^s[0-9]+$"
+          },
+          "last_unit": {
+            "type": "string",
+            "pattern": "^s[0-9]+$"
+          },
+          "start_ticks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end_ticks": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
     }
   },
   "$defs": {

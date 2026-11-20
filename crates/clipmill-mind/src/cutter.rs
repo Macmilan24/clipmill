@@ -82,6 +82,38 @@ const CARRIES_ON: [&str; 11] = [
     "and", "but", "because", "cause", "'cause", "or", "which", "although", "though", "whereas",
     "plus",
 ];
+/// Openings that turn the thought before them: a contrast ("right now…",
+/// "however…") or the point it was leading to ("for example…"). Ending a
+/// clip just before one of them, by the same speaker, leaves the setup
+/// without its turn.
+const TURNS: [&str; 13] = [
+    "however",
+    "instead",
+    "yet",
+    "right now",
+    "but now",
+    "nowadays",
+    "these days",
+    "in reality",
+    "for example",
+    "for instance",
+    "in other words",
+    "what i mean is",
+    "that said",
+];
+/// Nouns that open "the … is" and announce the point after a setup ("the
+/// truth is…", "the simple reality is…").
+const POINT_NOUNS: [&str; 9] = [
+    "reality",
+    "truth",
+    "fact",
+    "problem",
+    "point",
+    "thing",
+    "answer",
+    "difference",
+    "issue",
+];
 /// Phrases near the end of a line that promise what comes next. A removal
 /// right after such a line would cut the promised thing and keep the promise.
 const PROMISES: [&str; 24] = [
@@ -234,7 +266,7 @@ fn closes_sentence(text: &str) -> bool {
 /// Whether a line ends by promising what comes next.
 fn promises(text: &str) -> bool {
     let lower = text.trim().to_lowercase();
-    if lower.ends_with(':') {
+    if lower.ends_with(':') || announces(text) {
         return true;
     }
     let words: Vec<&str> = lower.split_whitespace().collect();
@@ -242,6 +274,23 @@ fn promises(text: &str) -> bool {
         .join(" ")
         .replace([',', '.', '!', '?', ';'], "");
     PROMISES.iter().any(|phrase| tail.contains(phrase))
+}
+
+/// Words a list marker is made of ("Number two.", "And finally.").
+const LIST_MARKERS: [&str; 22] = [
+    "number", "point", "step", "reason", "part", "one", "two", "three", "four", "five", "six",
+    "seven", "first", "second", "third", "fourth", "fifth", "next", "finally", "lastly", "and",
+    "also",
+];
+
+/// Whether a line is only a list marker, which announces the next point.
+fn announces(text: &str) -> bool {
+    let words = tokens(text);
+    !words.is_empty()
+        && words.len() <= 4
+        && words
+            .iter()
+            .all(|word| LIST_MARKERS.contains(&word.as_str()))
 }
 
 /// Whether a line opens by pointing at the line before it.
@@ -318,6 +367,27 @@ fn first_word(text: &str) -> String {
 /// Whether a line carries the one before it on, judged by how it starts.
 fn carries_on(text: &str) -> bool {
     CARRIES_ON.contains(&first_word(text).as_str())
+}
+
+/// Whether a line opens by turning the thought before it: a contrast, an
+/// example, or "the truth is…" within its first six words.
+fn turns(text: &str) -> bool {
+    let words = tokens(text);
+    let opening = words
+        .iter()
+        .take(3)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if TURNS
+        .iter()
+        .any(|phrase| opening == *phrase || opening.starts_with(&format!("{phrase} ")))
+    {
+        return true;
+    }
+    let head = &words[..words.len().min(6)];
+    head.windows(2)
+        .any(|pair| POINT_NOUNS.contains(&pair[0].as_str()) && pair[1] == "is")
 }
 
 /// Whether a line opens by pointing back at what came before.
@@ -485,8 +555,9 @@ impl Table {
     /// Whether a part may end after line `b`: there is a pause to cut in,
     /// the line closes a sentence and promises nothing still to come, and the
     /// same speaker does not carry the thought on in the next line, whether
-    /// with a connective ("and…", "but…"), a pointer back ("that…", "which…")
-    /// or a lower-case rest of the sentence.
+    /// with a connective ("and…", "but…"), a pointer back ("that…", "which…"),
+    /// a turn ("right now…", "the truth is…") or a lower-case rest of the
+    /// sentence.
     fn may_end(&self, b: usize) -> bool {
         let unit = &self.units[b];
         if unit.close.is_none() || !unit.ends_sentence || unit.promises {
@@ -496,7 +567,8 @@ impl Table {
             let same_voice =
                 unit.speaker.is_none() || next.speaker.is_none() || unit.speaker == next.speaker;
             let close = next.start.saturating_sub(unit.end) <= ADJACENT_GAP_TICKS;
-            let points_back = next.points_at_previous || carries_on(&next.text);
+            let points_back =
+                next.points_at_previous || carries_on(&next.text) || turns(&next.text);
             !(same_voice && (next.starts_lower || (close && points_back)))
         })
     }
@@ -737,13 +809,10 @@ impl Table {
         ) else {
             return 2;
         };
-        if before.speaker.is_some() && after.speaker.is_some() && before.speaker != after.speaker
-        {
+        if before.speaker.is_some() && after.speaker.is_some() && before.speaker != after.speaker {
             2
-        } else if after.start.saturating_sub(before.end) >= THOUGHT_PAUSE_TICKS {
-            1
         } else {
-            0
+            i64::from(after.start.saturating_sub(before.end) >= THOUGHT_PAUSE_TICKS)
         }
     }
 
@@ -1038,13 +1107,14 @@ pub fn candidates_for_brief(material: &Material<'_>, prompt: &str) -> Vec<Candid
         } else {
             &table
         };
-        if let Some(later) = later_ending(material, version, &candidate.plan)
-            && candidate
+        for later in later_endings(material, version, &candidate.plan) {
+            if candidate
                 .alternatives
                 .iter()
                 .all(|p| p.plan_id != later.plan_id)
-        {
-            candidate.alternatives.push(later);
+            {
+                candidate.alternatives.push(later);
+            }
         }
     }
     selected.sort_by(|a, b| {
@@ -1065,6 +1135,80 @@ pub fn legal_ends(material: &Material<'_>) -> BTreeMap<String, u64> {
         .collect()
 }
 
+/// The most lines, and the longest stretch, one passage left out of a moment
+/// by meaning may span.
+pub const MAX_PASSAGE_LINES: usize = 3;
+pub const MAX_PASSAGE_TICKS: u64 = 20 * SECOND;
+/// Pronouns that, opening the line after a removal, could stand for
+/// something the removal took away.
+const PRONOUNS: [&str; 14] = [
+    "he", "she", "they", "it", "him", "her", "them", "his", "its", "their", "it's", "they're",
+    "he's", "she's",
+];
+
+/// A passage code allows to be left out of a moment, if a measured reason
+/// says it should be: whole sentences in one speaker's turn, between two cut
+/// points, with nothing kept around it pointing at it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Passage {
+    pub first_unit: String,
+    pub last_unit: String,
+    pub start_ticks: u64,
+    pub end_ticks: u64,
+}
+
+/// Every passage code allows to be left out by meaning. Whether one should
+/// be is not code's call: the planner proposes, measured instruments that
+/// pass their own check confirm, and the critic hears the result.
+pub fn removable_passages(material: &Material<'_>) -> Vec<Passage> {
+    let table = Table::new(material);
+    let units = &table.units;
+    let mut found = Vec::new();
+    for first in 1..units.len() {
+        let before = &units[first - 1];
+        if !before.ends_sentence || before.speaker.is_none() {
+            continue;
+        }
+        let Some(start) = before.close else {
+            continue;
+        };
+        for last in first..(first + MAX_PASSAGE_LINES).min(units.len() - 1) {
+            let run = &units[first..=last];
+            let after = &units[last + 1];
+            if run
+                .iter()
+                .any(|unit| unit.speaker != before.speaker || unit.cut.is_some())
+            {
+                break;
+            }
+            let Some(end) = after.open else {
+                continue;
+            };
+            let saved = end.saturating_sub(start);
+            if saved > MAX_PASSAGE_TICKS {
+                break;
+            }
+            if after.speaker != before.speaker
+                || !units[last].ends_sentence
+                || after.starts_lower
+                || saved < MIN_REMOVAL_TICKS
+                || table.would_dangle(first, last)
+                || turns(&after.text)
+                || PRONOUNS.contains(&first_word(&after.text).as_str())
+            {
+                continue;
+            }
+            found.push(Passage {
+                first_unit: format!("s{}", units[first].index),
+                last_unit: format!("s{}", units[last].index),
+                start_ticks: start,
+                end_ticks: end,
+            });
+        }
+    }
+    found
+}
+
 /// Whether the same speaker goes straight on after line `b`.
 fn same_voice_goes_on(table: &Table, b: usize) -> bool {
     let unit = &table.units[b];
@@ -1075,42 +1219,56 @@ fn same_voice_goes_on(table: &Table, b: usize) -> bool {
     })
 }
 
-/// The same single-part moment carried on to the next sentence the rules
-/// allow to end a clip, when it stops while its speaker goes on. Text rules
-/// cannot tell "Not yet." that holds back its answer from one that is the
-/// answer; a judge may hear the first ending as cutting the speaker off, and
-/// the planner then has this one instead.
-fn later_ending(
-    material: &Material<'_>,
-    table: &Table,
-    plan: &MindClipPlan,
-) -> Option<MindClipPlan> {
+/// The most later endings offered for one moment.
+pub const MAX_LATER_ENDINGS: usize = 3;
+
+/// The same single-part moment carried on to each of the next sentences the
+/// rules allow to end a clip, when it stops while its speaker goes on: up to
+/// [`MAX_LATER_ENDINGS`], within the longest length, and no further than the
+/// first one after which another voice takes over. Text rules cannot tell
+/// "Not yet." that holds back its answer from one that is the answer; a
+/// judge may hear an ending as cutting the speaker off, and the planner then
+/// has the later ones instead.
+fn later_endings(material: &Material<'_>, table: &Table, plan: &MindClipPlan) -> Vec<MindClipPlan> {
     let [part] = plan.parts.as_slice() else {
-        return None;
+        return Vec::new();
     };
-    let a = table.place(part.units.first()?)?;
-    let b = table.place(part.units.last()?)?;
+    let (Some(a), Some(b)) = (
+        part.units.first().and_then(|unit| table.place(unit)),
+        part.units.last().and_then(|unit| table.place(unit)),
+    ) else {
+        return Vec::new();
+    };
     if !same_voice_goes_on(table, b) {
-        return None;
+        return Vec::new();
     }
     let start = table.first(a);
-    let later = (b + 1..table.units.len())
+    let mut found = Vec::new();
+    for later in (b + 1..table.units.len())
         .take_while(|&end| table.last(end).saturating_sub(start) <= material.length.1)
-        .find(|&end| table.may_end(end))?;
-    let draft = Draft {
-        form: single_form(table, a, later),
-        pieces: vec![Piece {
-            a,
-            b: later,
-            role: "body",
-            why: part.why.as_deref().cloned().unwrap_or_default(),
-            lifted: None,
-        }],
-        links: Vec::new(),
-        title: plan.title.as_deref().map(String::as_str),
-        evidence: plan.evidence.iter().map(|e| e.to_string()).collect(),
-    };
-    assemble(material, table, &draft)
+        .filter(|&end| table.may_end(end))
+    {
+        let draft = Draft {
+            form: single_form(table, a, later),
+            pieces: vec![Piece {
+                a,
+                b: later,
+                role: "body",
+                why: part.why.as_deref().cloned().unwrap_or_default(),
+                lifted: None,
+            }],
+            links: Vec::new(),
+            title: plan.title.as_deref().map(String::as_str),
+            evidence: plan.evidence.iter().map(|e| e.to_string()).collect(),
+        };
+        if let Some(plan) = assemble(material, table, &draft) {
+            found.push(plan);
+        }
+        if found.len() == MAX_LATER_ENDINGS || !same_voice_goes_on(table, later) {
+            break;
+        }
+    }
+    found
 }
 
 /// What a plan plays, as source ranges with its removals taken out.

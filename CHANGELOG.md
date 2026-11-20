@@ -43,13 +43,25 @@
   followed by the same speaker's "and…", or by another speaker's question.
   Only a model that tells these apart is then asked whether a candidate clip
   stops while its speaker is still mid-thought, and the planner drops the
-  endings it hears that way. Each such clip is also offered with a later
-  ending. A model that does not pass changes nothing. The step is listed as
-  **Check the endings** and adds a few minutes to analysis.
+  endings it hears that way. Each such clip is also offered with up to three
+  later endings, up to where another speaker takes over. A model that does not pass changes nothing. The step is listed as
+  **Check the endings** and adds a few minutes to analysis. The review asks
+  the same model about the ending of every clip it accepts, and repairs one
+  that cuts the speaker off.
 - **Endings on whole thoughts.** Among the endings the rules allow, a clip
   leans towards one where the other speaker takes over or the speaker pauses,
   and a clip trimmed to leave out a closing sign-off now ends on the same
-  measured pause as any other edge.
+  measured pause as any other edge. A clip no longer ends just before the
+  same speaker turns the point with "right now…", "however…", "for
+  example…" or "the truth is…", or on a list marker such as "Number two."
+- **Asides left out, when it can be checked.** After a clip is accepted, the
+  planner may choose one passage to leave out as an aside, from passages the
+  cutter allows: whole sentences in one speaker's turn, with nothing kept
+  around them pointing at them. The removal is made only if a measurement on
+  the recording confirms nothing is left dangling, and the shorter clip is
+  reviewed again. That measurement is first tested on removals whose effect
+  the recording shows, and is used only if it passes. It is available with
+  the MLX runtime on Mac; elsewhere the editorial model's own check decides.
 
 ## 0.5.1 — Whisper on older Windows PCs and reliable upgrades
 

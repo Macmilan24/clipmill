@@ -303,6 +303,19 @@ impl ::std::convert::TryFrom<::std::string::String> for JoinReviewVerdict {
 #[doc = "        \"$ref\": \"#/$defs/sha256\""]
 #[doc = "      }"]
 #[doc = "    },"]
+#[doc = "    \"removal_checks\": {"]
+#[doc = "      \"description\": \"How the instruments that guard a removal by meaning measured on removals whose effect the recording shows: taking out a question before its answer, or a line the speaker then points back at, leaves something dangling; taking out filler or an abandoned start does not. An instrument is used only when it passed. Absent when no clip had a passage to consider.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"judge\": {"]
+#[doc = "          \"$ref\": \"#/$defs/removal_check\""]
+#[doc = "        },"]
+#[doc = "        \"meter\": {"]
+#[doc = "          \"$ref\": \"#/$defs/removal_check\""]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"reviews\": {"]
 #[doc = "      \"type\": \"array\","]
 #[doc = "      \"items\": {"]
@@ -324,12 +337,55 @@ impl ::std::convert::TryFrom<::std::string::String> for JoinReviewVerdict {
 #[serde(deny_unknown_fields)]
 pub struct MindQualityReport {
     pub inputs: ::std::collections::HashMap<::std::string::String, Sha256>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub removal_checks: ::std::option::Option<MindQualityReportRemovalChecks>,
     pub reviews: ::std::vec::Vec<Review>,
     pub schema_version: ::serde_json::Value,
     pub source_fingerprint: Sha256,
 }
 impl MindQualityReport {
     pub fn builder() -> builder::MindQualityReport {
+        Default::default()
+    }
+}
+#[doc = "How the instruments that guard a removal by meaning measured on removals whose effect the recording shows: taking out a question before its answer, or a line the speaker then points back at, leaves something dangling; taking out filler or an abandoned start does not. An instrument is used only when it passed. Absent when no clip had a passage to consider."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"How the instruments that guard a removal by meaning measured on removals whose effect the recording shows: taking out a question before its answer, or a line the speaker then points back at, leaves something dangling; taking out filler or an abandoned start does not. An instrument is used only when it passed. Absent when no clip had a passage to consider.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"judge\": {"]
+#[doc = "      \"$ref\": \"#/$defs/removal_check\""]
+#[doc = "    },"]
+#[doc = "    \"meter\": {"]
+#[doc = "      \"$ref\": \"#/$defs/removal_check\""]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct MindQualityReportRemovalChecks {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub judge: ::std::option::Option<RemovalCheck>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub meter: ::std::option::Option<RemovalCheck>,
+}
+impl ::std::default::Default for MindQualityReportRemovalChecks {
+    fn default() -> Self {
+        Self {
+            judge: Default::default(),
+            meter: Default::default(),
+        }
+    }
+}
+impl MindQualityReportRemovalChecks {
+    pub fn builder() -> builder::MindQualityReportRemovalChecks {
         Default::default()
     }
 }
@@ -446,6 +502,10 @@ impl<'de> ::serde::Deserialize<'de> for PlanId {
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"minLength\": 1"]
 #[doc = "    },"]
+#[doc = "    \"tightened\": {"]
+#[doc = "      \"description\": \"A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.\","]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
 #[doc = "    \"verdict\": {"]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"accept\","]
@@ -465,6 +525,9 @@ pub struct Quality {
     pub joins: ::std::vec::Vec<JoinReview>,
     pub repaired: bool,
     pub summary: QualitySummary,
+    #[doc = "A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub tightened: ::std::option::Option<bool>,
     pub verdict: QualityVerdict,
 }
 impl Quality {
@@ -753,6 +816,341 @@ impl ::std::convert::TryFrom<::std::string::String> for QualityVerdict {
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+#[doc = "`RemovalCheck`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"cases\","]
+#[doc = "    \"passed\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"cases\": {"]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"type\": \"object\","]
+#[doc = "        \"required\": ["]
+#[doc = "          \"expected\","]
+#[doc = "          \"first_unit\","]
+#[doc = "          \"last_unit\","]
+#[doc = "          \"score\""]
+#[doc = "        ],"]
+#[doc = "        \"properties\": {"]
+#[doc = "          \"expected\": {"]
+#[doc = "            \"enum\": ["]
+#[doc = "              \"dangling\","]
+#[doc = "              \"intact\""]
+#[doc = "            ]"]
+#[doc = "          },"]
+#[doc = "          \"first_unit\": {"]
+#[doc = "            \"type\": \"string\","]
+#[doc = "            \"pattern\": \"^s[0-9]+$\""]
+#[doc = "          },"]
+#[doc = "          \"last_unit\": {"]
+#[doc = "            \"type\": \"string\","]
+#[doc = "            \"pattern\": \"^s[0-9]+$\""]
+#[doc = "          },"]
+#[doc = "          \"score\": {"]
+#[doc = "            \"description\": \"How much the instrument says the removal leaves dangling: for the meter, how much more surprising the next line becomes per token; for the judge, the probability it sees something missing.\","]
+#[doc = "            \"type\": \"number\""]
+#[doc = "          }"]
+#[doc = "        },"]
+#[doc = "        \"additionalProperties\": false"]
+#[doc = "      }"]
+#[doc = "    },"]
+#[doc = "    \"passed\": {"]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
+#[doc = "    \"separation\": {"]
+#[doc = "      \"description\": \"The share of (dangling, intact) pairs the instrument scored the right way round: 0.5 is chance, 1 is perfect.\","]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"maximum\": 1.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RemovalCheck {
+    pub cases: ::std::vec::Vec<RemovalCheckCasesItem>,
+    pub passed: bool,
+    #[doc = "The share of (dangling, intact) pairs the instrument scored the right way round: 0.5 is chance, 1 is perfect."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub separation: ::std::option::Option<f64>,
+}
+impl RemovalCheck {
+    pub fn builder() -> builder::RemovalCheck {
+        Default::default()
+    }
+}
+#[doc = "`RemovalCheckCasesItem`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"expected\","]
+#[doc = "    \"first_unit\","]
+#[doc = "    \"last_unit\","]
+#[doc = "    \"score\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"expected\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"dangling\","]
+#[doc = "        \"intact\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"first_unit\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^s[0-9]+$\""]
+#[doc = "    },"]
+#[doc = "    \"last_unit\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^s[0-9]+$\""]
+#[doc = "    },"]
+#[doc = "    \"score\": {"]
+#[doc = "      \"description\": \"How much the instrument says the removal leaves dangling: for the meter, how much more surprising the next line becomes per token; for the judge, the probability it sees something missing.\","]
+#[doc = "      \"type\": \"number\""]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RemovalCheckCasesItem {
+    pub expected: RemovalCheckCasesItemExpected,
+    pub first_unit: RemovalCheckCasesItemFirstUnit,
+    pub last_unit: RemovalCheckCasesItemLastUnit,
+    #[doc = "How much the instrument says the removal leaves dangling: for the meter, how much more surprising the next line becomes per token; for the judge, the probability it sees something missing."]
+    pub score: f64,
+}
+impl RemovalCheckCasesItem {
+    pub fn builder() -> builder::RemovalCheckCasesItem {
+        Default::default()
+    }
+}
+#[doc = "`RemovalCheckCasesItemExpected`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"dangling\","]
+#[doc = "    \"intact\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum RemovalCheckCasesItemExpected {
+    #[serde(rename = "dangling")]
+    Dangling,
+    #[serde(rename = "intact")]
+    Intact,
+}
+impl ::std::fmt::Display for RemovalCheckCasesItemExpected {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Dangling => f.write_str("dangling"),
+            Self::Intact => f.write_str("intact"),
+        }
+    }
+}
+impl ::std::str::FromStr for RemovalCheckCasesItemExpected {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "dangling" => Ok(Self::Dangling),
+            "intact" => Ok(Self::Intact),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for RemovalCheckCasesItemExpected {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RemovalCheckCasesItemExpected {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RemovalCheckCasesItemExpected {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`RemovalCheckCasesItemFirstUnit`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^s[0-9]+$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RemovalCheckCasesItemFirstUnit(::std::string::String);
+impl ::std::ops::Deref for RemovalCheckCasesItemFirstUnit {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RemovalCheckCasesItemFirstUnit> for ::std::string::String {
+    fn from(value: RemovalCheckCasesItemFirstUnit) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RemovalCheckCasesItemFirstUnit {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^s[0-9]+$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^s[0-9]+$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RemovalCheckCasesItemFirstUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RemovalCheckCasesItemFirstUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RemovalCheckCasesItemFirstUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RemovalCheckCasesItemFirstUnit {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`RemovalCheckCasesItemLastUnit`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^s[0-9]+$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RemovalCheckCasesItemLastUnit(::std::string::String);
+impl ::std::ops::Deref for RemovalCheckCasesItemLastUnit {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RemovalCheckCasesItemLastUnit> for ::std::string::String {
+    fn from(value: RemovalCheckCasesItemLastUnit) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for RemovalCheckCasesItemLastUnit {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^s[0-9]+$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^s[0-9]+$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RemovalCheckCasesItemLastUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for RemovalCheckCasesItemLastUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RemovalCheckCasesItemLastUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RemovalCheckCasesItemLastUnit {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "`Review`"]
@@ -1094,6 +1492,10 @@ pub mod builder {
             ::std::collections::HashMap<::std::string::String, super::Sha256>,
             ::std::string::String,
         >,
+        removal_checks: ::std::result::Result<
+            ::std::option::Option<super::MindQualityReportRemovalChecks>,
+            ::std::string::String,
+        >,
         reviews: ::std::result::Result<::std::vec::Vec<super::Review>, ::std::string::String>,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
         source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
@@ -1102,6 +1504,7 @@ pub mod builder {
         fn default() -> Self {
             Self {
                 inputs: Err("no value supplied for inputs".to_string()),
+                removal_checks: Ok(Default::default()),
                 reviews: Err("no value supplied for reviews".to_string()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
                 source_fingerprint: Err("no value supplied for source_fingerprint".to_string()),
@@ -1119,6 +1522,18 @@ pub mod builder {
             self.inputs = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for inputs: {e}"));
+            self
+        }
+        pub fn removal_checks<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<
+                    ::std::option::Option<super::MindQualityReportRemovalChecks>,
+                >,
+            T::Error: ::std::fmt::Display,
+        {
+            self.removal_checks = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for removal_checks: {e}"));
             self
         }
         pub fn reviews<T>(mut self, value: T) -> Self
@@ -1159,6 +1574,7 @@ pub mod builder {
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
                 inputs: value.inputs?,
+                removal_checks: value.removal_checks?,
                 reviews: value.reviews?,
                 schema_version: value.schema_version?,
                 source_fingerprint: value.source_fingerprint?,
@@ -1169,9 +1585,74 @@ pub mod builder {
         fn from(value: super::MindQualityReport) -> Self {
             Self {
                 inputs: Ok(value.inputs),
+                removal_checks: Ok(value.removal_checks),
                 reviews: Ok(value.reviews),
                 schema_version: Ok(value.schema_version),
                 source_fingerprint: Ok(value.source_fingerprint),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct MindQualityReportRemovalChecks {
+        judge: ::std::result::Result<
+            ::std::option::Option<super::RemovalCheck>,
+            ::std::string::String,
+        >,
+        meter: ::std::result::Result<
+            ::std::option::Option<super::RemovalCheck>,
+            ::std::string::String,
+        >,
+    }
+    impl ::std::default::Default for MindQualityReportRemovalChecks {
+        fn default() -> Self {
+            Self {
+                judge: Ok(Default::default()),
+                meter: Ok(Default::default()),
+            }
+        }
+    }
+    impl MindQualityReportRemovalChecks {
+        pub fn judge<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::RemovalCheck>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.judge = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for judge: {e}"));
+            self
+        }
+        pub fn meter<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::RemovalCheck>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.meter = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for meter: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<MindQualityReportRemovalChecks>
+        for super::MindQualityReportRemovalChecks
+    {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: MindQualityReportRemovalChecks,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                judge: value.judge?,
+                meter: value.meter?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::MindQualityReportRemovalChecks>
+        for MindQualityReportRemovalChecks
+    {
+        fn from(value: super::MindQualityReportRemovalChecks) -> Self {
+            Self {
+                judge: Ok(value.judge),
+                meter: Ok(value.meter),
             }
         }
     }
@@ -1183,6 +1664,7 @@ pub mod builder {
         joins: ::std::result::Result<::std::vec::Vec<super::JoinReview>, ::std::string::String>,
         repaired: ::std::result::Result<bool, ::std::string::String>,
         summary: ::std::result::Result<super::QualitySummary, ::std::string::String>,
+        tightened: ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
         verdict: ::std::result::Result<super::QualityVerdict, ::std::string::String>,
     }
     impl ::std::default::Default for Quality {
@@ -1193,6 +1675,7 @@ pub mod builder {
                 joins: Err("no value supplied for joins".to_string()),
                 repaired: Err("no value supplied for repaired".to_string()),
                 summary: Err("no value supplied for summary".to_string()),
+                tightened: Ok(Default::default()),
                 verdict: Err("no value supplied for verdict".to_string()),
             }
         }
@@ -1248,6 +1731,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for summary: {e}"));
             self
         }
+        pub fn tightened<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<bool>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.tightened = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for tightened: {e}"));
+            self
+        }
         pub fn verdict<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::QualityVerdict>,
@@ -1268,6 +1761,7 @@ pub mod builder {
                 joins: value.joins?,
                 repaired: value.repaired?,
                 summary: value.summary?,
+                tightened: value.tightened?,
                 verdict: value.verdict?,
             })
         }
@@ -1280,7 +1774,164 @@ pub mod builder {
                 joins: Ok(value.joins),
                 repaired: Ok(value.repaired),
                 summary: Ok(value.summary),
+                tightened: Ok(value.tightened),
                 verdict: Ok(value.verdict),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct RemovalCheck {
+        cases: ::std::result::Result<
+            ::std::vec::Vec<super::RemovalCheckCasesItem>,
+            ::std::string::String,
+        >,
+        passed: ::std::result::Result<bool, ::std::string::String>,
+        separation: ::std::result::Result<::std::option::Option<f64>, ::std::string::String>,
+    }
+    impl ::std::default::Default for RemovalCheck {
+        fn default() -> Self {
+            Self {
+                cases: Err("no value supplied for cases".to_string()),
+                passed: Err("no value supplied for passed".to_string()),
+                separation: Ok(Default::default()),
+            }
+        }
+    }
+    impl RemovalCheck {
+        pub fn cases<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::RemovalCheckCasesItem>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.cases = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for cases: {e}"));
+            self
+        }
+        pub fn passed<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<bool>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.passed = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for passed: {e}"));
+            self
+        }
+        pub fn separation<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<f64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.separation = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for separation: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<RemovalCheck> for super::RemovalCheck {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: RemovalCheck,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                cases: value.cases?,
+                passed: value.passed?,
+                separation: value.separation?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::RemovalCheck> for RemovalCheck {
+        fn from(value: super::RemovalCheck) -> Self {
+            Self {
+                cases: Ok(value.cases),
+                passed: Ok(value.passed),
+                separation: Ok(value.separation),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct RemovalCheckCasesItem {
+        expected:
+            ::std::result::Result<super::RemovalCheckCasesItemExpected, ::std::string::String>,
+        first_unit:
+            ::std::result::Result<super::RemovalCheckCasesItemFirstUnit, ::std::string::String>,
+        last_unit:
+            ::std::result::Result<super::RemovalCheckCasesItemLastUnit, ::std::string::String>,
+        score: ::std::result::Result<f64, ::std::string::String>,
+    }
+    impl ::std::default::Default for RemovalCheckCasesItem {
+        fn default() -> Self {
+            Self {
+                expected: Err("no value supplied for expected".to_string()),
+                first_unit: Err("no value supplied for first_unit".to_string()),
+                last_unit: Err("no value supplied for last_unit".to_string()),
+                score: Err("no value supplied for score".to_string()),
+            }
+        }
+    }
+    impl RemovalCheckCasesItem {
+        pub fn expected<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RemovalCheckCasesItemExpected>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.expected = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for expected: {e}"));
+            self
+        }
+        pub fn first_unit<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RemovalCheckCasesItemFirstUnit>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.first_unit = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for first_unit: {e}"));
+            self
+        }
+        pub fn last_unit<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::RemovalCheckCasesItemLastUnit>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.last_unit = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for last_unit: {e}"));
+            self
+        }
+        pub fn score<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<f64>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.score = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for score: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<RemovalCheckCasesItem> for super::RemovalCheckCasesItem {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: RemovalCheckCasesItem,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                expected: value.expected?,
+                first_unit: value.first_unit?,
+                last_unit: value.last_unit?,
+                score: value.score?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::RemovalCheckCasesItem> for RemovalCheckCasesItem {
+        fn from(value: super::RemovalCheckCasesItem) -> Self {
+            Self {
+                expected: Ok(value.expected),
+                first_unit: Ok(value.first_unit),
+                last_unit: Ok(value.last_unit),
+                score: Ok(value.score),
             }
         }
     }

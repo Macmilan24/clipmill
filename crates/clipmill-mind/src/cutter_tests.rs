@@ -1020,18 +1020,26 @@ fn a_moment_that_stops_while_its_speaker_goes_on_gets_a_later_ending_too() {
         )
         .unwrap()
     };
-    // The guest speaks on after s30: the same moment may run to s31.
-    let later = later_ending(&material, &table, &moment(26, 30)).unwrap();
-    assert_eq!(later.parts[0].start_ticks, 26 * 6 * S);
-    assert_eq!(later.parts[0].end_ticks.get(), 31 * 6 * S + 5 * S);
+    // The guest speaks on after s30: the same moment may run to s31, s32
+    // or s33, but no further than three.
+    let later = later_endings(&material, &table, &moment(26, 30));
+    let ends: Vec<u64> = later.iter().map(|p| p.parts[0].end_ticks.get()).collect();
+    assert_eq!(ends, [31, 32, 33].map(|i| i * 6 * S + 5 * S));
+    assert!(later.iter().all(|p| p.parts[0].start_ticks == 26 * 6 * S));
     assert_eq!(
-        later.title.as_deref().map(String::as_str),
+        later[0].title.as_deref().map(String::as_str),
         Some("An answer")
     );
     // After s19 the guest takes over from the host: that ending needs no other.
-    assert!(later_ending(&material, &table, &moment(15, 19)).is_none());
+    assert!(later_endings(&material, &table, &moment(15, 19)).is_empty());
+    // From s17 the host goes on to s19, where the guest takes over: no further.
+    let ends: Vec<u64> = later_endings(&material, &table, &moment(15, 17))
+        .iter()
+        .map(|p| p.parts[0].end_ticks.get())
+        .collect();
+    assert_eq!(ends, [18, 19].map(|i| i * 6 * S + 5 * S));
     // And none may run past the longest clip the brief allows.
-    assert!(later_ending(&material, &table, &moment(21, 30)).is_none());
+    assert!(later_endings(&material, &table, &moment(21, 30)).is_empty());
 }
 
 #[test]
@@ -1053,4 +1061,89 @@ fn a_moment_leans_towards_ending_where_the_speaker_hands_over() {
     source.sentences[32].speaker = Some("host".to_owned());
     let table = plain_table(&source, &words);
     assert_eq!(table.fit(26, 29, length), Some((26, 29)));
+}
+
+#[test]
+fn a_clip_does_not_end_on_a_setup_before_the_same_speaker_turns_it() {
+    let (mut source, words) = recording();
+    source.sentences[30].text = "The rent used to be cheap.".to_owned();
+    for (turn, ends) in [
+        (
+            "Right now, nobody can afford a flat downtown.",
+            false,
+        ),
+        ("However, those days are over.", false),
+        (
+            "The simple reality is that wages stayed flat.",
+            false,
+        ),
+        ("For example, my aunt paid three hundred a month.", false),
+        ("Now let's talk about transport.", true),
+        ("The bus costs two dollars.", true),
+    ] {
+        source.sentences[31].text = turn.to_owned();
+        let table = plain_table(&source, &words);
+        assert_eq!(table.may_end(30), ends, "before {turn:?}");
+    }
+    // Another voice's "however" is a reply, not the speaker's turn.
+    source.sentences[31].text = "However, those days are over.".to_owned();
+    source.sentences[31].speaker = Some("host".to_owned());
+    assert!(plain_table(&source, &words).may_end(30));
+}
+
+#[test]
+fn passages_that_may_be_left_out_are_whole_sentences_nothing_points_at() {
+    let (mut source, words) = recording();
+    source.sentences[33].text = "That's why we left.".to_owned();
+    source.sentences[36].text = "It was cold.".to_owned();
+    source.sentences[41].text = "Did you leave?".to_owned();
+    let passages = removable_passages(&Material {
+        source_fingerprint: "",
+        source: &source,
+        words: &words,
+        lattice: None,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    });
+    let spans: Vec<(&str, &str)> = passages
+        .iter()
+        .map(|p| (p.first_unit.as_str(), p.last_unit.as_str()))
+        .collect();
+    // Inside the guest's turn, one to three lines at a time.
+    assert!(spans.contains(&("s25", "s25")) && spans.contains(&("s25", "s27")));
+    assert!(!spans.contains(&("s25", "s28")));
+    // Not when the line after points back at it, opens on a pronoun, or the
+    // passage holds a question; not across a change of speaker.
+    assert!(
+        !spans
+            .iter()
+            .any(|&(_, last)| last == "s32" || last == "s35")
+    );
+    assert!(!spans.iter().any(|&(first, _)| first == "s41"));
+    assert!(
+        !spans
+            .iter()
+            .any(|&(first, _)| first == "s19" || first == "s20")
+    );
+    let first = &passages[spans.iter().position(|&s| s == ("s25", "s25")).unwrap()];
+    // Without measured pauses, from the end of s24 to the start of s26.
+    assert_eq!(
+        (first.start_ticks, first.end_ticks),
+        (24 * 6 * S + 5 * S, 26 * 6 * S)
+    );
+}
+
+#[test]
+fn a_list_marker_announces_the_next_point_and_never_ends_a_clip() {
+    for marker in ["Number two.", "Second.", "And finally.", "Step three:"] {
+        assert!(promises(marker), "{marker}");
+    }
+    for line in [
+        "That's number one.",
+        "Two people agreed.",
+        "Finally, it worked.",
+    ] {
+        assert!(!promises(line), "{line}");
+    }
 }

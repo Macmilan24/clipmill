@@ -46,6 +46,16 @@ class Candidate(BaseModel):
     )
 
 
+class RemovableItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    first_unit: constr(pattern=r'^s[0-9]+$')
+    last_unit: constr(pattern=r'^s[0-9]+$')
+    start_ticks: conint(ge=0)
+    end_ticks: conint(ge=1)
+
+
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
     root: constr(pattern=r'^sha256:[0-9a-f]{64}$')
 
@@ -72,4 +82,8 @@ class MindCandidates(BaseModel):
     legal_ends: dict[constr(pattern=r'^s[0-9]+$'), conint(ge=0)] | None = Field(
         None,
         description='Where a part may end after each sentence the cutter allows to close a clip: the sentence id and the cut point in the pause after it, in ticks. Sentences missing here cannot end a clip. Absent from candidates written before the cutter measured pauses.',
+    )
+    removable: list[RemovableItem] | None = Field(
+        None,
+        description="Passages code allows to be left out of a moment by meaning: whole sentences inside one speaker's turn, between two cut points, with nothing kept around them pointing at them. Whether one should be left out is decided later, by the planner and measured checks.",
     )

@@ -50,6 +50,7 @@ class Job(StrEnum):
     compare = 'compare'
     judge_ending = 'judge.ending'
     judge_removal = 'judge.removal'
+    tighten = 'tighten'
 
 
 class Route(StrEnum):

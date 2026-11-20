@@ -192,25 +192,30 @@ def endings_to_judge(recording, script, candidates, memory, brief, count) -> lis
     return found[:MAX_ENDINGS]
 
 
-def judge(runtime, script, candidates, memory, *, brief, count, identity, traces, progress):
-    """The self-check, then verdicts on candidate endings when it passes."""
-    recording = Recording(script)
-    version = f"judge.v1/{prompt_digest('judge')}"
+class Asker:
+    """One narrow question at a time, each recorded in the stage's trace."""
 
-    def ask(index: int) -> float:
+    def __init__(self, runtime, identity, traces, job, version):
+        self.runtime = runtime
+        self.identity = identity
+        self.traces = traces
+        self.job = job
+        self.version = version
+
+    def __call__(self, question: str) -> float:
         started = time.monotonic()
         trace = {
-            "index": len(traces),
-            "job": "judge.ending",
-            **identity,
-            "prompt_version": version,
-            "request_text": recording.question(index),
+            "index": len(self.traces),
+            "job": self.job,
+            **self.identity,
+            "prompt_version": self.version,
+            "request_text": question,
             "started_unix_millis": time.time_ns() // 1_000_000,
             "tokens": {"input": 0, "output": 0},
             "outcome": "failed",
         }
         try:
-            probability, thinking = runtime.yes_probability(trace["request_text"], THINK_TOKENS)
+            probability, thinking = self.runtime.yes_probability(question, THINK_TOKENS)
         except LeaseCancelled:
             trace["outcome"] = "cancelled"
             raise
@@ -219,9 +224,38 @@ def judge(runtime, script, candidates, memory, *, brief, count, identity, traces
             raise
         finally:
             trace["duration_millis"] = int((time.monotonic() - started) * 1000)
-            traces.append(trace)
+            self.traces.append(trace)
         trace.update(outcome="answered", response_text=f"{thinking}\n[yes: {probability:.4f}]")
         return probability
+
+
+def ending_version() -> str:
+    return f"judge.v1/{prompt_digest('judge')}"
+
+
+def threshold_of(check: dict) -> float | None:
+    """Where a passing judge draws the line between its two answers: midway
+    between its median scores for the two kinds of known case. Models differ
+    in how sure they sound, so the line comes from this model's own scores;
+    medians, so one odd case does not move it."""
+    if not check.get("passed"):
+        return None
+    by_kind: dict[str, list[float]] = {}
+    for case in check["cases"]:
+        by_kind.setdefault(case["expected"], []).append((case["score"] + 1) / 2)
+    if not by_kind.get("finished") or not by_kind.get("continues"):
+        return None
+    return (median(by_kind["finished"]) + median(by_kind["continues"])) / 2
+
+
+def judge(runtime, script, candidates, memory, *, brief, count, identity, traces, progress):
+    """The self-check, then verdicts on candidate endings when it passes."""
+    recording = Recording(script)
+    version = ending_version()
+    ask_question = Asker(runtime, identity, traces, "judge.ending", version)
+
+    def ask(index: int) -> float:
+        return ask_question(recording.question(index))
 
     candidates_asked = endings_to_judge(recording, script, candidates, memory, brief, count)
     # With nothing to decide, the model is not measured either.
@@ -262,11 +296,8 @@ def judge(runtime, script, candidates, memory, *, brief, count, identity, traces
     if enough:
         check["separation"] = round(separation(finished, goes_on), 4)
         check["passed"] = check["separation"] >= MIN_SEPARATION
-        if check["passed"]:
-            # Models differ in how sure they sound, so the line between the
-            # two answers is drawn from this model's own scores; medians, so
-            # one odd case does not move it.
-            threshold = (median(finished) + median(goes_on)) / 2
+        threshold = threshold_of(check)
+        if threshold is not None:
             for done, index in enumerate(candidates_asked, start=len(known)):
                 progress("judge_questions", done, total)
                 probability = scores[index] if index in scores else ask(index)
@@ -288,6 +319,45 @@ def judge(runtime, script, candidates, memory, *, brief, count, identity, traces
         },
         "endings": endings,
     }
+
+
+#: The most endings the review asks about beyond those judged before planning.
+MAX_REVIEW_ENDINGS = 12
+
+
+class FinalEndings:
+    """The judge's verdict on each final clip's ending, for the review.
+
+    Before planning the judge reaches only the first candidates; the planner
+    may choose others, and the review may repair a plan into another ending.
+    A judge that passed its self-check is asked about each of those once, on
+    the same scale; one that did not pass is never asked."""
+
+    def __init__(self, runtime, script, judgments, identity, traces):
+        self.recording = Recording(script)
+        check = ((judgments or {}).get("self_check") or {}).get("endings") or {}
+        self.threshold = threshold_of(check)
+        self.ask = Asker(runtime, identity, traces, "judge.ending", ending_version())
+        self.probability: dict[str, float] = {
+            case["unit"]: (case["score"] + 1) / 2 for case in check.get("cases", [])
+        }
+        for ending in (judgments or {}).get("endings", []):
+            self.probability[ending["after_unit"]] = (ending["score"] + 1) / 2
+        self.asked = 0
+
+    def cuts_off(self, unit: str | None) -> bool:
+        """Whether ending after `unit` leaves its speaker mid-thought."""
+        if self.threshold is None or not unit:
+            return False
+        index = int(unit[1:])
+        if index not in self.recording.units or not self.recording.same_voice_goes_on(index):
+            return False
+        if unit not in self.probability:
+            if self.asked >= MAX_REVIEW_ENDINGS:
+                return False
+            self.asked += 1
+            self.probability[unit] = self.ask(self.recording.question(index))
+        return self.probability[unit] < self.threshold
 
 
 __all__ = [

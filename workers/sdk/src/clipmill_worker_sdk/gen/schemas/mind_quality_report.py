@@ -6,7 +6,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, constr
+from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, constr
 
 
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
@@ -46,6 +46,44 @@ class JoinReview(BaseModel):
     note: constr(min_length=1)
 
 
+class Expected(Enum):
+    dangling = 'dangling'
+    intact = 'intact'
+
+
+class Case(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    first_unit: constr(pattern=r'^s[0-9]+$')
+    last_unit: constr(pattern=r'^s[0-9]+$')
+    expected: Expected
+    score: float = Field(
+        ...,
+        description='How much the instrument says the removal leaves dangling: for the meter, how much more surprising the next line becomes per token; for the judge, the probability it sees something missing.',
+    )
+
+
+class RemovalCheck(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    passed: bool
+    separation: confloat(ge=0.0, le=1.0) | None = Field(
+        None,
+        description='The share of (dangling, intact) pairs the instrument scored the right way round: 0.5 is chance, 1 is perfect.',
+    )
+    cases: list[Case]
+
+
+class RemovalChecks(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    meter: RemovalCheck | None = None
+    judge: RemovalCheck | None = None
+
+
 class Quality(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -56,6 +94,10 @@ class Quality(BaseModel):
     joins: list[JoinReview]
     issues: list[constr(min_length=1)]
     repaired: bool
+    tightened: bool | None = Field(
+        None,
+        description='A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.',
+    )
 
 
 class Review(BaseModel):
@@ -80,3 +122,7 @@ class MindQualityReport(BaseModel):
     source_fingerprint: Sha256
     inputs: dict[str, Sha256]
     reviews: list[Review]
+    removal_checks: RemovalChecks | None = Field(
+        None,
+        description='How the instruments that guard a removal by meaning measured on removals whose effect the recording shows: taking out a question before its answer, or a line the speaker then points back at, leaves something dangling; taking out filler or an abandoned start does not. An instrument is used only when it passed. Absent when no clip had a passage to consider.',
+    )

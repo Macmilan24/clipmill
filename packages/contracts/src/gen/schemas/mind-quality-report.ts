@@ -18,6 +18,13 @@ export interface MindQualityReport {
     [k: string]: Sha256;
   };
   reviews: Review[];
+  /**
+   * How the instruments that guard a removal by meaning measured on removals whose effect the recording shows: taking out a question before its answer, or a line the speaker then points back at, leaves something dangling; taking out filler or an abandoned start does not. An instrument is used only when it passed. Absent when no clip had a passage to consider.
+   */
+  removal_checks?: {
+    meter?: RemovalCheck;
+    judge?: RemovalCheck;
+  };
 }
 export interface Review {
   candidate_id: PlanId;
@@ -39,9 +46,29 @@ export interface Quality {
   joins: JoinReview[];
   issues: string[];
   repaired: boolean;
+  /**
+   * A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.
+   */
+  tightened?: boolean;
 }
 export interface JoinReview {
   after: string;
   verdict: "pass" | "reject";
   note: string;
+}
+export interface RemovalCheck {
+  passed: boolean;
+  /**
+   * The share of (dangling, intact) pairs the instrument scored the right way round: 0.5 is chance, 1 is perfect.
+   */
+  separation?: number;
+  cases: {
+    first_unit: string;
+    last_unit: string;
+    expected: "dangling" | "intact";
+    /**
+     * How much the instrument says the removal leaves dangling: for the meter, how much more surprising the next line becomes per token; for the judge, the probability it sees something missing.
+     */
+    score: number;
+  }[];
 }

@@ -261,3 +261,96 @@ def test_the_check_can_tell_when_its_bar_is_out_of_reach():
     # One finished case scored below one continuing case costs one pair in 25.
     assert best_separation([0.1], [0.3], (5, 5)) == 0.96
     assert best_separation([0.1, 0.1, 0.1], [0.3, 0.3], (5, 5)) == 0.76
+
+
+class Review:
+    """A critic that approves everything, and a planner that takes the first choice."""
+
+    def __init__(self, runtime):
+        self.runtime = runtime
+        self.identity = {"route": "local", "model": {"name": "test-model"}}
+        self.traces = []
+        self.brief = ""
+        self.taste = []
+
+    def ask(self, job, data, _schema):
+        if job == "plan":
+            first = data["choices"][0]["choice"]
+            return {
+                "choice": first,
+                "title": "Moving the team",
+                "hook_text": "",
+                "reasons": ["A complete answer."],
+                "doubts": [],
+                "joins": [],
+            }, None
+        if job.startswith("critic."):
+            return {"edge_issues": []}, None
+        return {
+            "comprehension": "pass",
+            "landing": "pass",
+            "title_accuracy": "pass",
+            "hook": "strong",
+            "summary": "The speaker explains what changed.",
+            "issues": [],
+        }, None
+
+    def progress(self, *_args):
+        pass
+
+
+def passing_judgments(endings=()):
+    return {
+        "self_check": {
+            "endings": {
+                "passed": True,
+                "separation": 1.0,
+                "cases": [
+                    {"unit": f"s{i}", "expected": kind, "score": score}
+                    for i, kind, score in [
+                        (1, "continues", -0.7),
+                        (5, "continues", -0.7),
+                        (8, "continues", -0.7),
+                        (2, "finished", 0.7),
+                        (6, "finished", 0.7),
+                        (9, "finished", 0.7),
+                    ]
+                ],
+            },
+            "removals": {"passed": False, "cases": []},
+        },
+        "endings": list(endings),
+    }
+
+
+def test_the_review_asks_about_a_final_ending_and_repairs_one_that_cuts_off():
+    from clipmill_worker_editorial.critique import CUT_OFF, review_batch
+
+    model = Model()
+    ctx = Review(model)
+    first, later = plan(3, 4, "a"), plan(3, 6, "b")
+    doc = candidates((first, later))
+    plans = {
+        "plans": [
+            {
+                "candidate_id": first["plan_id"],
+                "plan": first,
+                "chapter": "Moving the team",
+                "reasons": ["A complete answer."],
+            }
+        ]
+    }
+    [row] = review_batch(ctx, plans, doc, script(), judgments=passing_judgments())
+    # "Not yet." was never judged before planning: the review asks once.
+    assert len(model.asked) == 1 and "Not yet." in model.asked[0]
+    assert row["quality"]["verdict"] == "accept" and row["quality"]["repaired"]
+    assert row["plan"]["parts"][-1]["units"][-1] == "s6"
+    assert {t["job"] for t in ctx.traces} == {"judge.ending"}
+
+    # A judge that did not pass its check is never asked, and nothing changes.
+    model = Model()
+    unchecked = passing_judgments()
+    unchecked["self_check"]["endings"]["passed"] = False
+    [row] = review_batch(Review(model), plans, doc, script(), judgments=unchecked)
+    assert model.asked == [] and row["plan"]["plan_id"] == first["plan_id"]
+    assert CUT_OFF not in row["quality"]["issues"]

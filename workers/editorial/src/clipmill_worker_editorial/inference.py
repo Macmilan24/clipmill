@@ -136,6 +136,9 @@ def stage_prompt(operation):
             + prompt_for("critic.copy")
             + prompt_for("critic.omission")
             + prompt_for("plan")
+            + prompt_for("judge")
+            + prompt_for("judge.removal")
+            + prompt_for("tighten")
         )
     if operation == "rank":
         return prompt_for("compare")

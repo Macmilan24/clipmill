@@ -1,0 +1,5 @@
+Here is part of a conversation, exactly as a viewer of a short clip hears it.
+
+{text}
+
+Does any line refer to, answer, or promise something that is not there, so that a viewer would be left wondering what it means? Answer with one word: yes or no.

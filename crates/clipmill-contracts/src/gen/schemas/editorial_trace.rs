@@ -104,7 +104,8 @@ pub mod error {
 #[doc = "        \"critic.omission\","]
 #[doc = "        \"compare\","]
 #[doc = "        \"judge.ending\","]
-#[doc = "        \"judge.removal\""]
+#[doc = "        \"judge.removal\","]
+#[doc = "        \"tighten\""]
 #[doc = "      ]"]
 #[doc = "    },"]
 #[doc = "    \"model\": {"]
@@ -421,7 +422,8 @@ impl CallFramesItem {
 #[doc = "    \"critic.omission\","]
 #[doc = "    \"compare\","]
 #[doc = "    \"judge.ending\","]
-#[doc = "    \"judge.removal\""]
+#[doc = "    \"judge.removal\","]
+#[doc = "    \"tighten\""]
 #[doc = "  ]"]
 #[doc = "}"]
 #[doc = r" ```"]
@@ -469,6 +471,8 @@ pub enum CallJob {
     JudgeEnding,
     #[serde(rename = "judge.removal")]
     JudgeRemoval,
+    #[serde(rename = "tighten")]
+    Tighten,
 }
 impl ::std::fmt::Display for CallJob {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -488,6 +492,7 @@ impl ::std::fmt::Display for CallJob {
             Self::Compare => f.write_str("compare"),
             Self::JudgeEnding => f.write_str("judge.ending"),
             Self::JudgeRemoval => f.write_str("judge.removal"),
+            Self::Tighten => f.write_str("tighten"),
         }
     }
 }
@@ -510,6 +515,7 @@ impl ::std::str::FromStr for CallJob {
             "compare" => Ok(Self::Compare),
             "judge.ending" => Ok(Self::JudgeEnding),
             "judge.removal" => Ok(Self::JudgeRemoval),
+            "tighten" => Ok(Self::Tighten),
             _ => Err("invalid value".into()),
         }
     }

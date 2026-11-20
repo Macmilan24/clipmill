@@ -99,7 +99,8 @@
             "critic.omission",
             "compare",
             "judge.ending",
-            "judge.removal"
+            "judge.removal",
+            "tighten"
           ]
         },
         "window_index": {

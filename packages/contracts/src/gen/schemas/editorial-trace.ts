@@ -47,7 +47,8 @@ export interface Call {
     | "critic.omission"
     | "compare"
     | "judge.ending"
-    | "judge.removal";
+    | "judge.removal"
+    | "tighten";
   /**
    * The window a propose call was over.
    */

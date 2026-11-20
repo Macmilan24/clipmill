@@ -128,8 +128,12 @@ def execute(context, inputs, model, payload, operation):
                 MindQualityReport,
             )
             row_key = "reviews"
+            checks: dict = {}
             document = {
-                row_key: review_batch(ctx, plans, candidates, script, memory["chapters"], judgments)
+                row_key: review_batch(
+                    ctx, plans, candidates, script, memory["chapters"], judgments, checks
+                ),
+                **checks,
             }
         else:
             kind, filename, schema = "clipmill.ranking.set.v2", "ranking.json", RankingSetV2

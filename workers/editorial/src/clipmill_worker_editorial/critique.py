@@ -9,16 +9,19 @@ from pydantic import Field
 
 from .comparison import missing_comparison
 from .grounding import check_copy, contradicted_omission
+from .judging import FinalEndings
 from .planning import (
     Reply,
     ShortText,
     Transcript,
     chapter_of,
     cut_short,
+    ending_unit,
     plan_one,
     source_options,
     unrelated_signoff,
 )
+from .tightening import Gates, tighten
 
 MAX_SPLICE_NOTE = 140
 
@@ -82,6 +85,7 @@ FAILURES = {
     "sponsorship": "The edit misrepresents sponsored material.",
 }
 UNRELATED_ENDING = "The clip continues into unrelated promotion after its conclusion."
+CUT_OFF = "The clip ends while the speaker is still mid-thought."
 TITLE_ABSOLUTES = (
     (
         r"\b(?:only|sole|nothing else matters|all that matters)\b",
@@ -249,15 +253,31 @@ def judge(ctx, plan, transcript):
     }
 
 
-def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None):
+def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None, report=None):
     transcript = Transcript(script)
     refused = cut_short(judgments)
+    runtime, traces = getattr(ctx, "runtime", None), getattr(ctx, "traces", [])
+    endings = FinalEndings(runtime, script, judgments, ctx.identity, traces)
+    passages = candidates.get("removable") or []
+    gates = Gates(runtime, script, ctx.identity, traces) if passages else None
+
+    def review(plan):
+        quality = judge(ctx, plan, transcript)
+        unit = ending_unit(plan, transcript)
+        if endings.cuts_off(unit):
+            # The repair below is then offered only endings the judge did
+            # not hear as cut off, such as the same moment carried further.
+            refused.add(unit)
+            quality["verdict"] = "reject"
+            quality["issues"] = list(dict.fromkeys([CUT_OFF, *quality["issues"]]))
+        return quality
+
     originals = {c["plan"]["plan_id"]: c for c in candidates["candidates"]}
     reviewed = []
     for index, row in enumerate(plans["plans"]):
         ctx.progress("review_plans", index, len(plans["plans"]))
         plan = row["plan"]
-        quality = judge(ctx, plan, transcript)
+        quality = review(plan)
         reasons = row["reasons"]
         if quality["verdict"] == "reject":
             original = originals[row["candidate_id"]]
@@ -266,6 +286,7 @@ def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None):
             if (
                 FAILURES["title_accuracy"] in quality["issues"]
                 and UNRELATED_ENDING not in quality["issues"]
+                and CUT_OFF not in quality["issues"]
                 and all(j["verdict"] == "pass" for j in quality["joins"])
                 and not any(
                     message in quality["issues"]
@@ -277,8 +298,15 @@ def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None):
             repaired = plan_one(ctx, choices, transcript, quality["issues"])
             if repaired:
                 plan, reasons = repaired
-                quality = judge(ctx, plan, transcript)
+                quality = review(plan)
                 quality["repaired"] = True
+        if quality["verdict"] == "accept" and gates is not None:
+            shorter = tighten(ctx, plan, transcript, passages, gates, candidates["length"])
+            if shorter is not None:
+                verdict = review(shorter)
+                if verdict["verdict"] == "accept":
+                    plan = shorter
+                    quality = {**verdict, "repaired": quality["repaired"], "tightened": True}
         if quality["verdict"] == "accept":
             playback = transcript.evidence(plan)["playback"]
             reasons = [r for r in reasons if check_copy(ctx, r, transcript, playback)[0] is None]
@@ -298,4 +326,6 @@ def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None):
             {**row, "chapter": chapter, "plan": plan, "reasons": reasons, "quality": quality}
         )
     ctx.progress("review_plans", len(reviewed), len(reviewed))
+    if report is not None and gates is not None and gates.checks:
+        report["removal_checks"] = gates.checks
     return reviewed
