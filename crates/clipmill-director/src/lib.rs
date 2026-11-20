@@ -47,8 +47,11 @@ const SEGMENT_ID: &str = "seg_1";
 /// The published documents the director reads.
 #[derive(Clone, Copy, Debug)]
 pub struct Evidence<'a> {
-    pub candidates: &'a DiscoveryCandidates,
-    pub ranking: &'a RankingSet,
+    /// The built-in search's candidates and ranking. Absent for an analysis
+    /// whose clips came from the editorial mind, which ranks its own plans;
+    /// only directing one of these candidates by its id needs them.
+    pub candidates: Option<&'a DiscoveryCandidates>,
+    pub ranking: Option<&'a RankingSet>,
     pub transcript: &'a SpeechTranscript,
     /// Sentence boundaries and salient terms for the captions. Absent is a
     /// weaker cue set, not a missing one.
@@ -173,20 +176,21 @@ pub enum DirectError {
 /// Assemble the edit document for an approved candidate.
 pub fn direct(evidence: Evidence<'_>, request: &Request) -> Result<EditDocument, DirectError> {
     validate_evidence(evidence, request)?;
+    let (Some(candidates), Some(ranking)) = (evidence.candidates, evidence.ranking) else {
+        return Err(DirectError::UnknownCandidate(request.candidate_id.clone()));
+    };
 
-    let candidate = evidence
-        .candidates
+    let candidate = candidates
         .candidates
         .iter()
         .find(|item| item.id.as_str() == request.candidate_id)
         .ok_or_else(|| DirectError::UnknownCandidate(request.candidate_id.clone()))?;
     // The cohort holds the score cards; `selected` is only the ids chosen to
     // show. A candidate can be worth directing without having made that cut.
-    let ranked = evidence
-        .ranking
+    let ranked = ranking
         .cohort
         .iter()
-        .chain(&evidence.ranking.declined)
+        .chain(&ranking.declined)
         .find(|item| item.candidate_id.as_str() == request.candidate_id)
         .ok_or_else(|| DirectError::Unranked(request.candidate_id.clone()))?;
 
@@ -197,8 +201,8 @@ pub fn direct(evidence: Evidence<'_>, request: &Request) -> Result<EditDocument,
     } else {
         // The search's own cut is one of the pairs it chose between.
         let duration = Duration {
-            min_ticks: as_i64(evidence.candidates.duration_target.min_ticks.get()),
-            max_ticks: as_i64(evidence.candidates.duration_target.max_ticks.get()),
+            min_ticks: as_i64(candidates.duration_target.min_ticks.get()),
+            max_ticks: as_i64(candidates.duration_target.max_ticks.get()),
         };
         let (starts, ends) = points(candidate);
         if !is_legal(
@@ -214,8 +218,7 @@ pub fn direct(evidence: Evidence<'_>, request: &Request) -> Result<EditDocument,
     }
 
     let mut decisions = vec![cut_sentence(request.cut, boundary)];
-    if evidence
-        .ranking
+    if ranking
         .declined
         .iter()
         .any(|row| row.candidate_id == ranked.candidate_id)
@@ -284,9 +287,13 @@ fn check_span(evidence: Evidence<'_>, boundary: Boundary) -> Result<(), DirectEr
 }
 
 fn validate_evidence(evidence: Evidence<'_>, request: &Request) -> Result<(), DirectError> {
-    let fingerprint = evidence.candidates.source_fingerprint.as_str();
-    if evidence.ranking.source_fingerprint.as_str() != fingerprint
-        || evidence.transcript.source_fingerprint.as_str() != fingerprint
+    let fingerprint = evidence.transcript.source_fingerprint.as_str();
+    if evidence
+        .candidates
+        .is_some_and(|candidates| candidates.source_fingerprint.as_str() != fingerprint)
+        || evidence
+            .ranking
+            .is_some_and(|ranking| ranking.source_fingerprint.as_str() != fingerprint)
         || evidence
             .faces
             .is_some_and(|faces| faces.source_fingerprint.as_str() != fingerprint)
@@ -363,7 +370,7 @@ fn direct_shots(
 ) -> Vec<VideoSegment> {
     direct_shots_in(
         Sources {
-            fingerprint: evidence.candidates.source_fingerprint.as_str(),
+            fingerprint: evidence.transcript.source_fingerprint.as_str(),
             index: evidence.index,
             shots: evidence.shots,
             faces: evidence.faces,

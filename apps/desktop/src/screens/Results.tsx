@@ -25,7 +25,7 @@ import { CandidateGrid } from '../results/parts/CandidateGrid.js';
 import { CandidateTable } from '../results/parts/CandidateTable.js';
 import { DeclinedMoments } from '../results/parts/DeclinedMoments.js';
 import { DetailRail } from '../results/parts/DetailRail.js';
-import { MindPlans } from '../results/parts/MindPlans.js';
+import { PlanBoard } from '../results/parts/PlanBoard.js';
 import { StatStrip } from '../results/parts/StatStrip.js';
 import { type BoardView, Toolbar } from '../results/parts/Toolbar.js';
 import { TONE_INK, type Tone, wash } from '../results/parts/state.js';
@@ -319,9 +319,10 @@ export function Results({
       {!problem && brief}
       {!problem && cutoff && <p className="text-xs text-[var(--cm-text-secondary)]">{cutoff}</p>}
       {!problem && plans.length > 0 && onEditPlan && (
-        <MindPlans
+        <PlanBoard
           plans={plans}
           sourceDurationTicks={sourceDurationTicks}
+          tileUrl={tileUrl}
           busy={busy}
           onEdit={onEditPlan}
           onInspect={(plan) => onInspect(plan.planId)}

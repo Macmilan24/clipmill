@@ -6,6 +6,9 @@
  * ranking's fingerprint, that it was the other recording's — and report the
  * selected one as not analyzed. Now a job says which source it ran over.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { JobState, TaskState } from '@clipmill/contracts';
 import { describe, expect, it } from 'vitest';
 
@@ -349,5 +352,68 @@ describe('ranked plans from a fresh brief', () => {
     expect(shot.editorialRanking?.cutoff).toBe('No distinct matches.');
     expect(shot.proxyArtifactId).toBe('sha256:parent-proxy');
     expect(shot.searchable).toBe(true);
+  });
+});
+
+describe('a run whose clips came from the mind', () => {
+  it('names its clips by their plans outside Results, with no built-in ranking to read', async () => {
+    const world = twoProjects();
+    const fingerprint = world.sources[OLD]![0]!.sourceFingerprint;
+    const stitch = JSON.parse(
+      readFileSync(
+        resolve(__dirname, '../../../contracts/fixtures/mind.clip_plan/valid/stitch.json'),
+        'utf8',
+      ),
+    );
+    const ranking = 'sha256:mind-ranking';
+    const run = {
+      ...job(OLD, JobState.SUCCEEDED, [
+        task('ranking.set.v2', TaskState.SUCCEEDED, { outputArtifactId: ranking }),
+      ]),
+      sourceId: OLD_SOURCE,
+      jobId: 'mind-run',
+      createdUnixMillis: 9_900_000,
+    };
+    const loader = new ResultsLoader(
+      fakeApi({
+        ...world,
+        jobs: { ...world.jobs, [OLD]: [run, ...world.jobs[OLD]!] },
+        documents: {
+          ...world.documents,
+          [ranking]: {
+            artifactId: ranking,
+            kind: 'ranking.set.v2',
+            json: JSON.stringify({
+              schema_version: 'clipmill.ranking.set.v2',
+              source_fingerprint: fingerprint,
+              editorial_prompt: '',
+              requested_count: 1,
+              clips: [
+                {
+                  plan: { ...stitch, source_fingerprint: fingerprint },
+                  keep_score: 80,
+                  chapter: 'First customers',
+                  reasons: ['A complete exchange.'],
+                  quality: {
+                    verdict: 'accept',
+                    summary: 'The answer resolves its question.',
+                    issues: [],
+                    joins: [],
+                    repaired: false,
+                  },
+                  strength: 0.8,
+                },
+              ],
+            }),
+          },
+        },
+      }),
+    );
+    const shot = await loader.load(OLD, OLD_SOURCE);
+    expect(shot.problem).toBeNull();
+    expect(shot.rows).toEqual([]);
+    expect(shot.plans?.map((plan) => plan.planId)).toEqual([stitch.plan_id]);
+    const names = await loader.clipNames(OLD, OLD_SOURCE, 'mind-run');
+    expect(names.get(stitch.plan_id)?.title).toBe(stitch.title);
   });
 });

@@ -23,6 +23,13 @@
   stays, and nothing is taken out when the words kept around it would point
   at it ("here's why", "that's why") or when it holds a question. A clip that
   opens on an answer is also offered with the question that prompts it.
+- **One editorial path.** With a local editorial model, analysis no longer
+  runs the built-in moment search and ranking alongside the planner, whose
+  results were not shown. Computers without a model still use them.
+- **Planned clips as the Results board.** The planned clips are shown as cards
+  with a still, their form, keep score, length and where their parts sit in
+  the recording, in a grid or a list. The side panel shows how the selected
+  clip is built, why it was chosen and what the review found at its joins.
 
 ## 0.5.1 — Whisper on older Windows PCs and reliable upgrades
 

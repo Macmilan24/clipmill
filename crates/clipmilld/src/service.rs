@@ -3079,8 +3079,8 @@ impl Service {
         };
         let directed = clipmill_director::direct_span(
             clipmill_director::Evidence {
-                candidates: &evidence.candidates,
-                ranking: &evidence.ranking,
+                candidates: evidence.candidates.as_ref(),
+                ranking: evidence.ranking.as_ref(),
                 transcript: &evidence.transcript,
                 index: evidence.index.as_ref(),
                 shots: evidence.shots.as_ref(),
@@ -4688,8 +4688,8 @@ fn assemble(
     }
     if evidence
         .ranking
-        .declined
         .iter()
+        .flat_map(|ranking| &ranking.declined)
         .any(|row| row.candidate_id.as_str() == direct.candidate_id)
         && !direct.allow_declined
     {
@@ -4717,8 +4717,8 @@ fn assemble(
         }
     };
     let director_evidence = clipmill_director::Evidence {
-        candidates: &evidence.candidates,
-        ranking: &evidence.ranking,
+        candidates: evidence.candidates.as_ref(),
+        ranking: evidence.ranking.as_ref(),
         transcript: &evidence.transcript,
         index: evidence.index.as_ref(),
         shots: evidence.shots.as_ref(),
@@ -4807,8 +4807,8 @@ mod plan_tests {
 
     fn evidence() -> crate::inspector::Evidence {
         crate::inspector::Evidence {
-            candidates: fixture("discovery.candidates"),
-            ranking: fixture("ranking.set"),
+            candidates: Some(fixture("discovery.candidates")),
+            ranking: Some(fixture("ranking.set")),
             transcript: fixture("speech.transcript"),
             index: None,
             shots: None,

@@ -173,8 +173,8 @@ fn evidence<'a>(
     transcript: &'a SpeechTranscript,
 ) -> Evidence<'a> {
     Evidence {
-        candidates,
-        ranking,
+        candidates: Some(candidates),
+        ranking: Some(ranking),
         transcript,
         index: None,
         shots: None,

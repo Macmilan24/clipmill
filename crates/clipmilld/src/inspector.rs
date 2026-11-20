@@ -36,8 +36,11 @@ use crate::{artifacts::ArtifactHandle, db::DbHandle, speech};
 
 /// The documents a directed clip is assembled from.
 pub(crate) struct Evidence {
-    pub candidates: DiscoveryCandidates,
-    pub ranking: RankingSet,
+    /// The built-in search's candidates and ranking, when the run made them.
+    /// A run whose clips came from the editorial mind ranks its own plans and
+    /// has neither (step 2.19).
+    pub candidates: Option<DiscoveryCandidates>,
+    pub ranking: Option<RankingSet>,
     pub transcript: SpeechTranscript,
     pub index: Option<IndexTranscript>,
     pub shots: Option<EvidenceShots>,
@@ -230,13 +233,23 @@ async fn load_from(
     stages: &Stages,
     source_map_json: &[u8],
 ) -> Result<Evidence, LoadError> {
-    let (candidates_id, candidates): (String, DiscoveryCandidates) =
-        require(database, artifacts, stages, REQUIRED[0]).await?;
-    let (_, ranking): (String, RankingSet) =
-        require(database, artifacts, stages, REQUIRED[1]).await?;
     let (transcript_id, transcript): (String, SpeechTranscript) =
         require(database, artifacts, stages, REQUIRED[2]).await?;
-    check_coherence(&ranking, &candidates_id, &transcript_id)?;
+    let candidates: Option<(String, DiscoveryCandidates)> =
+        present(require(database, artifacts, stages, REQUIRED[0]).await)?;
+    let ranking: Option<(String, RankingSet)> =
+        present(require(database, artifacts, stages, REQUIRED[1]).await)?;
+    // Both or neither: a ranking without the candidates it ranked, or the
+    // other way round, is a run half published.
+    let (candidates, ranking) = match (candidates, ranking) {
+        (Some((candidates_id, candidates)), Some((_, ranking))) => {
+            check_coherence(&ranking, &candidates_id, &transcript_id)?;
+            (Some(candidates), Some(ranking))
+        }
+        (None, None) => (None, None),
+        (Some(_), None) => return Err(LoadError::Missing(REQUIRED[1].2)),
+        (None, Some(_)) => return Err(LoadError::Missing(REQUIRED[0].2)),
+    };
 
     let index: Option<IndexTranscript> = optional(database, artifacts, stages, OPTIONAL[0]).await;
     let shots: Option<EvidenceShots> = optional(database, artifacts, stages, OPTIONAL[1]).await;
@@ -325,6 +338,16 @@ async fn require<T: DeserializeOwned>(
         .await
         .ok_or(LoadError::Unverified(name))?;
     Ok((address, document))
+}
+
+/// A document that may be absent: missing is `None`, anything else wrong with
+/// it is still the caller's error.
+fn present<T>(found: Result<(String, T), LoadError>) -> Result<Option<(String, T)>, LoadError> {
+    match found {
+        Ok(found) => Ok(Some(found)),
+        Err(LoadError::Missing(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 async fn optional<T: DeserializeOwned>(
@@ -433,7 +456,21 @@ mod tests {
 
     use clipmill_contracts::schemas::ranking_set::RankingSet;
 
-    use super::{LoadError, check_coherence, frame_of, frame_rate_of};
+    use super::{LoadError, check_coherence, frame_of, frame_rate_of, present};
+
+    #[test]
+    fn an_analysis_without_the_built_in_ranking_still_loads_and_a_broken_one_does_not() {
+        // A run whose clips came from the mind has no built-in ranking.
+        let absent: Result<(String, ()), LoadError> = Err(LoadError::Missing("ranking"));
+        assert!(matches!(present(absent), Ok(None)));
+        // One that was published but does not verify is still an error.
+        let broken: Result<(String, ()), LoadError> = Err(LoadError::Unverified("ranking"));
+        assert!(matches!(present(broken), Err(LoadError::Unverified(_))));
+        assert!(matches!(
+            present(Ok(("sha256:a".to_owned(), ()))),
+            Ok(Some(_))
+        ));
+    }
 
     #[test]
     fn the_display_dimensions_are_preferred_over_the_coded_ones() {

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RecordingRun } from '../src/daemon/mind.js';
 import { PlanInspector } from '../src/inspector/PlanInspector.js';
 import { daemonApi } from '../src/daemon/api.js';
-import { MindPlans } from '../src/results/parts/MindPlans.js';
+import { PlanBoard } from '../src/results/parts/PlanBoard.js';
 import { readPlanRanking, readPlans } from '../src/results/plans.js';
 
 const stitch = JSON.parse(
@@ -45,16 +45,29 @@ describe('the mind’s clips', () => {
     expect(readPlans({ schema_version: 'something else' }, RECORDING)).toEqual([]);
   });
 
-  it('opens a plan as an edit', () => {
+  it('shows the plans as the board and opens one as an edit', () => {
     const plans = readPlans(candidates(), RECORDING);
     const onEdit = vi.fn();
     render(
-      <MindPlans plans={plans} sourceDurationTicks={3600 * 90_000} busy={false} onEdit={onEdit} />,
+      <PlanBoard
+        plans={plans}
+        sourceDurationTicks={3600 * 90_000}
+        tileUrl={() => null}
+        busy={false}
+        onEdit={onEdit}
+      />,
     );
-    expect(screen.getByText('Built by the mind')).toBeTruthy();
+    // A card on the board, and the rail that shows how it is built.
+    expect(screen.getByRole('option', { selected: true })).toBeTruthy();
+    expect(screen.getAllByText('Stitched').length).toBeGreaterThan(0);
     expect(screen.getByText(/2\. Answer 12:45–13:12 · 5 s cut out/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Edit:/ }));
     expect(onEdit).toHaveBeenCalledWith(plans[0]);
+    // The list shows the same plans with their parts written out.
+    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+    expect(screen.getAllByText(/2\. Answer 12:45–13:12 · 5 s cut out/).length).toBe(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Open as an edit' }));
+    expect(onEdit).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -91,15 +104,17 @@ describe('the final editorial ranking', () => {
     expect(result.clips[0]?.assessment?.repaired).toBe(true);
     const inspect = vi.fn();
     render(
-      <MindPlans
+      <PlanBoard
         plans={result.clips}
         sourceDurationTicks={null}
+        tileUrl={() => null}
         busy={false}
         onInspect={inspect}
         onEdit={vi.fn()}
       />,
     );
     expect(screen.getByText('Keep score 82/100')).toBeTruthy();
+    expect(screen.getByText(/The same event is discussed\./)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Review / }));
     expect(inspect).toHaveBeenCalledWith(result.clips[0]);
     expect(readPlanRanking({ ...ranking, clips: [] }, RECORDING).clips).toEqual([]);

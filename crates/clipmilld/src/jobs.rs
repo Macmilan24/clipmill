@@ -1932,149 +1932,157 @@ impl JobPlan {
                     stages.push(("editorial.windows.v1".to_owned(), windows.clone()));
                 }
 
-                let (discover, judgments, looks) = if request.cloud_editorial.is_some() {
-                    let propose = editorial_worker_task(
-                        "propose",
-                        vec![windows.clone()],
-                        vec!["editorial.windows.v1".into()],
-                        request,
-                        models,
-                        bindings,
-                    )?;
-                    let propose_id = propose.task_id.clone();
-                    stages.push((propose.output_kind.clone(), propose_id.clone()));
-                    tasks.push(propose);
-                    let validate = TaskId::new().to_string();
-                    tasks.push(builtin_task(
-                        validate.clone(),
-                        Builtin {
-                            kind: editorial::KIND_VALIDATE,
-                            output_kind: "discovery.candidates.v1",
-                            implementation: "clipmill-editorial-validate@1.0.0",
-                            input_kinds: vec![
-                                "editorial.windows.v1".into(),
-                                "editorial.proposals.v1".into(),
-                                "speech.transcript.v1".into(),
-                            ],
-                            dependencies: vec![windows.clone(), propose_id, transcript.clone()],
-                            payload: EditorialStagePayloadV1 {
-                                key_version: EDITORIAL_STAGE_KEY_VERSION.into(),
-                                stage: editorial::KIND_VALIDATE.into(),
-                                content_profile: editorial_profile(request).to_owned(),
-                                duration: Some(editorial_duration(request)),
-                                ..Default::default()
-                            }
-                            .encode_to_vec(),
-                            ram_mib: 256,
-                        },
-                    ));
-                    stages.push(("discovery.candidates.v1".into(), validate.clone()));
-                    let review = editorial_worker_task(
-                        "review",
-                        vec![validate.clone(), windows.clone()],
-                        vec![
-                            "discovery.candidates.v1".into(),
-                            "editorial.windows.v1".into(),
-                        ],
-                        request,
-                        models,
-                        bindings,
-                    )?;
-                    let review_id = review.task_id.clone();
-                    stages.push((review.output_kind.clone(), review_id.clone()));
-                    tasks.push(review);
-                    let looks = if let Some(frames) = &handles.frames {
-                        let look = editorial_worker_task(
-                            "look",
-                            vec![review_id.clone(), validate.clone(), frames.task_id.clone()],
+                // One editorial path (step 2.19). When the mind runs, its
+                // own ranking is the analysis's result: the window search and
+                // the built-in ranking would repeat the work only to be
+                // thrown away. They stay for computers without a local model.
+                if request.local_editorial {
+                    None
+                } else {
+                    let (discover, judgments, looks) = if request.cloud_editorial.is_some() {
+                        let propose = editorial_worker_task(
+                            "propose",
+                            vec![windows.clone()],
+                            vec!["editorial.windows.v1".into()],
+                            request,
+                            models,
+                            bindings,
+                        )?;
+                        let propose_id = propose.task_id.clone();
+                        stages.push((propose.output_kind.clone(), propose_id.clone()));
+                        tasks.push(propose);
+                        let validate = TaskId::new().to_string();
+                        tasks.push(builtin_task(
+                            validate.clone(),
+                            Builtin {
+                                kind: editorial::KIND_VALIDATE,
+                                output_kind: "discovery.candidates.v1",
+                                implementation: "clipmill-editorial-validate@1.0.0",
+                                input_kinds: vec![
+                                    "editorial.windows.v1".into(),
+                                    "editorial.proposals.v1".into(),
+                                    "speech.transcript.v1".into(),
+                                ],
+                                dependencies: vec![windows.clone(), propose_id, transcript.clone()],
+                                payload: EditorialStagePayloadV1 {
+                                    key_version: EDITORIAL_STAGE_KEY_VERSION.into(),
+                                    stage: editorial::KIND_VALIDATE.into(),
+                                    content_profile: editorial_profile(request).to_owned(),
+                                    duration: Some(editorial_duration(request)),
+                                    ..Default::default()
+                                }
+                                .encode_to_vec(),
+                                ram_mib: 256,
+                            },
+                        ));
+                        stages.push(("discovery.candidates.v1".into(), validate.clone()));
+                        let review = editorial_worker_task(
+                            "review",
+                            vec![validate.clone(), windows.clone()],
                             vec![
-                                "editorial.judgments.v1".into(),
                                 "discovery.candidates.v1".into(),
-                                "media.frames.v1".into(),
+                                "editorial.windows.v1".into(),
                             ],
                             request,
                             models,
                             bindings,
                         )?;
-                        let id = look.task_id.clone();
-                        stages.push((look.output_kind.clone(), id.clone()));
-                        tasks.push(look);
-                        Some(id)
+                        let review_id = review.task_id.clone();
+                        stages.push((review.output_kind.clone(), review_id.clone()));
+                        tasks.push(review);
+                        let looks = if let Some(frames) = &handles.frames {
+                            let look = editorial_worker_task(
+                                "look",
+                                vec![review_id.clone(), validate.clone(), frames.task_id.clone()],
+                                vec![
+                                    "editorial.judgments.v1".into(),
+                                    "discovery.candidates.v1".into(),
+                                    "media.frames.v1".into(),
+                                ],
+                                request,
+                                models,
+                                bindings,
+                            )?;
+                            let id = look.task_id.clone();
+                            stages.push((look.output_kind.clone(), id.clone()));
+                            tasks.push(look);
+                            Some(id)
+                        } else {
+                            None
+                        };
+                        (validate, Some(review_id), looks)
                     } else {
-                        None
+                        let discover = TaskId::new().to_string();
+                        let mut discover_dependencies = vec![index.clone(), transcript.clone()];
+                        let mut discover_kinds = vec![
+                            "index.transcript.v1".to_owned(),
+                            "speech.transcript.v1".to_owned(),
+                        ];
+                        if let Some(loudness) = &handles.loudness {
+                            discover_dependencies.push(loudness.task_id.clone());
+                            discover_kinds.push("media.loudness_envelope.v1".to_owned());
+                        }
+                        tasks.push(builtin_task(
+                            discover.clone(),
+                            Builtin {
+                                kind: discovery::KIND_DISCOVER,
+                                output_kind: "discovery.candidates.v1",
+                                implementation: discovery::IMPLEMENTATION,
+                                input_kinds: discover_kinds,
+                                dependencies: discover_dependencies,
+                                payload: DiscoverStagePayloadV1 {
+                                    key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
+                                    stage: discovery::KIND_DISCOVER.to_owned(),
+                                    duration: request.duration.or(Some(ClipDurationV1 {
+                                        min_ticks: 0,
+                                        max_ticks: 0,
+                                    })),
+                                    exploration_floor: 0,
+                                }
+                                .encode_to_vec(),
+                                ram_mib: 512,
+                            },
+                        ));
+                        stages.push(("discovery.candidates.v1".to_owned(), discover.clone()));
+
+                        (discover, None, None)
                     };
-                    (validate, Some(review_id), looks)
-                } else {
-                    let discover = TaskId::new().to_string();
-                    let mut discover_dependencies = vec![index.clone(), transcript.clone()];
-                    let mut discover_kinds = vec![
-                        "index.transcript.v1".to_owned(),
-                        "speech.transcript.v1".to_owned(),
+                    let mut rank_kinds = vec![
+                        "discovery.candidates.v1".into(),
+                        "index.transcript.v1".into(),
+                        "speech.transcript.v1".into(),
                     ];
-                    if let Some(loudness) = &handles.loudness {
-                        discover_dependencies.push(loudness.task_id.clone());
-                        discover_kinds.push("media.loudness_envelope.v1".to_owned());
+                    let mut rank_dependencies = vec![discover, index, transcript.clone()];
+                    if let Some(judgments) = judgments {
+                        rank_kinds.push("editorial.judgments.v1".into());
+                        rank_dependencies.push(judgments);
                     }
+                    if let Some(looks) = looks {
+                        rank_kinds.push("editorial.looks.v1".into());
+                        rank_dependencies.push(looks);
+                    }
+                    let rank = TaskId::new().to_string();
                     tasks.push(builtin_task(
-                        discover.clone(),
+                        rank.clone(),
                         Builtin {
-                            kind: discovery::KIND_DISCOVER,
-                            output_kind: "discovery.candidates.v1",
-                            implementation: discovery::IMPLEMENTATION,
-                            input_kinds: discover_kinds,
-                            dependencies: discover_dependencies,
-                            payload: DiscoverStagePayloadV1 {
-                                key_version: DISCOVER_STAGE_KEY_VERSION.to_owned(),
-                                stage: discovery::KIND_DISCOVER.to_owned(),
-                                duration: request.duration.or(Some(ClipDurationV1 {
-                                    min_ticks: 0,
-                                    max_ticks: 0,
-                                })),
-                                exploration_floor: 0,
+                            kind: ranking::KIND_RANK,
+                            output_kind: "ranking.set.v1",
+                            implementation: ranking::IMPLEMENTATION,
+                            input_kinds: rank_kinds,
+                            dependencies: rank_dependencies,
+                            payload: RankStagePayloadV1 {
+                                key_version: RANK_STAGE_KEY_VERSION.to_owned(),
+                                stage: ranking::KIND_RANK.to_owned(),
+                                count: request.count,
+                                diversity_milli: request.diversity_milli,
                             }
                             .encode_to_vec(),
                             ram_mib: 512,
                         },
                     ));
-                    stages.push(("discovery.candidates.v1".to_owned(), discover.clone()));
-
-                    (discover, None, None)
-                };
-                let mut rank_kinds = vec![
-                    "discovery.candidates.v1".into(),
-                    "index.transcript.v1".into(),
-                    "speech.transcript.v1".into(),
-                ];
-                let mut rank_dependencies = vec![discover, index, transcript.clone()];
-                if let Some(judgments) = judgments {
-                    rank_kinds.push("editorial.judgments.v1".into());
-                    rank_dependencies.push(judgments);
+                    stages.push(("ranking.set.v1".to_owned(), rank.clone()));
+                    Some(rank)
                 }
-                if let Some(looks) = looks {
-                    rank_kinds.push("editorial.looks.v1".into());
-                    rank_dependencies.push(looks);
-                }
-                let rank = TaskId::new().to_string();
-                tasks.push(builtin_task(
-                    rank.clone(),
-                    Builtin {
-                        kind: ranking::KIND_RANK,
-                        output_kind: "ranking.set.v1",
-                        implementation: ranking::IMPLEMENTATION,
-                        input_kinds: rank_kinds,
-                        dependencies: rank_dependencies,
-                        payload: RankStagePayloadV1 {
-                            key_version: RANK_STAGE_KEY_VERSION.to_owned(),
-                            stage: ranking::KIND_RANK.to_owned(),
-                            count: request.count,
-                            diversity_milli: request.diversity_milli,
-                        }
-                        .encode_to_vec(),
-                        ram_mib: 512,
-                    },
-                ));
-                stages.push(("ranking.set.v1".to_owned(), rank.clone()));
-                Some(rank)
             }
         };
         // Named so the compiler holds the intent: the ranked set is the point of
@@ -4604,6 +4612,52 @@ mod analyze_tests {
             BOM,
             7,
         )
+    }
+
+    /// One editorial path (step 2.19): with a local model the mind's ranking
+    /// is the result, and the built-in search and ranking are not run; without
+    /// one they still are.
+    #[test]
+    fn local_editorial_replaces_the_built_in_search_and_ranking() {
+        let local = editorial_plan(&AnalyzeSourcePayloadV1 {
+            local_editorial: true,
+            ..request()
+        })
+        .unwrap();
+        let kinds: Vec<&str> = local.tasks.iter().map(|task| task.kind.as_str()).collect();
+        assert!(kinds.contains(&"editorial-rank"));
+        for old in [
+            "discover-candidates",
+            "rank-candidates",
+            "editorial-windows",
+        ] {
+            assert!(
+                !kinds.contains(&old),
+                "a local editorial run still plans {old}"
+            );
+        }
+        let manifest = task(&local, analysis::KIND_MANIFEST);
+        assert!(
+            manifest
+                .input_kinds
+                .iter()
+                .any(|kind| kind == "ranking.set.v2")
+        );
+        assert!(
+            !manifest
+                .input_kinds
+                .iter()
+                .any(|kind| kind == "ranking.set.v1")
+        );
+
+        let built_in = editorial_plan(&request()).unwrap();
+        let kinds: Vec<&str> = built_in
+            .tasks
+            .iter()
+            .map(|task| task.kind.as_str())
+            .collect();
+        assert!(kinds.contains(&"discover-candidates") && kinds.contains(&"rank-candidates"));
+        assert!(!kinds.contains(&"editorial-rank"));
     }
 
     #[test]

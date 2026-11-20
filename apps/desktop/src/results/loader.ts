@@ -355,22 +355,19 @@ export class ResultsLoader {
     jobId: string | null,
   ): Promise<ReadonlyMap<string, ClipName>> {
     const job = analyzed(await this.api.listJobs(projectId), sourceId, jobId);
+    if (!job) return new Map();
     const ranking = publishedArtifact(job, RANKING_KIND);
     const candidates = publishedArtifact(job, CANDIDATES_KIND);
-    if (!job || !ranking || !candidates) return new Map();
+    const editorial = publishedArtifact(job, MIND_RANKING_KIND);
+    if (!editorial && (!ranking || !candidates)) return new Map();
     const filmstripId = publishedArtifact(job, FILMSTRIP_KIND);
-    const [rankingDoc, candidateDoc, indexDoc, filmstripDoc] = await Promise.all([
-      this.api.readDocument(projectId, ranking),
-      this.api.readDocument(projectId, candidates),
+    const [rankingDoc, candidateDoc, editorialDoc, indexDoc, filmstripDoc] = await Promise.all([
+      ranking && candidates ? this.api.readDocument(projectId, ranking) : null,
+      ranking && candidates ? this.api.readDocument(projectId, candidates) : null,
+      this.readOptional(projectId, editorial),
       this.readOptional(projectId, publishedArtifact(job, INDEX_KIND)),
       this.readOptional(projectId, filmstripId),
     ]);
-    const rows = clipRows(
-      JSON.parse(rankingDoc.json) as RankingSet,
-      JSON.parse(candidateDoc.json) as DiscoveryCandidates,
-      indexDoc ? (JSON.parse(indexDoc) as IndexTranscript) : null,
-      [],
-    );
     const strip = filmstripDoc ? (JSON.parse(filmstripDoc) as MediaFilmstrip) : null;
     const still = (ticks: number): string | null => {
       if (!strip || !filmstripId || strip.tiles.length === 0) return null;
@@ -379,12 +376,38 @@ export class ResultsLoader {
       );
       return this.api.mediaUrl(projectId, filmstripId, nearest.file);
     };
-    return new Map(
-      rows.map((row) => [
-        row.candidateId,
-        { title: row.headline, thumbnail: still(row.startTicks) },
-      ]),
-    );
+    const names = new Map<string, ClipName>();
+    if (rankingDoc && candidateDoc) {
+      const rows = clipRows(
+        JSON.parse(rankingDoc.json) as RankingSet,
+        JSON.parse(candidateDoc.json) as DiscoveryCandidates,
+        indexDoc ? (JSON.parse(indexDoc) as IndexTranscript) : null,
+        [],
+      );
+      for (const row of rows) {
+        names.set(row.candidateId, { title: row.headline, thumbnail: still(row.startTicks) });
+      }
+    }
+    // The mind's clips are opened by their plan id.
+    if (editorialDoc && job.sourceId) {
+      const source = (await this.api.listSources(projectId)).find(
+        (candidate) => candidate.sourceId === job.sourceId,
+      );
+      try {
+        const planned = source
+          ? readPlanRanking(JSON.parse(editorialDoc), source.sourceFingerprint).clips
+          : [];
+        for (const plan of planned) {
+          names.set(plan.planId, {
+            title: plan.title,
+            thumbnail: still(plan.parts[0]?.startTicks ?? 0),
+          });
+        }
+      } catch {
+        /* Names are a convenience; a ranking that does not read leaves file names. */
+      }
+    }
+    return names;
   }
 
   async loadTranscript(projectId: string, snapshot: ResultsSnapshot): Promise<Transcript | null> {
