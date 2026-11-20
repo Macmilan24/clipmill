@@ -28,9 +28,9 @@ from .planning import SENTENCE_END, Transcript, ending_unit, planning_pool, sour
 
 #: How long the model may reason before each answer.
 THINK_TOKENS = 512
-#: Known cases of each kind in the self-check. With four of each, a judge
-#: that guesses passes about one time in ten.
-CASES_PER_KIND = 4
+#: Known cases of each kind in the self-check. With five of each, a judge
+#: that guesses passes about one time in thirteen.
+CASES_PER_KIND = 5
 #: The most candidate endings judged in one analysis, in the order the planner reads them.
 MAX_ENDINGS = 10
 #: How well the self-check must order the two kinds: the share of
@@ -153,6 +153,27 @@ def separation(high: list[float], low: list[float]) -> float:
     return sum(pairs) / len(pairs) if pairs else 0.0
 
 
+def best_separation(high: list[float], low: list[float], planned: tuple[int, int]) -> float:
+    """The most the check can still reach: every pair that involves a case
+    not yet asked counted as ordered right."""
+    total = planned[0] * planned[1]
+    if not total:
+        return 0.0
+    ordered = sum((h > o) + 0.5 * (h == o) for h in high for o in low)
+    return (ordered + total - len(high) * len(low)) / total
+
+
+def interleaved(known: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    """The known cases alternating between the two kinds, so an early stop
+    has seen both."""
+    goes_on = [case for case in known if case[1] == "continues"]
+    closed = [case for case in known if case[1] == "finished"]
+    order = []
+    for place in range(max(len(goes_on), len(closed))):
+        order.extend(kind[place] for kind in (goes_on, closed) if place < len(kind))
+    return order
+
+
 def endings_to_judge(recording, script, candidates, memory, brief, count) -> list[int]:
     """The last sentence of every option the planner will be offered where
     the same speaker goes on, in the order it reads them, each once."""
@@ -205,11 +226,28 @@ def judge(runtime, script, candidates, memory, *, brief, count, identity, traces
     candidates_asked = endings_to_judge(recording, script, candidates, memory, brief, count)
     # With nothing to decide, the model is not measured either.
     known = known_endings(recording, memory.get("chapters", [])) if candidates_asked else []
+    known = interleaved(known)
+    planned = (
+        sum(kind == "finished" for _, kind in known),
+        sum(kind == "continues" for _, kind in known),
+    )
     total = len(known) + len(candidates_asked)
     scores: dict[int, float] = {}
     for done, (index, _) in enumerate(known):
         progress("judge_questions", done, total)
         scores[index] = ask(index)
+        so_far = [(i, kind) for i, kind in known if i in scores]
+        if (
+            best_separation(
+                [scores[i] for i, kind in so_far if kind == "finished"],
+                [scores[i] for i, kind in so_far if kind == "continues"],
+                planned,
+            )
+            < MIN_SEPARATION
+        ):
+            # The bar is out of reach: asking the rest would only cost time.
+            break
+    known = [(i, kind) for i, kind in known if i in scores]
     finished = [scores[i] for i, kind in known if kind == "finished"]
     goes_on = [scores[i] for i, kind in known if kind == "continues"]
     enough = len(finished) >= 3 and len(goes_on) >= 3
@@ -252,4 +290,11 @@ def judge(runtime, script, candidates, memory, *, brief, count, identity, traces
     }
 
 
-__all__ = ["Recording", "endings_to_judge", "judge", "known_endings", "separation"]
+__all__ = [
+    "Recording",
+    "best_separation",
+    "endings_to_judge",
+    "judge",
+    "known_endings",
+    "separation",
+]

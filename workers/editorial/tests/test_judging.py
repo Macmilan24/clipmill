@@ -1,6 +1,6 @@
 """The ending judge: measured on known cases first, trusted only when it tells them apart."""
 
-from clipmill_worker_editorial.judging import Recording, judge, known_endings
+from clipmill_worker_editorial.judging import Recording, best_separation, judge, known_endings
 from clipmill_worker_editorial.planning import Transcript, cut_short, source_options, variants
 from clipmill_worker_sdk.gen.schemas.mind_judgments import MindJudgments
 
@@ -135,13 +135,14 @@ def run(model, doc):
 
 def test_known_endings_come_from_connectives_and_answered_turns():
     known = known_endings(Recording(script()), MEMORY["chapters"])
-    # Four of the seven turns, spread through the recording.
+    # Five of the seven turns, spread through the recording.
     assert known == [
         (1, "continues"),
         (5, "continues"),
         (8, "continues"),
         (0, "finished"),
         (3, "finished"),
+        (6, "finished"),
         (7, "finished"),
         (10, "finished"),
     ]
@@ -157,10 +158,10 @@ def test_a_model_that_passes_its_check_judges_each_offered_ending_once():
         {"after_unit": "s4", "score": -0.6, "verdict": "continues"},
         {"after_unit": "s5", "score": -0.7, "verdict": "continues"},
     ]
-    # Seven known cases, then s4: s5 was already measured as a known case,
+    # Eight known cases, then s4: s5 was already measured as a known case,
     # and s6 hands over to the other speaker, which needs no judge.
-    assert len(model.asked) == 8
-    assert [t["outcome"] for t in traces] == ["answered"] * 8
+    assert len(model.asked) == 9
+    assert [t["outcome"] for t in traces] == ["answered"] * 9
     assert {t["job"] for t in traces} == {"judge.ending"}
 
 
@@ -178,7 +179,9 @@ def test_a_model_that_cannot_tell_the_known_cases_apart_decides_nothing():
     check = result["self_check"]["endings"]
     assert not check["passed"] and check["separation"] == 0.5
     assert result["endings"] == []
-    assert len(model.asked) == 7
+    # Three of each kind already put the bar out of reach; the rest go unasked.
+    assert len(model.asked) == 6
+    assert len(check["cases"]) == 6
 
 
 def test_with_no_ending_to_judge_the_model_is_not_asked_at_all():
@@ -250,3 +253,11 @@ def test_a_model_that_sounds_unsure_is_judged_by_its_own_scale():
     assert result["self_check"]["endings"]["passed"]
     # The line sits midway between its medians, 0.1 and 0.25: 0.16 is below.
     assert result["endings"] == [{"after_unit": "s4", "score": -0.68, "verdict": "continues"}]
+
+
+def test_the_check_can_tell_when_its_bar_is_out_of_reach():
+    # Nothing asked yet: anything is possible.
+    assert best_separation([], [], (5, 5)) == 1.0
+    # One finished case scored below one continuing case costs one pair in 25.
+    assert best_separation([0.1], [0.3], (5, 5)) == 0.96
+    assert best_separation([0.1, 0.1, 0.1], [0.3, 0.3], (5, 5)) == 0.76
