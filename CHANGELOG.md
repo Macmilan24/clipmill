@@ -15,7 +15,9 @@
   sentence edge with no pause is not used, and a plan supplied by a connected
   client is moved onto the nearest pause before it is checked.
 - **Cleaner clip shapes.** A clip no longer ends where the speaker carries on
-  with "and" or "but", or opens on one. A cold open plays its first line once,
+  with "and" or "but", or opens on one. It ends on a line that closes a
+  sentence and does not end on a promise such as "here's why", and it opens
+  where the line before it closed a sentence. A cold open plays its first line once,
   taking it out of the moment that follows. Removals that would save less than
   2.5 seconds are no longer made.
 - **Safer tightening.** A clip leaves out only filler and false starts that

@@ -176,6 +176,10 @@ pub struct Candidate {
 }
 
 #[derive(Clone, Debug)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent facts about how a line is worded, each read on its own"
+)]
 struct Unit {
     index: u64,
     start: u64,
@@ -200,6 +204,17 @@ struct Unit {
     points_at_previous: bool,
     /// The line is a question.
     asks: bool,
+    /// The line closes a sentence, by its punctuation. True for every line
+    /// of a transcript that is not punctuated, where nothing can be told.
+    ends_sentence: bool,
+}
+
+/// Whether a line closes a sentence: final punctuation, past any closing
+/// quotes or brackets.
+fn closes_sentence(text: &str) -> bool {
+    text.trim_end()
+        .trim_end_matches(['"', '\'', '”', '’', ')'])
+        .ends_with(['.', '!', '?', '。', '！', '？'])
 }
 
 /// Whether a line ends by promising what comes next.
@@ -352,9 +367,18 @@ impl Table {
                     promises: promises(&s.text),
                     points_at_previous: points_at_previous(&s.text),
                     asks: s.text.trim_end().ends_with('?'),
+                    ends_sentence: closes_sentence(&s.text),
                 }
             })
             .collect();
+        // A recogniser that writes no punctuation leaves nothing to judge
+        // sentence ends by; then every line may end one.
+        let punctuated = units.iter().filter(|unit| unit.ends_sentence).count() * 2 >= units.len();
+        if !punctuated {
+            for unit in &mut units {
+                unit.ends_sentence = true;
+            }
+        }
         let position: BTreeMap<u64, usize> = units
             .iter()
             .enumerate()
@@ -423,10 +447,11 @@ impl Table {
     }
 
     /// Whether a part may end after line `b`: there is a pause to cut in,
-    /// and the same speaker does not carry the thought on in the next line.
+    /// the line closes a sentence and promises nothing still to come, and the
+    /// same speaker does not carry the thought on in the next line.
     fn may_end(&self, b: usize) -> bool {
         let unit = &self.units[b];
-        if unit.close.is_none() {
+        if unit.close.is_none() || !unit.ends_sentence || unit.promises {
             return false;
         }
         self.units.get(b + 1).is_none_or(|next| {
@@ -437,11 +462,15 @@ impl Table {
         })
     }
 
-    /// Whether a part may start at line `a`: there is a pause to cut in, and
-    /// the line does not open by pointing back at an earlier one.
+    /// Whether a part may start at line `a`: there is a pause to cut in, the
+    /// line before it closed a sentence, and the line does not open by
+    /// pointing back at an earlier one.
     fn may_open(&self, a: usize) -> bool {
         let unit = &self.units[a];
-        unit.open.is_some() && unit.needs.is_none() && !points_back(&unit.text)
+        let starts_sentence = a
+            .checked_sub(1)
+            .is_none_or(|before| self.units[before].ends_sentence);
+        unit.open.is_some() && starts_sentence && unit.needs.is_none() && !points_back(&unit.text)
     }
 
     /// Whether taking out lines `first..=last` would leave what stays

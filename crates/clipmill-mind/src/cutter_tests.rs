@@ -857,3 +857,52 @@ fn a_moment_that_opens_on_an_answer_is_offered_with_its_question_first() {
             .is_some_and(|why| why.contains("question"))
     );
 }
+
+#[test]
+fn a_clip_ends_where_a_sentence_closes_and_promises_nothing_more() {
+    let (mut source, words) = recording();
+    // s18 trails off unfinished, s30 promises what comes next, and s21 is
+    // the end of a sentence s20 began.
+    source.sentences[18].text = "And the reason we left was".to_owned();
+    source.sentences[30].text = "I'm gonna give it back to you by the numbers.".to_owned();
+    source.sentences[20].text = "Right".to_owned();
+    source.sentences[21].text = "now nobody knows what happens next.".to_owned();
+    let (scores, memory) = (scores(), memory());
+    let found = candidates(&Material {
+        source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+        source: &source,
+        words: &words,
+        lattice: None,
+        scores: Some(&scores),
+        memory: Some(&memory),
+        length: (15 * S, 60 * S),
+    });
+    assert!(!found.is_empty());
+    for plan in every_plan(&found) {
+        for part in &plan.parts {
+            let end = part.end_ticks.get();
+            assert_ne!(end, 113 * S, "ends on an unfinished line");
+            assert_ne!(end, 185 * S, "ends on a promise");
+            assert_ne!(part.start_ticks, 126 * S, "opens on the end of a sentence");
+        }
+    }
+}
+
+#[test]
+fn a_transcript_without_punctuation_still_gives_clips() {
+    let (mut source, words) = recording();
+    for sentence in &mut source.sentences {
+        sentence.text = sentence.text.trim_end_matches('.').to_owned();
+    }
+    let (scores, memory) = (scores(), memory());
+    let found = candidates(&Material {
+        source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+        source: &source,
+        words: &words,
+        lattice: None,
+        scores: Some(&scores),
+        memory: Some(&memory),
+        length: (15 * S, 60 * S),
+    });
+    assert!(!found.is_empty());
+}
