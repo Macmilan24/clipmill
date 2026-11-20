@@ -79,6 +79,7 @@ fn direct(t: &SpeechTranscript, plan: &MindClipPlan) -> Result<EditDocument, Dir
             index: None,
             shots: None,
             faces: None,
+            lattice: None,
         },
         &request(plan),
     )
@@ -207,7 +208,7 @@ fn cuts_on_one_camera_change_the_framing() {
 }
 
 #[test]
-fn a_cold_open_repeats_its_hook_with_captions_of_its_own() {
+fn a_cold_open_plays_its_hook_once_and_leaves_it_out_of_the_body() {
     let t = transcript();
     let plan = plan(json!({
         "schema_version": "clipmill.mind.clip_plan.v1",
@@ -216,16 +217,16 @@ fn a_cold_open_repeats_its_hook_with_captions_of_its_own() {
         "form": "cold_open",
         "parts": [
             {"part_id": "p0", "role": "hook", "start_ticks": start(&t, 20), "end_ticks": end(&t, 26)},
-            {"part_id": "p1", "role": "body", "start_ticks": start(&t, 5), "end_ticks": end(&t, 30)}
+            {"part_id": "p1", "role": "body", "start_ticks": start(&t, 5), "end_ticks": end(&t, 30),
+             "removed": [{"start_ticks": start(&t, 20), "end_ticks": end(&t, 26),
+                          "reason": "repetition", "note": "Heard first, as the hook"}]}
         ],
         "joins": [{"after": "p0", "kind": "reorder", "framing": "punch_out"}],
         "duration_ticks": 1,
         "provenance": {"by": "mind"}
     }));
     let document = direct(&t, &plan).expect("directed");
-    document
-        .validate()
-        .expect("no word appears twice in one presentation");
+    document.validate().expect("a valid document");
     let ids: Vec<String> = document
         .captions
         .cues
@@ -235,15 +236,39 @@ fn a_cold_open_repeats_its_hook_with_captions_of_its_own() {
         .filter_map(|word| word.word_id.clone())
         .collect();
     let unique: BTreeSet<&String> = ids.iter().collect();
-    assert_eq!(unique.len(), ids.len());
+    assert_eq!(unique.len(), ids.len(), "every word is shown once");
     assert!(
-        ids.iter().any(|id| id.ends_with("~p1")),
-        "the repeated words are renamed"
+        !ids.iter().any(|id| id.ends_with("~p1")),
+        "no word plays twice, so none is renamed"
     );
     assert_eq!(
         document.video.segments[1].join.map(|join| join.kind),
         Some(JoinKind::Reorder)
     );
+}
+
+#[test]
+fn a_cold_open_that_plays_its_hook_again_is_refused() {
+    let t = transcript();
+    let plan = plan(json!({
+        "schema_version": "clipmill.mind.clip_plan.v1",
+        "source_fingerprint": t.source_fingerprint.as_str(),
+        "plan_id": "plan_00000000000000b3",
+        "form": "cold_open",
+        "parts": [
+            {"part_id": "p0", "role": "hook", "start_ticks": start(&t, 20), "end_ticks": end(&t, 26)},
+            {"part_id": "p1", "role": "body", "start_ticks": start(&t, 5), "end_ticks": end(&t, 30)}
+        ],
+        "joins": [{"after": "p0", "kind": "reorder", "framing": "punch_out"}],
+        "duration_ticks": 1,
+        "provenance": {"by": "mind"}
+    }));
+    match direct(&t, &plan) {
+        Err(DirectError::InvalidPlan(reasons)) => {
+            assert!(reasons.contains("heard twice"), "{reasons}");
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
 }
 
 #[test]

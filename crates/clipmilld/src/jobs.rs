@@ -1852,6 +1852,12 @@ impl JobPlan {
                     timeline_dependencies.push(events.clone());
                     timeline_kinds.push("audio.events.v1".to_owned());
                 }
+                // The audio itself, so the index can say where a cut may go:
+                // the pauses actually heard, not the gaps in word times.
+                if let Some(audio) = &handles.audio_16k {
+                    timeline_dependencies.push(audio.task_id.clone());
+                    timeline_kinds.push(audio.output_kind.clone());
+                }
                 tasks.push(builtin_task(
                     timeline_id.clone(),
                     Builtin {

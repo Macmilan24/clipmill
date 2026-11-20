@@ -14,6 +14,7 @@ use clipmill_contracts::schemas::{
 };
 use clipmill_core::{ArtifactId, Sha256Digest};
 use clipmill_mind::cutter::{self, Material, Scout};
+use clipmill_mind::lattice::{self, CutPoint, Lattice};
 use clipmill_mind::script::{self, Chapter, Cue, Level, Sentence, Source};
 use clipmill_timeline::TimelineIndex;
 use prost::Message;
@@ -118,8 +119,11 @@ fn spec(
 /// What the mind's stages read from a published index.
 struct Indexed {
     source: Source,
-    /// Every word as `(start, end)`: the edges a cut may use.
+    /// Every word as `(start, end)`, in time order.
     words: Vec<(u64, u64)>,
+    /// Where a cut may go, when the index measured the audio. An index built
+    /// without the audio has none, and cuts fall back to word edges.
+    lattice: Option<Lattice>,
     source_fingerprint: String,
 }
 
@@ -143,13 +147,28 @@ fn read_index(index: &TimelineIndex) -> Result<Indexed, String> {
             text: row.text,
         })
         .collect();
-    // Pauses are read from the gaps between sentences; everything else heard
-    // or seen is a cue.
-    let cues = index
-        .events_between(0, u64::MAX, &[])
-        .map_err(error)?
+    // Pauses are read from the gaps between sentences, and cut points are
+    // for the cutter; everything else heard or seen is a cue.
+    let events = index.events_between(0, u64::MAX, &[]).map_err(error)?;
+    let points: Vec<CutPoint> = events
+        .iter()
+        .filter(|event| event.kind == lattice::EVENT_KIND)
+        .filter_map(|event| {
+            CutPoint::from_event(
+                event.start_ticks,
+                event.end_ticks,
+                event.value,
+                event.label.as_deref(),
+            )
+        })
+        .collect();
+    let measured = events
+        .iter()
+        .any(|event| event.kind == lattice::EVENT_KIND)
+        .then(|| Lattice::new(points));
+    let cues = events
         .into_iter()
-        .filter(|event| event.kind != "pause")
+        .filter(|event| event.kind != "pause" && event.kind != lattice::EVENT_KIND)
         .map(|event| Cue {
             kind: event.kind,
             start_ticks: event.start_ticks,
@@ -186,6 +205,7 @@ fn read_index(index: &TimelineIndex) -> Result<Indexed, String> {
             chapters,
         },
         words,
+        lattice: measured,
         source_fingerprint,
     })
 }
@@ -346,6 +366,7 @@ pub(crate) async fn execute_cut_task(
         resolved.read_optional("mind.unit_scores.v1", "unit_scores.json")?;
     let Indexed {
         words,
+        lattice,
         source_fingerprint,
         source: indexed_source,
     } = open_index(&resolved).await?;
@@ -414,6 +435,7 @@ pub(crate) async fn execute_cut_task(
                     source_fingerprint: &source_fingerprint,
                     source: &source,
                     words: &words,
+                    lattice: lattice.as_ref(),
                     scores: scores.as_ref(),
                     memory: memory.as_ref(),
                     length,
@@ -481,5 +503,71 @@ mod tests {
             .flat_map(|w| w.units.clone())
             .collect();
         assert_eq!(owned, (0..80).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn the_index_gives_the_cutter_its_cut_points_and_the_model_none_of_them() {
+        use clipmill_mind::lattice::{CutPoint, EVENT_KIND, Grade};
+        use clipmill_timeline::{Event, Recording, Word};
+
+        const S: u64 = 90_000;
+        let point = CutPoint {
+            at: 3 * S / 2,
+            pause_start: S,
+            pause_end: 2 * S,
+            grade: Grade::Clean,
+        };
+        let (start_ticks, end_ticks, value, label) = point.event_fields();
+        let recording = Recording {
+            source_fingerprint: format!("sha256:{}", "a".repeat(64)),
+            language: "en".to_owned(),
+            words: vec![
+                Word {
+                    index: 0,
+                    text: "Hello.".to_owned(),
+                    start_ticks: 0,
+                    end_ticks: S,
+                },
+                Word {
+                    index: 1,
+                    text: "Again.".to_owned(),
+                    start_ticks: 2 * S,
+                    end_ticks: 3 * S,
+                },
+            ],
+            events: vec![
+                Event {
+                    kind: EVENT_KIND.to_owned(),
+                    start_ticks,
+                    end_ticks,
+                    value: Some(value),
+                    label: Some(label.to_owned()),
+                    producer: "test".to_owned(),
+                },
+                Event {
+                    kind: "laughter".to_owned(),
+                    start_ticks: 2 * S,
+                    end_ticks: 3 * S,
+                    value: None,
+                    label: None,
+                    producer: "test".to_owned(),
+                },
+            ],
+            ..Recording::default()
+        };
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = temp.path().join("timeline.sqlite");
+        clipmill_timeline::build(&path, &recording).unwrap();
+        let index = clipmill_timeline::TimelineIndex::open(&path).unwrap();
+        let indexed = super::read_index(&index).unwrap();
+        let lattice = indexed.lattice.expect("the measured pauses");
+        assert_eq!(lattice.points(), [point]);
+        let kinds: Vec<&str> = indexed
+            .source
+            .cues
+            .iter()
+            .map(|cue| cue.kind.as_str())
+            .collect();
+        assert_eq!(kinds, ["laughter"]);
     }
 }

@@ -58,7 +58,9 @@ keep every call on the same recording and run.
   from the sentences you want to keep. Pass a complete
   `clipmill.mind.clip_plan.v1` document to `clipmill_create_clip_from_plan`
   in the `plan` argument. ClipMill checks its source fingerprint and cut
-  boundaries. The reply includes a readable edit resource and the revision
+  boundaries. Each boundary moves into the pause at that sentence edge;
+  one where the speech runs on without a pause is refused, so choose
+  another sentence to start or end on. The reply includes a readable edit resource and the revision
   to use for subsequent commands. [Clip plan schema](../contracts/schemas/clipmill.mind.clip_plan.v1.json)
 - **Revise the brief.** Call `clipmill_reprompt` with the previous job ID,
   a new prompt, and optional `min_seconds`, `max_seconds` and `count`.

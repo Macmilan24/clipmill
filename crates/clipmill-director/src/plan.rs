@@ -43,6 +43,9 @@ pub struct PlanEvidence<'a> {
     pub index: Option<&'a IndexTranscript>,
     pub shots: Option<&'a EvidenceShots>,
     pub faces: Option<&'a VisionFaceTrack>,
+    /// Where a cut may go, when the recording's pauses were measured: every
+    /// edge of the plan must then sit on one of its cut points.
+    pub lattice: Option<&'a clipmill_mind::lattice::Lattice>,
 }
 
 /// What the director was asked to make of a plan.
@@ -116,6 +119,7 @@ fn check(evidence: PlanEvidence<'_>, request: &PlanRequest<'_>) -> Result<(), Di
         plan,
         &clipmill_mind::Bounds {
             words: &words,
+            lattice: evidence.lattice,
             duration: None,
             source_ticks: evidence.transcript.coverage.end_ticks,
         },

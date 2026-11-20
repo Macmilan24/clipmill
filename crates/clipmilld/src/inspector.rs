@@ -42,6 +42,9 @@ pub(crate) struct Evidence {
     pub index: Option<IndexTranscript>,
     pub shots: Option<EvidenceShots>,
     pub faces: Option<VisionFaceTrack>,
+    /// Where a cut may go, from the run's Timeline Index when it measured the
+    /// audio. Plans are snapped to it and checked against it.
+    pub lattice: Option<clipmill_mind::lattice::Lattice>,
     pub frame: Frame,
 }
 
@@ -188,6 +191,13 @@ pub(crate) async fn load_cached(
         key.push('|');
         key.push_str(&stages.address(database, kind).await.unwrap_or_default());
     }
+    key.push('|');
+    key.push_str(
+        &stages
+            .address(database, TIMELINE_KIND)
+            .await
+            .unwrap_or_default(),
+    );
     if let Ok(held) = cache.0.lock()
         && let Some((kept, evidence)) = held.as_ref()
         && *kept == key
@@ -231,6 +241,7 @@ async fn load_from(
     let index: Option<IndexTranscript> = optional(database, artifacts, stages, OPTIONAL[0]).await;
     let shots: Option<EvidenceShots> = optional(database, artifacts, stages, OPTIONAL[1]).await;
     let faces: Option<VisionFaceTrack> = optional(database, artifacts, stages, OPTIONAL[2]).await;
+    let lattice = lattice(database, artifacts, stages).await;
 
     Ok(Evidence {
         candidates,
@@ -239,6 +250,7 @@ async fn load_from(
         index,
         shots,
         faces,
+        lattice,
         frame: frame_of(source_map_json).ok_or(LoadError::NoFrame)?,
     })
 }
@@ -323,6 +335,50 @@ async fn optional<T: DeserializeOwned>(
 ) -> Option<T> {
     let address = stages.address(database, kind).await?;
     read(artifacts, &address, file).await
+}
+
+/// The task kind whose Timeline Index holds the run's cut points.
+const TIMELINE_KIND: &str = crate::timeline::KIND_TIMELINE;
+
+/// The cut points the run's Timeline Index measured, or nothing when it did
+/// not measure the audio (or there is no index to read).
+async fn lattice(
+    database: &DbHandle,
+    artifacts: &ArtifactHandle,
+    stages: &Stages,
+) -> Option<clipmill_mind::lattice::Lattice> {
+    use clipmill_mind::lattice::{CutPoint, EVENT_KIND, Lattice};
+
+    let address = stages.address(database, TIMELINE_KIND).await?;
+    let lease = artifacts
+        .open(address.parse::<ArtifactId>().ok()?)
+        .await
+        .ok()?;
+    let path = lease
+        .verified_path(&crate::media::artifact_path("timeline.sqlite").ok()?)
+        .ok()?;
+    tokio::task::spawn_blocking(move || {
+        let index = clipmill_timeline::TimelineIndex::open(&path).ok()?;
+        let events = index.events_between(0, u64::MAX, &[EVENT_KIND]).ok()?;
+        (!events.is_empty()).then(|| {
+            Lattice::new(
+                events
+                    .iter()
+                    .filter_map(|event| {
+                        CutPoint::from_event(
+                            event.start_ticks,
+                            event.end_ticks,
+                            event.value,
+                            event.label.as_deref(),
+                        )
+                    })
+                    .collect(),
+            )
+        })
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 /// One verified document, or nothing.

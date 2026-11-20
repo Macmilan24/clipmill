@@ -4,6 +4,7 @@ use clipmill_contracts::schemas::mind_clip_plan::{JoinKind, MindClipPlanForm, Pa
 use serde_json::json;
 
 use super::*;
+use crate::lattice::Lattice;
 use crate::script::Sentence;
 
 const S: u64 = SECOND;
@@ -109,6 +110,7 @@ fn cut(with_memory: bool) -> Vec<Candidate> {
         source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
         source: &source,
         words: &words,
+        lattice: None,
         scores: Some(&scores),
         memory: with_memory.then_some(&memory),
         length: (15 * S, 60 * S),
@@ -156,6 +158,7 @@ fn a_long_linked_answer_uses_the_available_sentence_boundary() {
         source_fingerprint: &fingerprint,
         source: &source,
         words: &words,
+        lattice: None,
         scores: None,
         memory: None,
         length: (15 * S, 60 * S),
@@ -201,14 +204,41 @@ fn a_tangent_inside_a_story_is_cut_out() {
 }
 
 #[test]
-fn a_strong_line_inside_a_story_opens_it_cold() {
+fn a_strong_line_inside_a_story_opens_it_cold_without_playing_twice() {
     let found = cut(true);
-    let cold = find(&found, MindClipPlanForm::ColdOpen);
-    let plan = &cold.plan;
+    // A cold open earns no bonus over the plain cut of the same moment, so it
+    // may be offered as that cut's alternative rather than on its own.
+    let plan = found
+        .iter()
+        .flat_map(|c| std::iter::once(&c.plan).chain(c.alternatives.iter()))
+        .find(|plan| plan.form == MindClipPlanForm::ColdOpen)
+        .unwrap_or_else(|| panic!("no cold open among {:?}", forms(&found)));
     assert_eq!(plan.parts[0].role, PartRole::Hook);
     assert_eq!(plan.parts[0].start_ticks, 150 * S);
     assert_eq!(plan.parts[1].start_ticks, 132 * S);
     assert_eq!(plan.joins[0].kind, JoinKind::Reorder);
+    // The lifted line is taken out of the body, from the pause before it to
+    // the pause after it.
+    let lifted = plan.parts[1]
+        .removed
+        .iter()
+        .find(|range| {
+            range
+                .note
+                .as_deref()
+                .is_some_and(|note| note.contains("hook"))
+        })
+        .expect("the body leaves the hook out");
+    assert_eq!(lifted.start_ticks, 149 * S);
+    assert_eq!(lifted.end_ticks.get(), 156 * S);
+    let (source, words) = recording();
+    let bounds = Bounds {
+        words: &words,
+        lattice: None,
+        duration: None,
+        source_ticks: source.duration_ticks,
+    };
+    assert!(crate::check(plan, &bounds).is_empty());
 }
 
 #[test]
@@ -237,6 +267,7 @@ fn a_long_dependency_chain_cannot_replace_the_cited_event_with_its_distant_setup
         source_fingerprint: "",
         source: &source,
         words: &words,
+        lattice: None,
         scores: None,
         memory: None,
         length: (15 * S, 25 * S),
@@ -257,6 +288,7 @@ fn a_short_event_can_borrow_nearby_setup_and_landing_without_losing_its_evidence
         source_fingerprint: "",
         source: &source,
         words: &words,
+        lattice: None,
         scores: None,
         memory: None,
         length: (15 * S, 23 * S),
@@ -351,6 +383,7 @@ fn the_brief_scout_builds_a_montage_from_disjoint_requested_mentions() {
             source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
             source: &source,
             words: &words,
+            lattice: None,
             scores: None,
             memory: None,
             length: (15 * S, 60 * S),
@@ -380,6 +413,7 @@ fn an_exhaustive_montage_reaches_a_sixth_mention_when_all_fit() {
             source_fingerprint: &format!("sha256:{}", "c".repeat(64)),
             source: &source,
             words: &words,
+            lattice: None,
             scores: None,
             memory: None,
             length: (15 * S, 60 * S),
@@ -404,6 +438,7 @@ fn adjacent_mentions_retain_the_short_connective_between_them() {
             source_fingerprint: &format!("sha256:{}", "b".repeat(64)),
             source: &source,
             words: &words,
+            lattice: None,
             scores: None,
             memory: None,
             length: (15 * S, 60 * S),
@@ -439,6 +474,7 @@ fn a_montage_keeps_qualified_mentions_even_when_the_global_markup_would_trim_the
             source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
             source: &source,
             words: &words,
+            lattice: None,
             scores: Some(&scores),
             memory: None,
             length: (15 * S, 60 * S),
@@ -475,6 +511,7 @@ fn the_reaction_scout_requires_a_nearby_spoken_line() {
         source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
         source: &source,
         words: &words,
+        lattice: None,
         scores: None,
         memory: None,
         length: (15 * S, 60 * S),
@@ -490,6 +527,7 @@ fn edits_with_the_same_outer_edges_have_distinct_identities() {
         source_fingerprint: "recording",
         source: &source,
         words: &words,
+        lattice: None,
         scores: Some(&edits),
         memory: None,
         length: (15 * S, 60 * S),
@@ -500,12 +538,14 @@ fn edits_with_the_same_outer_edges_have_distinct_identities() {
         ..material
     });
     let body = super::Piece {
+        lifted: None,
         a: 10,
         b: 16,
         role: "body",
         why: String::new(),
     };
     let hook = super::Piece {
+        lifted: None,
         a: 10,
         b: 16,
         role: "hook",
@@ -547,6 +587,7 @@ fn over_marked_markup_still_leaves_every_moment() {
         source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
         source: &source,
         words: &words,
+        lattice: None,
         scores: Some(&scores),
         memory: Some(&memory),
         length: (15 * S, 60 * S),
@@ -566,4 +607,146 @@ fn over_marked_markup_still_leaves_every_moment() {
             candidate.plan.plan_id.as_str()
         );
     }
+}
+
+/// Cut points in the middle of every pause between sentences, except after
+/// the sentences listed: there the speech runs on with no pause to cut in.
+fn pauses_except(source: &Source, missing: &[u64]) -> Lattice {
+    use crate::lattice::{CutPoint, Grade};
+    Lattice::new(
+        source
+            .sentences
+            .windows(2)
+            .filter(|pair| !missing.contains(&pair[0].index))
+            .map(|pair| CutPoint {
+                at: pair[0].end_ticks + S / 2,
+                pause_start: pair[0].end_ticks,
+                pause_end: pair[1].start_ticks,
+                grade: Grade::Clean,
+            })
+            .collect(),
+    )
+}
+
+fn every_plan(found: &[Candidate]) -> impl Iterator<Item = &MindClipPlan> {
+    found
+        .iter()
+        .flat_map(|c| std::iter::once(&c.plan).chain(c.alternatives.iter()))
+}
+
+fn edges(plan: &MindClipPlan) -> Vec<u64> {
+    plan.parts
+        .iter()
+        .flat_map(|part| {
+            [part.start_ticks, part.end_ticks.get()].into_iter().chain(
+                part.removed
+                    .iter()
+                    .flat_map(|range| [range.start_ticks, range.end_ticks.get()]),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn with_measured_pauses_every_edge_and_removal_sits_in_one() {
+    let (source, words) = recording();
+    let (scores, memory) = (scores(), memory());
+    // No pause after s18 (a story's strong landing) or after s29.
+    let lattice = pauses_except(&source, &[18, 29]);
+    let found = candidates(&Material {
+        source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+        source: &source,
+        words: &words,
+        lattice: Some(&lattice),
+        scores: Some(&scores),
+        memory: Some(&memory),
+        length: (15 * S, 60 * S),
+    });
+    assert!(!found.is_empty());
+    for plan in every_plan(&found) {
+        for at in edges(plan) {
+            assert!(lattice.at(at).is_some(), "{at} is not in a pause");
+        }
+        // A cut between s18 and s19, or s29 and s30, would land in speech.
+        for at in edges(plan) {
+            assert!(!(113 * S..=114 * S).contains(&at) && !(179 * S..=180 * S).contains(&at));
+        }
+        let bounds = Bounds {
+            words: &words,
+            lattice: Some(&lattice),
+            duration: None,
+            source_ticks: source.duration_ticks,
+        };
+        assert!(crate::check(plan, &bounds).is_empty());
+    }
+}
+
+#[test]
+fn a_clip_does_not_end_where_the_same_speaker_carries_on_nor_open_on_a_connective() {
+    let (mut source, words) = recording();
+    // The host goes on after s18's landing, and s22 opens on "And".
+    source.sentences[19].text = "But that was only the start.".to_owned();
+    source.sentences[22].text = "And then it all fell apart.".to_owned();
+    let (scores, memory) = (scores(), memory());
+    let found = candidates(&Material {
+        source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+        source: &source,
+        words: &words,
+        lattice: None,
+        scores: Some(&scores),
+        memory: Some(&memory),
+        length: (15 * S, 60 * S),
+    });
+    assert!(!found.is_empty());
+    for plan in every_plan(&found) {
+        for part in &plan.parts {
+            assert_ne!(
+                part.end_ticks.get(),
+                113 * S,
+                "ends before the host's 'But…'"
+            );
+            assert_ne!(part.start_ticks, 132 * S, "opens on 'And…'");
+        }
+    }
+}
+
+#[test]
+fn a_removal_that_saves_too_little_is_not_made_and_removals_are_spaced() {
+    let (source, words) = recording();
+    let mut table = Table::new(&Material {
+        source_fingerprint: "",
+        source: &source,
+        words: &words,
+        lattice: None,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    });
+    // A two-second aside: not worth the jump.
+    table.units[14].cut = Some("filler");
+    table.units[13].close = Some(88 * S);
+    table.units[15].open = Some(90 * S);
+    assert!(table.removals(10, 18).is_empty());
+    // Three seconds is.
+    table.units[15].open = Some(91 * S);
+    assert_eq!(table.removals(10, 18), [(88 * S, 91 * S, "filler")]);
+
+    // Four asides in a minute: two per thirty seconds are kept, the longest.
+    let mut table = Table::new(&Material {
+        source_fingerprint: "",
+        source: &source,
+        words: &words,
+        lattice: None,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    });
+    for unit in [21, 23, 25, 27] {
+        table.units[unit].cut = Some("filler");
+    }
+    table.units[24].close = Some(149 * S - S / 2);
+    let kept = table.removals(20, 29);
+    assert_eq!(kept.len(), 3);
+    assert!(kept.windows(2).all(|pair| pair[0].0 < pair[1].0));
+    assert!(kept.iter().any(|&(start, _, _)| start == 149 * S - S / 2));
 }

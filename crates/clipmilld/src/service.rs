@@ -4751,9 +4751,22 @@ fn assemble_plan(
     evidence: &crate::inspector::Evidence,
     direct: &DirectClipRequest,
 ) -> Result<clipmill_edit_ir::EditDocument, String> {
-    let plan: clipmill_contracts::schemas::mind_clip_plan::MindClipPlan =
+    let mut plan: clipmill_contracts::schemas::mind_clip_plan::MindClipPlan =
         serde_json::from_str(&direct.plan_json)
             .map_err(|error| format!("The clip plan could not be read: {error}"))?;
+    // A plan written from sentence or word times (an agent's, or one saved
+    // before the pauses were measured) is moved onto the measured pauses
+    // first; the director then refuses any edge that still is not in one.
+    if let Some(lattice) = &evidence.lattice {
+        let mut words: Vec<(u64, u64)> = evidence
+            .transcript
+            .words
+            .iter()
+            .map(|word| (word.start_ticks, word.end_ticks))
+            .collect();
+        words.sort_unstable();
+        clipmill_mind::lattice::snap(&mut plan, lattice, &words);
+    }
     let style_ref = if direct.style_ref.is_empty() {
         clipmill_captions::DEFAULT_STYLE_REF.to_owned()
     } else {
@@ -4765,6 +4778,7 @@ fn assemble_plan(
             index: evidence.index.as_ref(),
             shots: evidence.shots.as_ref(),
             faces: evidence.faces.as_ref(),
+            lattice: evidence.lattice.as_ref(),
         },
         &clipmill_director::PlanRequest {
             plan: &plan,
@@ -4799,6 +4813,7 @@ mod plan_tests {
             index: None,
             shots: None,
             faces: None,
+            lattice: None,
             frame: clipmill_director::Frame {
                 width: 1920,
                 height: 1080,

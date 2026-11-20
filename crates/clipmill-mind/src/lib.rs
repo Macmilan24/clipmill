@@ -10,6 +10,7 @@
 
 pub mod brief;
 pub mod cutter;
+pub mod lattice;
 pub mod memory;
 pub mod script;
 
@@ -42,6 +43,10 @@ pub struct Bounds<'a> {
     /// begin or end inside one. Empty means the recording has no words (silent
     /// footage), where any boundary is allowed.
     pub words: &'a [(u64, u64)],
+    /// Where a cut may go, when the recording's pauses were measured. With a
+    /// lattice, every edge and removal must sit on one of its cut points; the
+    /// measured pause says more than the word times about where a word ends.
+    pub lattice: Option<&'a lattice::Lattice>,
     /// The programme length the brief asks for, as `(min, max)` ticks.
     pub duration: Option<(u64, u64)>,
     /// The recording's length; no part may run past it.
@@ -128,18 +133,12 @@ fn check_parts(plan: &MindClipPlan, bounds: &Bounds<'_>, found: &mut Vec<Violati
             ));
         }
         for (edge, at) in [("start", start), ("end", end)] {
-            if let Some(word) = severs(bounds.words, at) {
-                found.push(violation(
-                    "cuts_word",
-                    Some(id),
-                    format!(
-                        "Part {id}'s {edge} at {} falls inside a word ({}–{}); move it to a word boundary.",
-                        clock(at),
-                        clock(word.0),
-                        clock(word.1)
-                    ),
-                ));
-            }
+            found.extend(edge_violation(
+                bounds,
+                id,
+                at,
+                &format!("Part {id}'s {edge}"),
+            ));
         }
         let mut previous_end = start;
         for range in &part.removed {
@@ -166,16 +165,12 @@ fn check_parts(plan: &MindClipPlan, bounds: &Bounds<'_>, found: &mut Vec<Violati
                 ));
             }
             for at in [cut_start, cut_end] {
-                if severs(bounds.words, at).is_some() {
-                    found.push(violation(
-                        "cuts_word",
-                        Some(id),
-                        format!(
-                            "A cut inside part {id} at {} falls inside a word.",
-                            clock(at)
-                        ),
-                    ));
-                }
+                found.extend(edge_violation(
+                    bounds,
+                    id,
+                    at,
+                    &format!("A cut inside part {id}"),
+                ));
             }
             previous_end = cut_end;
         }
@@ -198,29 +193,74 @@ fn check_parts(plan: &MindClipPlan, bounds: &Bounds<'_>, found: &mut Vec<Violati
     }
 }
 
+/// Why a cut at `at` cannot be made, if it cannot: with measured pauses, it
+/// must sit on a cut point; without them, it must not fall inside a word.
+fn edge_violation(bounds: &Bounds<'_>, id: &str, at: u64, what: &str) -> Option<Violation> {
+    if let Some(lattice) = bounds.lattice {
+        return lattice.at(at).is_none().then(|| {
+            violation(
+                "not_in_pause",
+                Some(id),
+                format!(
+                    "{what} at {} is not in a measured pause; a cut there would land in speech.",
+                    clock(at)
+                ),
+            )
+        });
+    }
+    severs(bounds.words, at).map(|word| {
+        violation(
+            "cuts_word",
+            Some(id),
+            format!(
+                "{what} at {} falls inside a word ({}–{}); move it to a word boundary.",
+                clock(at),
+                clock(word.0),
+                clock(word.1)
+            ),
+        )
+    })
+}
+
+/// What a part plays: its range with the removed ranges taken out.
+pub fn played(part: &Part) -> Vec<(u64, u64)> {
+    let mut ranges = Vec::new();
+    let mut at = part.start_ticks;
+    for removed in &part.removed {
+        if removed.start_ticks > at {
+            ranges.push((at, removed.start_ticks));
+        }
+        at = at.max(removed.end_ticks.get());
+    }
+    if part.end_ticks.get() > at {
+        ranges.push((at, part.end_ticks.get()));
+    }
+    ranges
+}
+
 fn check_overlaps(plan: &MindClipPlan, found: &mut Vec<Violation>) {
-    // No moment plays twice, except the line a cold open lifts to the front,
-    // which is meant to be heard again in context.
-    let lifted = (plan.form == MindClipPlanForm::ColdOpen)
-        .then(|| plan.parts.first())
-        .flatten()
-        .filter(|part| part.role == PartRole::Hook)
-        .map(|part| part.part_id.as_str());
-    let mut ranges: Vec<&Part> = plan
+    // No moment plays twice. A cold open's lifted line is taken out of the
+    // body it came from, not heard again: a line that repeats seconds later
+    // reads as a glitch in a short.
+    let mut ranges: Vec<((u64, u64), &str)> = plan
         .parts
         .iter()
-        .filter(|part| Some(part.part_id.as_str()) != lifted)
+        .flat_map(|part| {
+            played(part)
+                .into_iter()
+                .map(move |range| (range, part.part_id.as_str()))
+        })
         .collect();
-    ranges.sort_by_key(|part| (part.start_ticks, part.end_ticks.get()));
+    ranges.sort_unstable();
+    let mut reported = BTreeSet::new();
     for pair in ranges.windows(2) {
-        if pair[1].start_ticks < pair[0].end_ticks.get() {
+        let (((_, end), first), ((start, _), second)) = (pair[0], pair[1]);
+        if start < end && first != second && reported.insert((first, second)) {
             found.push(violation(
                 "parts_overlap",
-                Some(pair[1].part_id.as_str()),
+                Some(second),
                 format!(
-                    "Parts {} and {} overlap in the recording, so some of it would play twice.",
-                    pair[0].part_id.as_str(),
-                    pair[1].part_id.as_str()
+                    "Parts {first} and {second} play the same stretch of the recording, so it would be heard twice."
                 ),
             ));
         }

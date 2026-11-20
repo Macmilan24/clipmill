@@ -9,6 +9,15 @@
   keeping or rejecting one, and try a new brief without transcribing again.
 - Open multi-part plans in Studio. Restore source ranges, adjust a join, and
   preview the room tone and fades that will be used in the render.
+- **Cuts land in pauses.** Analysis measures the pauses heard between words
+  and places every clip edge, join and removal inside one, clear of the words
+  on either side, so a cut no longer clips a syllable or lands mid-sound. A
+  sentence edge with no pause is not used, and a plan supplied by a connected
+  client is moved onto the nearest pause before it is checked.
+- **Cleaner clip shapes.** A clip no longer ends where the speaker carries on
+  with "and" or "but", or opens on one. A cold open plays its first line once,
+  taking it out of the moment that follows. Removals that would save less than
+  2.5 seconds are no longer made.
 
 ## 0.5.1 — Whisper on older Windows PCs and reliable upgrades
 

@@ -60,6 +60,7 @@ pub(crate) async fn execute_timeline_task(
             Wanted::optional("speech.speakers.v1"),
             Wanted::optional("evidence.shots.v1"),
             Wanted::optional("audio.events.v1"),
+            Wanted::optional("media.audio_16k.v1"),
         ],
     )
     .await?;
@@ -70,6 +71,8 @@ pub(crate) async fn execute_timeline_task(
     let shots: Option<EvidenceShots> = resolved.read_optional("evidence.shots.v1", "shots.json")?;
     let heard: Option<AudioEvents> =
         resolved.read_optional("audio.events.v1", "audio_events.json")?;
+    let audio: Option<serde_json::Value> =
+        resolved.read_optional("media.audio_16k.v1", "audio.json")?;
     if transcript.source_fingerprint.as_str() != index.source_fingerprint.as_str()
         || speakers.as_ref().is_some_and(|speakers| {
             speakers.source_fingerprint.as_str() != index.source_fingerprint.as_str()
@@ -80,6 +83,9 @@ pub(crate) async fn execute_timeline_task(
         || heard.as_ref().is_some_and(|heard| {
             heard.source_fingerprint.as_str() != index.source_fingerprint.as_str()
         })
+        || audio.as_ref().is_some_and(|audio| {
+            audio["source_fingerprint"].as_str() != Some(index.source_fingerprint.as_str())
+        })
     {
         return Err(TaskExecutionError::deterministic(
             "the timeline's inputs describe different recordings",
@@ -89,6 +95,10 @@ pub(crate) async fn execute_timeline_task(
 
     let mut recording = recording(&transcript, &index, speakers.as_ref(), shots.as_ref());
     recording.events = heard.as_ref().map_or_else(Vec::new, audio_events);
+    let wav = audio
+        .is_some()
+        .then(|| resolved.verified_file("media.audio_16k.v1", "audio.wav"))
+        .transpose()?;
     let fingerprint: Sha256Digest = index
         .source_fingerprint
         .strip_prefix("sha256:")
@@ -103,6 +113,10 @@ pub(crate) async fn execute_timeline_task(
     config.insert(
         "pause_event_ticks".to_owned(),
         json!(clipmill_timeline::PAUSE_EVENT_TICKS),
+    );
+    config.insert(
+        "cut_lattice".to_owned(),
+        json!(clipmill_mind::lattice::ALGORITHM),
     );
     let recipe = ArtifactRecipe::try_from_spec(RecipeSpec {
         kind: "timeline.index.v1".to_owned(),
@@ -141,15 +155,19 @@ pub(crate) async fn execute_timeline_task(
                 .map_err(|error| TaskExecutionError::transient(error.to_string()))?,
         );
         let disk = staging.path().join(path.as_path());
-        tokio::task::spawn_blocking(move || clipmill_timeline::build(&disk, &recording))
-            .await
-            .map_err(|error| TaskExecutionError::transient(error.to_string()))?
-            .map_err(|error| match error {
+        tokio::task::spawn_blocking(move || {
+            if let Some(wav) = &wav {
+                recording.events.extend(cut_points(wav, &recording.words)?);
+            }
+            clipmill_timeline::build(&disk, &recording).map_err(|error| match error {
                 clipmill_timeline::TimelineError::Invalid(detail) => {
                     TaskExecutionError::deterministic(detail)
                 }
                 other => TaskExecutionError::transient(other.to_string()),
-            })?;
+            })
+        })
+        .await
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))??;
         progress.set("stages", 2, 3);
         media::commit_staging(artifacts, staging_id.clone(), vec![path]).await
     }
@@ -159,6 +177,31 @@ pub(crate) async fn execute_timeline_task(
     }
     progress.set("stages", 3, 3);
     result
+}
+
+/// Where cuts may go, measured from the 16 kHz rendition, as index events.
+fn cut_points(wav: &std::path::Path, words: &[Word]) -> Result<Vec<Event>, TaskExecutionError> {
+    use clipmill_mind::lattice;
+
+    let levels = lattice::Levels::new(&media::frame_levels_16k(wav)?);
+    let edges: Vec<(u64, u64)> = words
+        .iter()
+        .map(|word| (word.start_ticks, word.end_ticks))
+        .collect();
+    Ok(lattice::measure(&levels, &edges)
+        .into_iter()
+        .map(|point| {
+            let (start_ticks, end_ticks, value, label) = point.event_fields();
+            Event {
+                kind: lattice::EVENT_KIND.to_owned(),
+                start_ticks,
+                end_ticks,
+                value: Some(value),
+                label: Some(label.to_owned()),
+                producer: lattice::ALGORITHM.to_owned(),
+            }
+        })
+        .collect())
 }
 
 /// The evidence, in the shape the index is built from.

@@ -17,7 +17,12 @@
 //!
 //! Every part starts and ends on a sentence edge, a part never opens on a line
 //! that needs an earlier one, and every plan passes [`crate::check`] before it
-//! is returned. Choosing between candidates is the planner's and the ranker's
+//! is returned. When the recording's pauses were measured, every edge and
+//! every removal sits on a [`crate::lattice::CutPoint`] in the pause at that
+//! sentence edge, and a sentence edge with no usable pause is not used: a cut
+//! there would land in speech. A clip does not end where the same speaker
+//! carries the thought on ("and…", "but…"), nor open on a line that points
+//! back ("but…", "that's why…"). Choosing between candidates is the planner's and the ranker's
 //! job; the score here only orders them.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -30,6 +35,7 @@ use clipmill_contracts::schemas::mind_unit_scores::{Level, MindUnitScores, RowTr
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use crate::lattice::Lattice;
 use crate::script::Source;
 use crate::{ADJACENT_GAP_TICKS, Bounds, MIN_MONTAGE_PARTS, MIN_PART_TICKS, SECOND, check};
 
@@ -59,6 +65,28 @@ pub const MAX_CANDIDATES: usize = 30;
 /// more is not trusted for that moment: an editor tightens a moment, they do
 /// not hollow it out.
 pub const MAX_CUT_PERCENT: u64 = 35;
+/// The least a removal must save. A shorter one is a visible jump for almost
+/// nothing gained.
+pub const MIN_REMOVAL_TICKS: u64 = 5 * SECOND / 2;
+/// One removal per this much of a moment at most: two in thirty seconds.
+pub const REMOVAL_SPACING_TICKS: u64 = 15 * SECOND;
+/// The audio crossfade at a join between parts. The cut sits in a measured
+/// pause, so the fade only has to hide the change of room sound.
+pub const JOIN_CROSSFADE_MS: u64 = 20;
+/// Words a sentence starts with when it carries the previous thought on: a
+/// clip does not end before one said by the same speaker, nor open on one.
+const CARRIES_ON: [&str; 11] = [
+    "and", "but", "because", "cause", "'cause", "or", "which", "although", "though", "whereas",
+    "plus",
+];
+/// Openings that point back at something said before.
+const POINTS_BACK: [&str; 5] = [
+    "that's why",
+    "that is why",
+    "as i said",
+    "like i said",
+    "as i was saying",
+];
 
 /// Everything the cutter reads.
 #[derive(Clone, Copy, Debug)]
@@ -67,6 +95,9 @@ pub struct Material<'a> {
     pub source: &'a Source,
     /// Every word as `(start, end)`, in time order.
     pub words: &'a [(u64, u64)],
+    /// Where a cut may go, when the recording's pauses were measured. Without
+    /// it, cuts fall on sentence edges as the words give them.
+    pub lattice: Option<&'a Lattice>,
     pub scores: Option<&'a MindUnitScores>,
     pub memory: Option<&'a MindMemory>,
     /// The programme length the brief asks for, `(min, max)` ticks.
@@ -107,6 +138,32 @@ struct Unit {
     cut: Option<&'static str>,
     /// The position of the earlier unit it cannot be understood without.
     needs: Option<usize>,
+    speaker: Option<String>,
+    /// Where a part may start at this line: the cut point in the pause before
+    /// it, or the line's own start when pauses were not measured. `None` when
+    /// there is no pause before it to cut in.
+    open: Option<u64>,
+    /// Where a part may end after this line, likewise.
+    close: Option<u64>,
+}
+
+fn first_word(text: &str) -> String {
+    text.split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .trim_matches(|c: char| !c.is_alphanumeric() && c != '\'')
+        .to_lowercase()
+}
+
+/// Whether a line carries the one before it on, judged by how it starts.
+fn carries_on(text: &str) -> bool {
+    CARRIES_ON.contains(&first_word(text).as_str())
+}
+
+/// Whether a line opens by pointing back at what came before.
+fn points_back(text: &str) -> bool {
+    let lower = text.trim_start().to_lowercase();
+    carries_on(text) || POINTS_BACK.iter().any(|phrase| lower.starts_with(phrase))
 }
 
 struct Table {
@@ -144,15 +201,24 @@ impl Table {
             .source
             .sentences
             .iter()
-            .map(|s| Unit {
-                index: s.index,
-                start: s.start_ticks,
-                end: s.end_ticks,
-                text: s.text.trim().to_owned(),
-                hook: 0,
-                landing: 0,
-                cut: None,
-                needs: None,
+            .map(|s| {
+                let edge = |ticks: u64| match material.lattice {
+                    Some(lattice) => lattice.edge(material.words, ticks).map(|point| point.at),
+                    None => Some(ticks),
+                };
+                Unit {
+                    index: s.index,
+                    start: s.start_ticks,
+                    end: s.end_ticks,
+                    text: s.text.trim().to_owned(),
+                    hook: 0,
+                    landing: 0,
+                    cut: None,
+                    needs: None,
+                    speaker: s.speaker.clone(),
+                    open: edge(s.start_ticks),
+                    close: edge(s.end_ticks),
+                }
             })
             .collect();
         let position: BTreeMap<u64, usize> = units
@@ -212,9 +278,43 @@ impl Table {
         unit_index(unit).and_then(|i| self.position.get(&i).copied())
     }
 
+    /// Where a part starting at line `a` starts.
+    fn first(&self, a: usize) -> u64 {
+        self.units[a].open.unwrap_or(self.units[a].start)
+    }
+
+    /// Where a part ending at line `b` ends.
+    fn last(&self, b: usize) -> u64 {
+        self.units[b].close.unwrap_or(self.units[b].end)
+    }
+
+    /// Whether a part may end after line `b`: there is a pause to cut in,
+    /// and the same speaker does not carry the thought on in the next line.
+    fn may_end(&self, b: usize) -> bool {
+        let unit = &self.units[b];
+        if unit.close.is_none() {
+            return false;
+        }
+        self.units.get(b + 1).is_none_or(|next| {
+            let same_voice =
+                unit.speaker.is_none() || next.speaker.is_none() || unit.speaker == next.speaker;
+            let close = next.start.saturating_sub(unit.end) <= ADJACENT_GAP_TICKS;
+            !(same_voice && close && carries_on(&next.text))
+        })
+    }
+
+    /// Whether a part may start at line `a`: there is a pause to cut in, and
+    /// the line does not open by pointing back at an earlier one.
+    fn may_open(&self, a: usize) -> bool {
+        let unit = &self.units[a];
+        unit.open.is_some() && unit.needs.is_none() && !points_back(&unit.text)
+    }
+
     /// Ranges a tight cut leaves out of `a..=b`: runs of cuttable units
-    /// strictly inside it, from the end of the kept line before to the start
-    /// of the kept line after.
+    /// strictly inside it, from the cut after the kept line before to the cut
+    /// before the kept line after. A run with no pause to cut in at either
+    /// end stays, as does one that would save too little; and no more than
+    /// one removal per [`REMOVAL_SPACING_TICKS`] is made, the longest first.
     fn removals(&self, a: usize, b: usize) -> Vec<(u64, u64, &'static str)> {
         let mut found = Vec::new();
         let mut place = a + 1;
@@ -227,18 +327,27 @@ impl Table {
             while last + 1 < b && self.units[last + 1].cut.is_some() {
                 last += 1;
             }
-            let (start, end) = (self.units[place - 1].end, self.units[last + 1].start);
-            if start < end {
+            if let (Some(start), Some(end)) =
+                (self.units[place - 1].close, self.units[last + 1].open)
+                && end.saturating_sub(start) >= MIN_REMOVAL_TICKS
+            {
                 found.push((start, end, reason));
             }
             place = last + 1;
+        }
+        let span = self.last(b).saturating_sub(self.first(a));
+        let allowed = usize::try_from((span / REMOVAL_SPACING_TICKS).max(1)).unwrap_or(usize::MAX);
+        if found.len() > allowed {
+            found.sort_by_key(|&(start, end, _)| (std::cmp::Reverse(end - start), start));
+            found.truncate(allowed);
+            found.sort_by_key(|&(start, _, _)| start);
         }
         found
     }
 
     /// How long `a..=b` plays once its removals are taken out.
     fn kept(&self, a: usize, b: usize) -> u64 {
-        let span = self.units[b].end.saturating_sub(self.units[a].start);
+        let span = self.last(b).saturating_sub(self.first(a));
         let removed: u64 = self.removals(a, b).iter().map(|(s, e, _)| e - s).sum();
         span.saturating_sub(removed)
     }
@@ -299,11 +408,11 @@ impl Table {
         let mut best: Option<(i64, usize, usize)> = None;
         for start in openings {
             // A line that depends on an earlier one cannot open a part.
-            if self.units[start].needs.is_some() || self.units[start].cut.is_some() {
+            if !self.may_open(start) || self.units[start].cut.is_some() {
                 continue;
             }
             for end in start.max(first_end)..=reach {
-                if self.units[end].cut.is_some() {
+                if self.units[end].cut.is_some() || !self.may_end(end) {
                     continue;
                 }
                 let kept = self.kept(start, end);
@@ -313,7 +422,7 @@ impl Table {
                 if kept < min {
                     continue;
                 }
-                let span = self.units[end].end.saturating_sub(self.units[start].start);
+                let span = self.last(end).saturating_sub(self.first(start));
                 let removed = span.saturating_sub(kept);
                 if u128::from(removed) * 100 > u128::from(span) * u128::from(MAX_CUT_PERCENT) {
                     continue;
@@ -350,7 +459,29 @@ struct Piece {
     b: usize,
     role: &'static str,
     why: String,
+    /// A line inside the part that a cold open already played first, taken
+    /// out here so it is not heard twice.
+    lifted: Option<usize>,
 }
+
+/// The ranges a piece leaves out: its tight cuts, and the line a cold open
+/// lifted to the front. `None` when the lifted line has no pause to cut at.
+fn piece_removals(table: &Table, piece: &Piece) -> Option<Vec<(u64, u64, &'static str)>> {
+    let mut removed = table.removals(piece.a, piece.b);
+    if let Some(lift) = piece.lifted {
+        let start = table.units.get(lift.checked_sub(1)?)?.close?;
+        let end = table.units.get(lift + 1)?.open?;
+        if removed.iter().any(|&(s, e, _)| s < end && start < e) {
+            return None;
+        }
+        removed.push((start, end, LIFTED));
+        removed.sort_by_key(|&(start, _, _)| start);
+    }
+    Some(removed)
+}
+
+/// The removal reason for a line a cold open lifted to the front.
+const LIFTED: &str = "lifted";
 
 /// Identify the playable edit across analyses, independent of its title or rating.
 /// Roles, order and every omitted interval distinguish different cuts of the same moment.
@@ -360,9 +491,11 @@ fn plan_id(source: &str, form: &str, pieces: &[Piece], table: &Table) -> String 
         let _ = write!(
             key,
             "|{}:{}:{}",
-            piece.role, table.units[piece.a].start, table.units[piece.b].end
+            piece.role,
+            table.first(piece.a),
+            table.last(piece.b)
         );
-        for (start, end, _) in table.removals(piece.a, piece.b) {
+        for (start, end, _) in piece_removals(table, piece).unwrap_or_default() {
             let _ = write!(key, "|cut:{start}:{end}");
         }
     }
@@ -392,25 +525,37 @@ fn assemble(material: &Material<'_>, table: &Table, draft: &Draft<'_>) -> Option
     let mut parts = Vec::new();
     let mut duration = 0;
     for (number, piece) in draft.pieces.iter().enumerate() {
-        let removed: Vec<Value> = table
-            .removals(piece.a, piece.b)
-            .into_iter()
-            .map(|(start, end, reason)| {
-                json!({ "start_ticks": start, "end_ticks": end, "reason": reason })
+        let (start, end) = (table.units[piece.a].open?, table.units[piece.b].close?);
+        let ranges = piece_removals(table, piece)?;
+        let removed: Vec<Value> = ranges
+            .iter()
+            .map(|&(start, end, reason)| {
+                if reason == LIFTED {
+                    json!({
+                        "start_ticks": start,
+                        "end_ticks": end,
+                        "reason": "repetition",
+                        "note": "Heard first, as the hook",
+                    })
+                } else {
+                    json!({ "start_ticks": start, "end_ticks": end, "reason": reason })
+                }
             })
             .collect();
-        duration += table.kept(piece.a, piece.b);
+        let cut: u64 = ranges.iter().map(|(s, e, _)| e - s).sum();
+        duration += end.saturating_sub(start).saturating_sub(cut);
         let units: Vec<String> = (piece.a..=piece.b)
             .filter(|&place| {
-                place == piece.a || place == piece.b || table.units[place].cut.is_none()
+                Some(place) != piece.lifted
+                    && (place == piece.a || place == piece.b || table.units[place].cut.is_none())
             })
             .map(|place| format!("s{}", table.units[place].index))
             .collect();
         let mut part = json!({
             "part_id": format!("p{}", number + 1),
             "role": piece.role,
-            "start_ticks": table.units[piece.a].start,
-            "end_ticks": table.units[piece.b].end,
+            "start_ticks": start,
+            "end_ticks": end,
             "units": units,
             "why": clipped(&piece.why, 400),
         });
@@ -422,7 +567,7 @@ fn assemble(material: &Material<'_>, table: &Table, draft: &Draft<'_>) -> Option
     let mut joins = Vec::new();
     for (number, pair) in draft.pieces.windows(2).enumerate() {
         let (before, after) = (&pair[0], &pair[1]);
-        let (end, start) = (table.units[before.b].end, table.units[after.a].start);
+        let (end, start) = (table.last(before.b), table.first(after.a));
         let kind = if start < end {
             "reorder"
         } else if start - end <= ADJACENT_GAP_TICKS {
@@ -432,7 +577,7 @@ fn assemble(material: &Material<'_>, table: &Table, draft: &Draft<'_>) -> Option
         };
         let mut join = json!({ "after": format!("p{}", number + 1), "kind": kind });
         if kind != "adjacent" {
-            join["crossfade_ms"] = json!(60);
+            join["crossfade_ms"] = json!(JOIN_CROSSFADE_MS);
             join["room_tone"] = json!(true);
         }
         if kind == "distant" {
@@ -466,6 +611,7 @@ fn assemble(material: &Material<'_>, table: &Table, draft: &Draft<'_>) -> Option
     let words = material.words;
     let bounds = Bounds {
         words,
+        lattice: material.lattice,
         duration: Some(material.length),
         source_ticks: material.source.duration_ticks,
     };
@@ -596,20 +742,7 @@ pub fn candidates_for_brief(material: &Material<'_>, prompt: &str) -> Vec<Candid
 
 /// What a plan plays, as source ranges with its removals taken out.
 fn played(plan: &MindClipPlan) -> Vec<(u64, u64)> {
-    let mut ranges = Vec::new();
-    for part in &plan.parts {
-        let mut at = part.start_ticks;
-        for removed in &part.removed {
-            if removed.start_ticks > at {
-                ranges.push((at, removed.start_ticks));
-            }
-            at = at.max(removed.end_ticks.get());
-        }
-        if part.end_ticks.get() > at {
-            ranges.push((at, part.end_ticks.get()));
-        }
-    }
-    ranges
+    plan.parts.iter().flat_map(crate::played).collect()
 }
 
 fn shared(a: &[(u64, u64)], b: &[(u64, u64)]) -> u64 {
@@ -671,6 +804,7 @@ fn events(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &m
         let draft = Draft {
             form,
             pieces: vec![Piece {
+                lifted: None,
                 a,
                 b,
                 role: "body",
@@ -762,6 +896,7 @@ fn joined(
         &Draft {
             form,
             pieces: vec![Piece {
+                lifted: None,
                 a,
                 b,
                 role: "body",
@@ -811,12 +946,14 @@ fn stitched(
             form: "stitch",
             pieces: vec![
                 Piece {
+                    lifted: None,
                     a: fa,
                     b: fb,
                     role: first_role,
                     why: from_title.to_owned(),
                 },
                 Piece {
+                    lifted: None,
                     a: ta,
                     b: tb,
                     role: second_role,
@@ -899,6 +1036,7 @@ fn themes(material: &Material<'_>, table: &Table, memory: &MindMemory, found: &m
                 continue;
             }
             pieces.push(Piece {
+                lifted: None,
                 a,
                 b,
                 role: "item",
@@ -954,6 +1092,7 @@ fn around(
     let draft = Draft {
         form: single_form(table, a, b),
         pieces: vec![Piece {
+            lifted: None,
             a,
             b,
             role: "body",
@@ -1172,6 +1311,7 @@ fn brief_montage(
                 return;
             }
             pieces.push(Piece {
+                lifted: None,
                 a,
                 b,
                 role: "item",
@@ -1323,6 +1463,7 @@ fn spans(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>) {
             let draft = Draft {
                 form,
                 pieces: vec![Piece {
+                    lifted: None,
                     a,
                     b,
                     role: "body",
@@ -1360,12 +1501,19 @@ fn cold_opens(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>
         ) else {
             continue;
         };
-        let Some(lift) = (a + 2..=b)
+        // The lifted line is taken out of the body, so it needs a pause to
+        // cut at on both sides and kept neighbours, and it is never the
+        // body's own first or last line.
+        let Some(lift) = (a + 2..b)
             .filter(|&place| {
                 let unit = &table.units[place];
                 unit.hook == 3
                     && unit.needs.is_none()
                     && unit.cut.is_none()
+                    && table.units[place - 1].cut.is_none()
+                    && table.units[place + 1].cut.is_none()
+                    && unit.open.is_some()
+                    && unit.close.is_some()
                     && unit.end - unit.start <= MAX_LIFT_TICKS
                     && unit.end - unit.start >= MIN_PART_TICKS
             })
@@ -1373,12 +1521,12 @@ fn cold_opens(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>
         else {
             continue;
         };
-        let line = table.kept(lift, lift);
-        let Some((a, b)) = table.fit(a, b, (min.saturating_sub(line), max.saturating_sub(line)))
-        else {
+        // The line moves rather than repeats, so the clip plays as long as
+        // the body would.
+        let Some((a, b)) = table.fit(a, b, (min, max)) else {
             continue;
         };
-        if !(a..=b).contains(&lift) {
+        if !(a + 1..b).contains(&lift) {
             continue;
         }
         let draft = Draft {
@@ -1389,12 +1537,14 @@ fn cold_opens(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>
                     b: lift,
                     role: "hook",
                     why: "The strongest line, heard first".to_owned(),
+                    lifted: None,
                 },
                 Piece {
                     a,
                     b,
                     role: "body",
-                    why: "Then the moment from its start".to_owned(),
+                    why: "Then the moment from its start, without the line again".to_owned(),
+                    lifted: Some(lift),
                 },
             ],
             links: vec![None],
@@ -1411,7 +1561,7 @@ fn cold_opens(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>
                 plan,
                 alternatives: Vec::new(),
                 scout: Scout::ColdOpen,
-                score: candidate.score + 2,
+                score: candidate.score,
             });
         }
     }

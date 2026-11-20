@@ -26,6 +26,7 @@ fn words() -> Vec<(u64, u64)> {
 fn bounds(words: &[(u64, u64)]) -> Bounds<'_> {
     Bounds {
         words,
+        lattice: None,
         duration: Some((15 * S, 90 * S)),
         source_ticks: 2000 * S,
     }
@@ -96,17 +97,24 @@ fn parts_may_not_play_the_same_moment_twice() {
     assert!(codes(&plan).contains(&"parts_overlap"));
 }
 
-#[test]
-fn a_cold_open_may_repeat_its_hook_and_needs_no_link_to_go_back() {
+/// The stitch fixture as a cold open: the punchline, lifted from inside the
+/// answer, plays first; `leave_out` takes it out of the answer.
+fn cold_open(leave_out: bool) -> MindClipPlan {
     let mut plan = fixture("stitch");
     plan.form = MindClipPlanForm::ColdOpen;
-    // The punchline, lifted from inside the answer, plays first.
     let mut hook = plan.parts[1].clone();
     hook.part_id = "p0".parse().unwrap();
     hook.role = PartRole::Hook;
     hook.start_ticks = 770 * S;
     hook.end_ticks = NonZeroU64::new(773 * S).unwrap();
     hook.removed.clear();
+    if leave_out {
+        let mut lifted = plan.parts[1].removed[0].clone();
+        lifted.start_ticks = 770 * S;
+        lifted.end_ticks = NonZeroU64::new(773 * S).unwrap();
+        plan.parts[1].removed.push(lifted);
+        plan.parts[1].removed.sort_by_key(|range| range.start_ticks);
+    }
     plan.parts.insert(0, hook);
     let mut back = plan.joins[0].clone();
     back.after = "p0".parse().unwrap();
@@ -114,7 +122,17 @@ fn a_cold_open_may_repeat_its_hook_and_needs_no_link_to_go_back() {
     back.link = None;
     plan.joins.insert(0, back);
     plan.duration_ticks = NonZeroU64::new(programme_ticks(&plan)).unwrap();
-    assert_eq!(codes(&plan), Vec::<&str>::new());
+    plan
+}
+
+#[test]
+fn a_cold_open_that_leaves_its_hook_out_of_the_body_needs_no_link_to_go_back() {
+    assert_eq!(codes(&cold_open(true)), Vec::<&str>::new());
+}
+
+#[test]
+fn a_cold_open_that_plays_its_hook_again_is_refused() {
+    assert_eq!(codes(&cold_open(false)), ["parts_overlap"]);
 }
 
 #[test]
@@ -186,6 +204,7 @@ fn silent_footage_allows_any_boundary() {
     plan.duration_ticks = NonZeroU64::new(programme_ticks(&plan)).unwrap();
     let silent = Bounds {
         words: &[],
+        lattice: None,
         duration: None,
         source_ticks: 2000 * S,
     };

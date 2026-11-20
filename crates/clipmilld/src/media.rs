@@ -1780,6 +1780,51 @@ fn compute_peaks(wav_path: &Path) -> Result<Vec<Value>, TaskExecutionError> {
     Ok(peaks)
 }
 
+/// The level of the 16 kHz mono rendition in 10 ms frames, in dB of full
+/// scale: what the cut lattice measures pauses from.
+pub(crate) fn frame_levels_16k(wav_path: &Path) -> Result<Vec<f32>, TaskExecutionError> {
+    let info = read_wav_info(wav_path)?;
+    if info.channels != 1 || info.sample_rate != 16_000 {
+        return Err(TaskExecutionError::deterministic(
+            "the cut lattice reads only the 16 kHz mono rendition",
+        ));
+    }
+    let mut file =
+        File::open(wav_path).map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    file.seek(SeekFrom::Start(info.data_offset))
+        .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+    let mut reader = BufReader::new(file.take(info.data_len));
+    let mut levels = Vec::new();
+    let mut buffer = vec![0_u8; clipmill_mind::lattice::SAMPLES_PER_FRAME_16K * 2];
+    let mut samples = Vec::with_capacity(clipmill_mind::lattice::SAMPLES_PER_FRAME_16K);
+    loop {
+        let mut filled = 0;
+        while filled < buffer.len() {
+            let read = reader
+                .read(&mut buffer[filled..])
+                .map_err(|error| TaskExecutionError::transient(error.to_string()))?;
+            if read == 0 {
+                break;
+            }
+            filled += read;
+        }
+        if filled < 2 {
+            break;
+        }
+        samples.clear();
+        samples.extend(
+            buffer[..filled - (filled % 2)]
+                .chunks_exact(2)
+                .map(|pair| i16::from_le_bytes([pair[0], pair[1]])),
+        );
+        levels.push(clipmill_mind::lattice::frame_db(&samples));
+        if filled < buffer.len() {
+            break;
+        }
+    }
+    Ok(levels)
+}
+
 async fn execute_ingest_manifest(
     artifacts: &ArtifactHandle,
     task: &LeasedTask,
@@ -2051,6 +2096,44 @@ mod tests {
         assert_eq!(peaks.len(), 1);
         assert_eq!(peaks[0]["min"], -32_768);
         assert_eq!(peaks[0]["max"], 32_767);
+    }
+
+    #[test]
+    fn frame_levels_read_one_level_per_ten_milliseconds() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let path = temp.path().join("audio.wav");
+        // 25 ms: a frame of silence, a frame at full scale, half a frame.
+        let samples: Vec<i16> = (0..400)
+            .map(|n| match n {
+                160..320 if n % 2 == 0 => i16::MAX,
+                160..320 => -i16::MAX,
+                _ => 0,
+            })
+            .collect();
+        let data_len = u32::try_from(samples.len() * 2).expect("small");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36 + data_len).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend_from_slice(b"fmt ");
+        bytes.extend_from_slice(&16_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_u16.to_le_bytes());
+        bytes.extend_from_slice(&1_u16.to_le_bytes());
+        bytes.extend_from_slice(&16_000_u32.to_le_bytes());
+        bytes.extend_from_slice(&32_000_u32.to_le_bytes());
+        bytes.extend_from_slice(&2_u16.to_le_bytes());
+        bytes.extend_from_slice(&16_u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&data_len.to_le_bytes());
+        for sample in samples {
+            bytes.extend_from_slice(&sample.to_le_bytes());
+        }
+        fs::write(&path, &bytes).expect("write wav");
+        let levels = super::frame_levels_16k(&path).expect("levels");
+        assert_eq!(levels.len(), 3);
+        assert!(levels[0] < -130.0);
+        assert!(levels[1].abs() < 0.01);
+        assert!(levels[2] < -130.0);
     }
 
     #[test]
