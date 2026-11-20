@@ -930,3 +930,17 @@ fn a_lower_case_line_finishes_the_sentence_before_it() {
     assert!(table.may_end(31) && table.may_open(32));
     assert!(table.may_end(33));
 }
+
+#[test]
+fn a_clip_does_not_end_before_the_same_speaker_points_back_at_its_last_line() {
+    let (mut source, words) = recording();
+    // A recogniser split "It was never the plan that the shop…" in two.
+    source.sentences[32].text = "It was never the plan.".to_owned();
+    source.sentences[33].text = "That the shop would close so soon.".to_owned();
+    let table = plain_table(&source, &words);
+    assert!(!table.may_end(32));
+    // From another voice the same line starts their turn instead.
+    source.sentences[33].speaker = Some("host".to_owned());
+    let table = plain_table(&source, &words);
+    assert!(table.may_end(32));
+}

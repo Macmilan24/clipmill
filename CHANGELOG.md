@@ -17,8 +17,9 @@
 - **Cleaner clip shapes.** A clip no longer ends where the speaker carries on
   with "and" or "but", or opens on one. It ends on a line that closes a
   sentence and does not end on a promise such as "here's why", and it opens
-  where the line before it closed a sentence. A line that starts in lower case
-  is read as the rest of the sentence before it. A cold open plays its first line once,
+  where the line before it closed a sentence. A line that starts in lower case,
+  or that the same speaker opens with "that" or "which", is read as the rest
+  of the thought before it. A cold open plays its first line once,
   taking it out of the moment that follows. Removals that would save less than
   2.5 seconds are no longer made.
 - **Safer tightening.** A clip leaves out only filler and false starts that

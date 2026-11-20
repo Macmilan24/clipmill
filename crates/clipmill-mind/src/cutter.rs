@@ -460,7 +460,9 @@ impl Table {
 
     /// Whether a part may end after line `b`: there is a pause to cut in,
     /// the line closes a sentence and promises nothing still to come, and the
-    /// same speaker does not carry the thought on in the next line.
+    /// same speaker does not carry the thought on in the next line, whether
+    /// with a connective ("and…", "but…"), a pointer back ("that…", "which…")
+    /// or a lower-case rest of the sentence.
     fn may_end(&self, b: usize) -> bool {
         let unit = &self.units[b];
         if unit.close.is_none() || !unit.ends_sentence || unit.promises {
@@ -470,7 +472,8 @@ impl Table {
             let same_voice =
                 unit.speaker.is_none() || next.speaker.is_none() || unit.speaker == next.speaker;
             let close = next.start.saturating_sub(unit.end) <= ADJACENT_GAP_TICKS;
-            !(same_voice && (next.starts_lower || (close && carries_on(&next.text))))
+            let points_back = next.points_at_previous || carries_on(&next.text);
+            !(same_voice && (next.starts_lower || (close && points_back)))
         })
     }
 
