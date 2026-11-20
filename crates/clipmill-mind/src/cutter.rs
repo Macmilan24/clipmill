@@ -79,6 +79,55 @@ const CARRIES_ON: [&str; 11] = [
     "and", "but", "because", "cause", "'cause", "or", "which", "although", "though", "whereas",
     "plus",
 ];
+/// Phrases near the end of a line that promise what comes next. A removal
+/// right after such a line would cut the promised thing and keep the promise.
+const PROMISES: [&str; 24] = [
+    "by the stats",
+    "by the numbers",
+    "here's why",
+    "here is why",
+    "here's what",
+    "here is what",
+    "here's how",
+    "here is how",
+    "here's the thing",
+    "let me tell you",
+    "let me give you",
+    "let me explain",
+    "let me show you",
+    "i'll give you",
+    "i'll tell you",
+    "gonna give",
+    "going to give",
+    "two things",
+    "three things",
+    "a few things",
+    "the reason is",
+    "the following",
+    "listen to this",
+    "look at this",
+];
+/// How many words at the end of a line a promise is looked for in.
+const PROMISE_WORDS: usize = 7;
+/// First words that point at the line just before: a removal right before
+/// such a line would leave it pointing at nothing.
+const POINTS_AT_PREVIOUS: [&str; 7] =
+    ["that", "that's", "thats", "this", "these", "those", "which"];
+/// Words that carry no content: a removal made only of these loses nothing.
+const FILLER: [&str; 18] = [
+    "um", "uh", "er", "erm", "ah", "hmm", "mm", "like", "you", "know", "i", "mean", "yeah", "yes",
+    "right", "okay", "ok", "sure",
+];
+/// Short words that say little on their own, left out when comparing what a
+/// speaker said with what they said again.
+const COMMON: [&str; 24] = [
+    "the", "and", "but", "for", "that", "this", "with", "you", "are", "was", "were", "have", "has",
+    "had", "not", "they", "their", "there", "what", "when", "your", "our", "its", "it's",
+];
+/// The longest question a clip that opens on its answer brings in first.
+pub const MAX_QUESTION_TICKS: u64 = 12 * SECOND;
+/// Lines of one asker's turn a question may span.
+const QUESTION_LINES: usize = 3;
 /// Openings that point back at something said before.
 const POINTS_BACK: [&str; 5] = [
     "that's why",
@@ -145,6 +194,88 @@ struct Unit {
     open: Option<u64>,
     /// Where a part may end after this line, likewise.
     close: Option<u64>,
+    /// The line promises what comes next ("here's why", "by the stats").
+    promises: bool,
+    /// The line opens by pointing at the one before it ("that", "this").
+    points_at_previous: bool,
+    /// The line is a question.
+    asks: bool,
+}
+
+/// Whether a line ends by promising what comes next.
+fn promises(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    if lower.ends_with(':') {
+        return true;
+    }
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    let tail = words[words.len().saturating_sub(PROMISE_WORDS)..]
+        .join(" ")
+        .replace([',', '.', '!', '?', ';'], "");
+    PROMISES.iter().any(|phrase| tail.contains(phrase))
+}
+
+/// Whether a line opens by pointing at the line before it.
+fn points_at_previous(text: &str) -> bool {
+    POINTS_AT_PREVIOUS.contains(&first_word(text).as_str())
+}
+
+fn tokens(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .map(|word| {
+            word.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'')
+                .to_lowercase()
+        })
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
+/// Whether removed words are only filler.
+fn only_filler(removed: &str) -> bool {
+    let words = tokens(removed);
+    !words.is_empty() && words.iter().all(|word| FILLER.contains(&word.as_str()))
+}
+
+/// The most words an abandoned start that ends like a sentence may have.
+const FRAGMENT_WORDS: usize = 4;
+
+/// Whether removed words are an abandoned start rather than a finished
+/// sentence: no closing punctuation, or only a few words. Two complete
+/// sentences that open alike ("It's on you to… It's on you to…") are a
+/// speaker's parallelism, not a retake, and both stay.
+fn fragment(removed: &str) -> bool {
+    let trimmed = removed.trim_end_matches(['"', '\'', '”', '’', ')', ' ']);
+    !trimmed.ends_with(['.', '!', '?']) || tokens(removed).len() <= FRAGMENT_WORDS
+}
+
+/// Whether the line after a removed passage opens with its first two words:
+/// the speaker starting the same sentence over.
+fn starts_over(removed: &str, after: &str) -> bool {
+    let (removed, after) = (tokens(removed), tokens(after));
+    removed.len() >= 2 && after.len() >= 2 && removed[..2] == after[..2]
+}
+
+/// Whether the line after an abandoned start says it again: it opens with
+/// the same two words, or repeats two thirds of what the start said. That is
+/// what a retake or a false start looks like, and code can see it without
+/// judging what the words mean.
+fn said_again(removed: &str, after: &str) -> bool {
+    if !fragment(removed) {
+        return false;
+    }
+    if starts_over(removed, after) {
+        return true;
+    }
+    let (removed, after) = (tokens(removed), tokens(after));
+    let reach = &after[..after.len().min(2 * removed.len() + 6)];
+    let content: Vec<&String> = removed
+        .iter()
+        .filter(|word| word.len() >= 3 && !COMMON.contains(&word.as_str()))
+        .collect();
+    // A short passage shares a word or two with almost anything; ask for
+    // three content words, two thirds of them said again.
+    content.len() >= 3
+        && content.iter().filter(|word| reach.contains(word)).count() * 3 >= content.len() * 2
 }
 
 fn first_word(text: &str) -> String {
@@ -218,6 +349,9 @@ impl Table {
                     speaker: s.speaker.clone(),
                     open: edge(s.start_ticks),
                     close: edge(s.end_ticks),
+                    promises: promises(&s.text),
+                    points_at_previous: points_at_previous(&s.text),
+                    asks: s.text.trim_end().ends_with('?'),
                 }
             })
             .collect();
@@ -310,11 +444,75 @@ impl Table {
         unit.open.is_some() && unit.needs.is_none() && !points_back(&unit.text)
     }
 
+    /// Whether taking out lines `first..=last` would leave what stays
+    /// pointing at nothing: the line before promises what came next, the
+    /// line after points back at it or carries it on, or a question would go
+    /// and leave its answer.
+    fn would_dangle(&self, first: usize, last: usize) -> bool {
+        let before = first.checked_sub(1).map(|place| &self.units[place]);
+        let after = self.units.get(last + 1);
+        before.is_some_and(|unit| unit.promises)
+            || after.is_some_and(|unit| unit.points_at_previous || carries_on(&unit.text))
+            || self.units[first..=last].iter().any(|unit| unit.asks)
+    }
+
+    /// Whether the next line says lines `first..=last` again: then a line
+    /// that opens like a continuation is the speaker starting over, and
+    /// nothing is left pointing at what went. A promise before the passage,
+    /// or a question inside it, still keeps it.
+    fn confirmed_restart(&self, first: usize, last: usize) -> bool {
+        let before = first.checked_sub(1).map(|place| &self.units[place]);
+        if before.is_some_and(|unit| unit.promises)
+            || self.units[first..=last].iter().any(|unit| unit.asks)
+        {
+            return false;
+        }
+        let removed: Vec<&str> = self.units[first..=last]
+            .iter()
+            .map(|unit| unit.text.as_str())
+            .collect();
+        let removed = removed.join(" ");
+        fragment(&removed)
+            && self
+                .units
+                .get(last + 1)
+                .is_some_and(|after| starts_over(&removed, &after.text))
+    }
+
+    /// Whether code can confirm that lines `first..=last` are what their
+    /// mark says, so taking them out loses nothing: filler that is only
+    /// filler, or a retake or false start that the next line says again.
+    /// A tangent or aside is a judgement about meaning that code cannot
+    /// check, so it is never taken out on a mark alone.
+    fn confirmed(&self, first: usize, last: usize) -> bool {
+        let removed: Vec<&str> = self.units[first..=last]
+            .iter()
+            .map(|unit| unit.text.as_str())
+            .collect();
+        let removed = removed.join(" ");
+        let marks: Vec<&str> = self.units[first..=last]
+            .iter()
+            .filter_map(|unit| unit.cut)
+            .collect();
+        if marks.iter().all(|&mark| mark == "filler") {
+            return only_filler(&removed);
+        }
+        let restart = marks
+            .iter()
+            .all(|&mark| matches!(mark, "filler" | "false_start" | "repetition"));
+        restart
+            && self
+                .units
+                .get(last + 1)
+                .is_some_and(|after| said_again(&removed, &after.text))
+    }
+
     /// Ranges a tight cut leaves out of `a..=b`: runs of cuttable units
     /// strictly inside it, from the cut after the kept line before to the cut
-    /// before the kept line after. A run with no pause to cut in at either
-    /// end stays, as does one that would save too little; and no more than
-    /// one removal per [`REMOVAL_SPACING_TICKS`] is made, the longest first.
+    /// before the kept line after. A run stays when there is no pause to cut
+    /// in at either end, when it would save too little, or when what stays
+    /// would point at it; and no more than one removal per
+    /// [`REMOVAL_SPACING_TICKS`] is made, the longest first.
     fn removals(&self, a: usize, b: usize) -> Vec<(u64, u64, &'static str)> {
         let mut found = Vec::new();
         let mut place = a + 1;
@@ -327,9 +525,12 @@ impl Table {
             while last + 1 < b && self.units[last + 1].cut.is_some() {
                 last += 1;
             }
+            let dangles = self.would_dangle(place, last) && !self.confirmed_restart(place, last);
             if let (Some(start), Some(end)) =
                 (self.units[place - 1].close, self.units[last + 1].open)
                 && end.saturating_sub(start) >= MIN_REMOVAL_TICKS
+                && self.confirmed(place, last)
+                && !dangles
             {
                 found.push((start, end, reason));
             }
@@ -695,6 +896,7 @@ pub fn candidates_for_brief(material: &Material<'_>, prompt: &str) -> Vec<Candid
             spans(material, version, &mut found);
         }
     }
+    questions_first(material, &table, &mut found);
     cold_opens(material, &table, &mut found);
 
     found.sort_by(|x, y| {
@@ -1487,6 +1689,81 @@ fn spans(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>) {
     }
 }
 
+/// A moment that opens on an answer, with the question that prompts it put
+/// in front: the asker's turn just before, by another voice, ending in a
+/// question. A new viewer then knows what is being answered.
+fn questions_first(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>) {
+    let (_, max) = material.length;
+    let mut framed = Vec::new();
+    for candidate in found.iter() {
+        let [part] = candidate.plan.parts.as_slice() else {
+            continue;
+        };
+        let (Some(a), Some(b)) = (
+            part.units.first().and_then(|u| table.place(u)),
+            part.units.last().and_then(|u| table.place(u)),
+        ) else {
+            continue;
+        };
+        let Some(asked) = a.checked_sub(1) else {
+            continue;
+        };
+        let (answer, question) = (&table.units[a], &table.units[asked]);
+        let other_voice = question.speaker.is_some() && question.speaker != answer.speaker;
+        let close = answer.start.saturating_sub(question.end) <= ADJACENT_GAP_TICKS;
+        if !question.asks || !other_voice || !close || question.cut.is_some() {
+            continue;
+        }
+        // The asker's whole turn, as far back as it opens cleanly.
+        let mut first = asked;
+        while first > 0
+            && asked - first + 1 < QUESTION_LINES
+            && table.units[first - 1].speaker == question.speaker
+            && table.units[first - 1].cut.is_none()
+            && table.units[first]
+                .start
+                .saturating_sub(table.units[first - 1].end)
+                <= ADJACENT_GAP_TICKS
+        {
+            first -= 1;
+        }
+        let Some(first) = (first..=asked).find(|&place| table.may_open(place)) else {
+            continue;
+        };
+        let asking = table.first(a).saturating_sub(table.first(first));
+        if asking > MAX_QUESTION_TICKS || table.kept(first, b) > max {
+            continue;
+        }
+        let draft = Draft {
+            form: single_form(table, first, b),
+            pieces: vec![Piece {
+                a: first,
+                b,
+                role: "body",
+                why: "The question that prompts it, then the answer".to_owned(),
+                lifted: None,
+            }],
+            links: Vec::new(),
+            title: candidate.plan.title.as_deref().map(String::as_str),
+            evidence: candidate
+                .plan
+                .evidence
+                .iter()
+                .map(|e| e.to_string())
+                .collect(),
+        };
+        if let Some(plan) = assemble(material, table, &draft) {
+            framed.push(Candidate {
+                plan,
+                alternatives: Vec::new(),
+                scout: candidate.scout,
+                score: candidate.score + 1,
+            });
+        }
+    }
+    found.extend(framed);
+}
+
 /// The strongest line of a single moment, lifted to open it.
 fn cold_opens(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>) {
     let (min, max) = material.length;
@@ -1512,6 +1789,7 @@ fn cold_opens(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>
                     && unit.cut.is_none()
                     && table.units[place - 1].cut.is_none()
                     && table.units[place + 1].cut.is_none()
+                    && !table.would_dangle(place, place)
                     && unit.open.is_some()
                     && unit.close.is_some()
                     && unit.end - unit.start <= MAX_LIFT_TICKS

@@ -18,6 +18,11 @@
   with "and" or "but", or opens on one. A cold open plays its first line once,
   taking it out of the moment that follows. Removals that would save less than
   2.5 seconds are no longer made.
+- **Safer tightening.** A clip leaves out only filler and false starts that
+  the speaker says again in the next line. A passage marked as a tangent
+  stays, and nothing is taken out when the words kept around it would point
+  at it ("here's why", "that's why") or when it holds a question. A clip that
+  opens on an answer is also offered with the question that prompts it.
 
 ## 0.5.1 — Whisper on older Windows PCs and reliable upgrades
 

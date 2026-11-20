@@ -17,10 +17,13 @@ fn recording() -> (Source, Vec<(u64, u64)>) {
             start_ticks: i * 6 * S,
             end_ticks: i * 6 * S + 5 * S,
             speaker: Some(if i < 20 { "host" } else { "guest" }.to_owned()),
-            text: if matches!(i, 12 | 25 | 49) {
-                format!("Line {i}: back when we were at Northwind.")
-            } else {
-                format!("Line {i} of the conversation.")
+            text: match i {
+                12 | 25 | 49 => format!("Line {i}: back when we were at Northwind."),
+                // A retake: the speaker starts twice, then says it whole.
+                13 => "We tried to get".to_owned(),
+                14 => "we tried to get a loan from".to_owned(),
+                15 => "We tried to get a loan from the bank, and they said no.".to_owned(),
+                _ => format!("Line {i} of the conversation."),
             },
         })
         .collect();
@@ -38,7 +41,7 @@ fn recording() -> (Source, Vec<(u64, u64)>) {
     )
 }
 
-/// The markup: hooks, landings, a tangent, a dependency.
+/// The markup: hooks, landings, a retake, a dependency.
 fn scores() -> MindUnitScores {
     let mut units: Vec<serde_json::Value> = (0..60)
         .map(|i| json!({ "unit": format!("s{i}"), "hook": "none", "landing": "none", "trim": "keep" }))
@@ -51,8 +54,8 @@ fn scores() -> MindUnitScores {
         (30, "landing", "good"),
         (42, "landing", "strong"),
         (50, "landing", "good"),
-        (13, "trim", "tangent"),
-        (14, "trim", "tangent"),
+        (13, "trim", "retake"),
+        (14, "trim", "retake"),
     ] {
         units[unit][field] = json!(value);
     }
@@ -79,7 +82,7 @@ fn event(id: &str, kind: &str, first: u64, last: u64, entities: &[&str]) -> serd
     })
 }
 
-/// A question at s3 answered at s40, a story with a tangent, a story with a
+/// A question at s3 answered at s40, a story with a retake, a story with a
 /// strong line in its middle, and one company named in three moments.
 fn memory() -> MindMemory {
     serde_json::from_value(json!({
@@ -186,7 +189,7 @@ fn a_long_linked_answer_uses_the_available_sentence_boundary() {
 }
 
 #[test]
-fn a_tangent_inside_a_story_is_cut_out() {
+fn a_retake_inside_a_story_is_cut_out() {
     let found = cut(true);
     let tight = find(&found, MindClipPlanForm::Tightened);
     let [part] = tight.plan.parts.as_slice() else {
@@ -722,7 +725,8 @@ fn a_removal_that_saves_too_little_is_not_made_and_removals_are_spaced() {
         memory: None,
         length: (15 * S, 60 * S),
     });
-    // A two-second aside: not worth the jump.
+    // Two seconds of filler: not worth the jump.
+    table.units[14].text = "Um, you know, like.".to_owned();
     table.units[14].cut = Some("filler");
     table.units[13].close = Some(88 * S);
     table.units[15].open = Some(90 * S);
@@ -742,6 +746,7 @@ fn a_removal_that_saves_too_little_is_not_made_and_removals_are_spaced() {
         length: (15 * S, 60 * S),
     });
     for unit in [21, 23, 25, 27] {
+        table.units[unit].text = "Uh, yeah, right.".to_owned();
         table.units[unit].cut = Some("filler");
     }
     table.units[24].close = Some(149 * S - S / 2);
@@ -749,4 +754,106 @@ fn a_removal_that_saves_too_little_is_not_made_and_removals_are_spaced() {
     assert_eq!(kept.len(), 3);
     assert!(kept.windows(2).all(|pair| pair[0].0 < pair[1].0));
     assert!(kept.iter().any(|&(start, _, _)| start == 149 * S - S / 2));
+}
+
+fn plain_table(source: &Source, words: &[(u64, u64)]) -> Table {
+    Table::new(&Material {
+        source_fingerprint: "",
+        source,
+        words,
+        lattice: None,
+        scores: None,
+        memory: None,
+        length: (15 * S, 60 * S),
+    })
+}
+
+/// A retake at s14 that s15 says again, in an otherwise plain recording.
+fn retake() -> (Source, Vec<(u64, u64)>) {
+    let (mut source, words) = recording();
+    source.sentences[14].text = "the net worth".to_owned();
+    source.sentences[15].text = "The net worth of people is up in every generation.".to_owned();
+    (source, words)
+}
+
+#[test]
+fn a_retake_the_next_line_says_again_is_cut_and_a_tangent_on_a_mark_alone_is_not() {
+    let (source, words) = retake();
+    let mut table = plain_table(&source, &words);
+    table.units[14].cut = Some("false_start");
+    assert_eq!(table.removals(10, 18), [(83 * S, 90 * S, "false_start")]);
+    // Marked as a tangent, the same line stays: that is a judgement about
+    // meaning, and code cannot check it.
+    table.units[14].cut = Some("tangent");
+    assert!(table.removals(10, 18).is_empty());
+    // Two finished sentences that open alike are the speaker's parallelism,
+    // not a retake, even when the markup calls the first one a repetition.
+    let (mut source, words) = recording();
+    source.sentences[14].text = "It's on you to make the decision to take on debt.".to_owned();
+    source.sentences[15].text = "It's on you to choose what you study.".to_owned();
+    let mut table = plain_table(&source, &words);
+    table.units[14].cut = Some("repetition");
+    assert!(table.removals(10, 18).is_empty());
+    // A false start the next line does not say again stays too.
+    let (source, words) = recording();
+    let mut table = plain_table(&source, &words);
+    table.units[20].cut = Some("false_start");
+    assert!(table.removals(18, 24).is_empty());
+}
+
+#[test]
+fn a_removal_is_not_made_when_what_stays_would_point_at_it() {
+    // The promise before the retake would be kept and its delivery cut.
+    let (mut source, words) = retake();
+    source.sentences[13].text = "Let me put it to you by the stats.".to_owned();
+    let mut table = plain_table(&source, &words);
+    table.units[14].cut = Some("false_start");
+    assert!(table.removals(10, 18).is_empty());
+
+    // The line after carries on what was cut rather than saying it again.
+    let (mut source, words) = recording();
+    source.sentences[14].text = "They're worried about your ability".to_owned();
+    source.sentences[15].text = "or their ability to see your ability in an interview.".to_owned();
+    let mut table = plain_table(&source, &words);
+    table.units[14].cut = Some("repetition");
+    assert!(table.removals(10, 18).is_empty());
+
+    // A question goes and leaves its answer.
+    let (mut source, words) = recording();
+    source.sentences[14].text = "Why did you leave?".to_owned();
+    source.sentences[15].text = "Why did you leave the company, he asked.".to_owned();
+    let mut table = plain_table(&source, &words);
+    table.units[14].cut = Some("repetition");
+    assert!(table.removals(10, 18).is_empty());
+}
+
+#[test]
+fn a_moment_that_opens_on_an_answer_is_offered_with_its_question_first() {
+    let (mut source, words) = recording();
+    // The host asks just before the guest's story at s22.
+    source.sentences[21].speaker = Some("host".to_owned());
+    source.sentences[21].text = "What happened when the deal fell through?".to_owned();
+    let (scores, memory) = (scores(), memory());
+    let found = candidates(&Material {
+        source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+        source: &source,
+        words: &words,
+        lattice: None,
+        scores: Some(&scores),
+        memory: Some(&memory),
+        length: (15 * S, 60 * S),
+    });
+    let framed = every_plan(&found)
+        .find(|plan| {
+            plan.parts.len() == 1
+                && plan.parts[0].start_ticks == 126 * S
+                && plan.parts[0].units.contains(&"s22".parse().unwrap())
+        })
+        .unwrap_or_else(|| panic!("no plan opens on the question: {:?}", forms(&found)));
+    assert!(
+        framed.parts[0]
+            .why
+            .as_deref()
+            .is_some_and(|why| why.contains("question"))
+    );
 }
