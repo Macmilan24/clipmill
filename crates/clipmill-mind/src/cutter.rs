@@ -207,6 +207,17 @@ struct Unit {
     /// The line closes a sentence, by its punctuation. True for every line
     /// of a transcript that is not punctuated, where nothing can be told.
     ends_sentence: bool,
+    /// The line opens in lower case: the rest of a sentence a recogniser
+    /// broke with a stray full stop ("…a new city for work. turned out…").
+    starts_lower: bool,
+}
+
+/// Whether a line's first letter is lower case. Scripts without case never
+/// are.
+fn opens_lower(text: &str) -> bool {
+    text.chars()
+        .find(|c| c.is_alphabetic())
+        .is_some_and(char::is_lowercase)
 }
 
 /// Whether a line closes a sentence: final punctuation, past any closing
@@ -368,6 +379,7 @@ impl Table {
                     points_at_previous: points_at_previous(&s.text),
                     asks: s.text.trim_end().ends_with('?'),
                     ends_sentence: closes_sentence(&s.text),
+                    starts_lower: opens_lower(&s.text),
                 }
             })
             .collect();
@@ -458,7 +470,7 @@ impl Table {
             let same_voice =
                 unit.speaker.is_none() || next.speaker.is_none() || unit.speaker == next.speaker;
             let close = next.start.saturating_sub(unit.end) <= ADJACENT_GAP_TICKS;
-            !(same_voice && close && carries_on(&next.text))
+            !(same_voice && (next.starts_lower || (close && carries_on(&next.text))))
         })
     }
 
@@ -470,7 +482,11 @@ impl Table {
         let starts_sentence = a
             .checked_sub(1)
             .is_none_or(|before| self.units[before].ends_sentence);
-        unit.open.is_some() && starts_sentence && unit.needs.is_none() && !points_back(&unit.text)
+        unit.open.is_some()
+            && starts_sentence
+            && !unit.starts_lower
+            && unit.needs.is_none()
+            && !points_back(&unit.text)
     }
 
     /// Whether taking out lines `first..=last` would leave what stays

@@ -867,6 +867,9 @@ fn a_clip_ends_where_a_sentence_closes_and_promises_nothing_more() {
     source.sentences[30].text = "I'm gonna give it back to you by the numbers.".to_owned();
     source.sentences[20].text = "Right".to_owned();
     source.sentences[21].text = "now nobody knows what happens next.".to_owned();
+    // A stray full stop: s33 finishes the sentence s32 began.
+    source.sentences[32].text = "Moving to a new city for work.".to_owned();
+    source.sentences[33].text = "turned out to be harder than we thought.".to_owned();
     let (scores, memory) = (scores(), memory());
     let found = candidates(&Material {
         source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
@@ -884,6 +887,12 @@ fn a_clip_ends_where_a_sentence_closes_and_promises_nothing_more() {
             assert_ne!(end, 113 * S, "ends on an unfinished line");
             assert_ne!(end, 185 * S, "ends on a promise");
             assert_ne!(part.start_ticks, 126 * S, "opens on the end of a sentence");
+            assert_ne!(
+                end,
+                197 * S,
+                "ends where a lower-case line finishes the sentence"
+            );
+            assert_ne!(part.start_ticks, 198 * S, "opens on a lower-case line");
         }
     }
 }
@@ -905,4 +914,19 @@ fn a_transcript_without_punctuation_still_gives_clips() {
         length: (15 * S, 60 * S),
     });
     assert!(!found.is_empty());
+}
+
+#[test]
+fn a_lower_case_line_finishes_the_sentence_before_it() {
+    let (mut source, words) = recording();
+    source.sentences[32].text = "Moving to a new city for work.".to_owned();
+    source.sentences[33].text = "turned out to be harder than we thought.".to_owned();
+    let table = plain_table(&source, &words);
+    assert!(!table.may_end(32), "the next line finishes this sentence");
+    assert!(
+        !table.may_open(33),
+        "a lower-case line is the rest of a sentence"
+    );
+    assert!(table.may_end(31) && table.may_open(32));
+    assert!(table.may_end(33));
 }
