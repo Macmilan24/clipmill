@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.5.2 — Dependency audit maintenance
+
+- **Dependency audit.** RustSec withdrew its ten advisories for the gtk-rs
+  GTK3 bindings (RUSTSEC-2024-0411 to 0420), so `deny.toml` no longer lists
+  them as exceptions (#148). Each remaining exception now names the
+  dependency that brings the crate in. Studio, the engine and the `clipmill`
+  command are unchanged from 0.5.1.
+
 ## 0.5.1 — Whisper on older Windows PCs and reliable upgrades
 
 - **Speech recognition on older Windows PCs.** Whisper selects a CPU build
