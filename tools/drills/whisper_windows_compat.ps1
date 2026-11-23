@@ -67,7 +67,9 @@ if ((Get-FileHash -LiteralPath $wheel -Algorithm SHA256).Hash -ne $entries[0].sh
 
 $kit = 'sde-external-10.13.1-2026-07-28-win'
 $archive = Get-PinnedFile "https://downloadmirror.intel.com/924984/$kit.tar.xz" "$kit.tar.xz" '74e626ede09b0baa5011fc9e51b58627ea92c3fc0bae5fd7db34b490f335f651'
-& tar -xf $archive -C $work
+Write-Host 'Extracting the verified Intel SDE kit'
+# The tar shipped on Server 2022 can hang while unpacking xz input.
+& python -I -m tarfile --extract $archive $work --filter data
 if ($LASTEXITCODE -ne 0) { throw 'Could not extract the verified Intel SDE kit' }
 $sde = Join-Path $work "$kit/sde.exe"
 $audio = Get-PinnedFile 'https://raw.githubusercontent.com/ggml-org/whisper.cpp/2eeeba56e9edd762b4b38467bab96c2517163158/samples/jfk.wav' 'jfk.wav' '59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e'
