@@ -7,8 +7,9 @@ name: windows-smoke
 # the app's own FFmpeg, and stops when asked.
 #
 # Release builds call this workflow with their own installer and commit.
-# Pull requests that change the smoke test exercise it on the latest successful
-# release build. It can also be run by hand against a specific build.
+# Pull requests that change the smoke test exercise it on the newest release
+# build whose Windows installer has not expired. It can also be run by hand
+# against a specific build.
 on:
   workflow_call:
     inputs:
@@ -26,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       release-run:
-        description: The release run whose Windows installer to test (default, the newest that succeeded)
+        description: The release run whose Windows installer to test (default, the newest build that still has one)
         required: false
       compatibility:
         description: Test upgrades and Windows Whisper CPU compatibility (ClipMill 0.5.1 or later)
@@ -67,7 +68,19 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_RUN: ${{ inputs.release-run }}
         run: |
-          run="${RELEASE_RUN:-$(gh run list --workflow release.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')}"
+          # The run the caller names, else the newest build whose Windows
+          # installer has not expired. The newest successful release run may
+          # have none: a run that drafts from another run's installers builds
+          # nothing.
+          run="$RELEASE_RUN"
+          if [ -z "$run" ]; then
+            run="$(gh api "repos/$GH_REPO/actions/artifacts?name=installers-windows-x86_64&per_page=100" \
+              --jq '[.artifacts[] | select(.expired | not)] | max_by(.created_at) | .workflow_run.id // empty')"
+          fi
+          if [ -z "$run" ]; then
+            echo "no release build has an unexpired Windows installer" >&2
+            exit 1
+          fi
           echo "testing the Windows installer from release run $run"
           gh run download "$run" --name installers-windows-x86_64 --dir installer
           ls -la installer
