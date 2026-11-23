@@ -1,214 +1,78 @@
 name: release
+run-name: Draft 0.5.2 from its verified installers
 
-# Pushing a tag v<version> builds the installers on each platform's own runner
-# and collects them into a draft GitHub release, which a person reviews and
-# publishes. Only the final job may write, and it runs no third-party code:
-# it downloads what the read-only build jobs produced and hands it to `gh`.
-#
-# Run by hand on any branch, it is a trial build: the installers are kept as
-# the run's artifacts and nothing is drafted.
-on:
-  push:
-    tags: ['v*']
-  workflow_dispatch:
+on: workflow_dispatch
 
 permissions:
   contents: read
-
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  actions: read
 
 env:
-  # The Python every uv command uses, whatever the runner image ships: the
-  # project's version (.python-version). Left to choose, uv took the image's
-  # newest Python, for which pyarrow publishes no wheel, and every job that
-  # syncs a worker tried to compile it.
-  UV_PYTHON: '3.12'
+  GH_REPO: Macmilan24/clipmill
+  TAG: v0.5.2
+  REVISION: 5c93ae4a3b4fab1e554fac551facbb79d19a8581
+  BUILD: '45185028658'
+  WINDOWS_CHECK: '45234878634'
+  CHECK_REVISION: 9b2203bab14873831541cadef46242b6d396a468
 
 jobs:
-  build:
-    name: build (${{ matrix.name }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    env:
-      # A secret cannot appear in a condition; whether it exists can.
-      HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macos-arm64
-            runner: macos-15
-            target: aarch64-apple-darwin
-            bundles: app,dmg
-          # The oldest supported Ubuntu, so the AppImage and the .deb run on
-          # every distribution with at least its glibc.
-          - name: linux-x86_64
-            runner: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundles: appimage,deb
-          # Beta. The NSIS installer fetches WebView2 where Windows lacks it.
-          - name: windows-x86_64
-            runner: windows-2025
-            target: x86_64-pc-windows-msvc
-            bundles: nsis
+  verify:
+    if: github.repository == 'Macmilan24/clipmill' && github.ref == 'refs/heads/release/0.5.2-installers'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          key: release-${{ matrix.target }}
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      # WebView and bundler dependencies, and the libraries the shots worker's
-      # OpenCV wheel resolves when the staged components are imported below.
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf \
-            libgl1 libglib2.0-0 file
-      - run: pnpm install --frozen-lockfile
-      - name: Check the tag names this version
-        if: github.event_name == 'push'
-        shell: bash
-        run: |
-          version="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match the app version $version"
-            exit 1
-          fi
-      # Every pinned download is checked against bom.toml, and every component
-      # is installed once here exactly as the app would, then started.
-      - name: Stage the daemon, sidecars, resources and components
-        run: >
-          uv run --no-project --with packaging==25.0
-          python tools/release/stage.py --target ${{ matrix.target }} --verify-engine
-      # Signing happens only where its secrets exist. Without an Apple
-      # certificate the Mac app is ad-hoc signed and macOS asks the person to
-      # allow it once (see docs/install.md).
-      - name: Import the Apple signing certificate
-        if: runner.os == 'macOS' && env.HAS_APPLE_CERTIFICATE == 'true'
+      - name: Verify the tagged builds and the Windows compatibility result
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          keychain="$RUNNER_TEMP/signing.keychain-db"
-          password="$(openssl rand -hex 16)"
-          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security create-keychain -p "$password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$password" "$keychain"
-          security import "$RUNNER_TEMP/certificate.p12" -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$keychain"
-          security list-keychain -d user -s "$keychain"
-          rm -f "$RUNNER_TEMP/certificate.p12"
-      - name: Build the installers
-        shell: bash
-        env:
-          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          NOTARY_ID: ${{ secrets.APPLE_ID }}
-          NOTARY_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          NOTARY_TEAM: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          # The bundler signs and notarizes only when told who to sign as; an
-          # empty identity would be a failed signature, not an ad-hoc one.
-          if [ -n "$SIGNING_IDENTITY" ]; then
-            export APPLE_SIGNING_IDENTITY="$SIGNING_IDENTITY"
-            if [ -n "$NOTARY_ID" ] && [ -n "$NOTARY_PASSWORD" ] && [ -n "$NOTARY_TEAM" ]; then
-              export APPLE_ID="$NOTARY_ID" APPLE_PASSWORD="$NOTARY_PASSWORD" APPLE_TEAM_ID="$NOTARY_TEAM"
-            fi
-          fi
-          pnpm --filter @clipmill/desktop tauri build \
-            --config src-tauri/tauri.release.conf.json \
-            --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
-      # A Mac app whose bundle is not signed as a whole, even ad hoc, is
-      # reported "damaged" when downloaded, with no way to open it; stop here
-      # rather than publish one.
-      - name: Verify the Mac app's signature
-        if: runner.os == 'macOS'
-        run: >
-          codesign --verify --deep --strict --verbose=2
-          "target/${{ matrix.target }}/release/bundle/macos/ClipMill.app"
-      - name: Connect to the installed MCP command (macOS)
-        if: runner.os == 'macOS'
-        run: >-
-          python3 tools/release/verify_cli.py
-          "target/${{ matrix.target }}/release/bundle/macos/ClipMill.app/Contents/MacOS"
-      - name: Connect to the installed MCP command (Debian)
-        if: runner.os == 'Linux'
-        run: |
-          dpkg-deb --extract target/${{ matrix.target }}/release/bundle/deb/*.deb "$RUNNER_TEMP/clipmill-install"
-          python3 tools/release/verify_cli.py "$RUNNER_TEMP/clipmill-install/usr/bin"
-      - name: Reconnect using the portable AppImage Settings command
-        if: runner.os == 'Linux'
-        run: python3 tools/release/verify_cli.py --appimage target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
-      - name: Connect to the installed MCP command (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $setup = Get-Item "target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe"
-          $install = Join-Path $env:RUNNER_TEMP 'clipmill-install'
-          $process = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$install" -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
-          python tools/release/verify_cli.py "$install"
-      - name: Collect the installers
-        shell: bash
-        run: |
-          mkdir -p dist-release
-          bundle="target/${{ matrix.target }}/release/bundle"
-          find "$bundle" -maxdepth 2 -type f \
-            \( -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*-setup.exe' \) \
-            -exec cp {} dist-release/ \;
-          ls -la dist-release
-          test -n "$(ls dist-release)"
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
-        with:
-          name: installers-${{ matrix.name }}
-          path: dist-release/
-          if-no-files-found: error
-          retention-days: 14
+          set -euo pipefail
+          test "$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)" = "$REVISION"
+          gh api "repos/$GH_REPO/actions/runs/$BUILD" | jq -e --arg rev "$REVISION" --arg tag "$TAG" '
+            .event == "push" and .path == ".github/workflows/release.yml" and
+            .head_sha == $rev and .head_branch == $tag'
+          gh api "repos/$GH_REPO/actions/runs/$BUILD/jobs" | jq -e '
+            ([.jobs[] | select(.name | startswith("build (")) | select(.conclusion == "success") | .name] | sort) ==
+            ["build (linux-x86_64)", "build (macos-arm64)", "build (windows-x86_64)"]'
+          gh api "repos/$GH_REPO/actions/runs/$WINDOWS_CHECK" | jq -e --arg rev "$CHECK_REVISION" '
+            .event == "workflow_dispatch" and .path == ".github/workflows/windows-smoke.yml" and
+            .head_sha == $rev and .conclusion == "success"'
+          job="$(gh api "repos/$GH_REPO/actions/runs/$WINDOWS_CHECK/jobs" --jq '.jobs[] | select(.name == "install and run (windows)" and .conclusion == "success") | .id')"
+          gh api --allow-escape-sequences "repos/$GH_REPO/actions/jobs/$job/logs" > "$RUNNER_TEMP/windows-check.log"
+          grep -Fq "testing the Windows installer from release run $BUILD" "$RUNNER_TEMP/windows-check.log"
+          for profile in native ivybridge nehalem; do
+            grep -Fq "$profile/transcription passed" "$RUNNER_TEMP/windows-check.log"
+          done
 
-  windows-smoke:
-    name: Test the Windows installer
-    needs: build
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/windows-smoke.yml
-    with:
-      release-run: ${{ format('{0}', github.run_id) }}
-      compatibility: true
-
-  publish:
-    name: publish (draft release)
-    needs: windows-smoke
-    if: github.event_name == 'push'
+  draft:
+    name: Create the draft from the tagged build
+    needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
+          github-token: ${{ github.token }}
+          run-id: '45185028658'
           pattern: installers-*
           merge-multiple: true
           path: dist-release
-      - name: Create the draft release
+      - name: Checksum the four installers and create a draft
+        working-directory: dist-release
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
-          cd dist-release
-          sha256sum * > SHA256SUMS.txt
-          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
-            --title "ClipMill ${GITHUB_REF_NAME#v}" \
-            --notes "Installers for macOS (Apple silicon), Linux (x86_64) and, in beta, Windows (x86_64). See docs/install.md for installing, and CHANGELOG.md for what changed. SHA256SUMS.txt lists every file's digest." \
-            ./*
+          set -euo pipefail
+          installers=(ClipMill_0.5.2_aarch64.dmg ClipMill_0.5.2_amd64.AppImage ClipMill_0.5.2_amd64.deb ClipMill_0.5.2_x64-setup.exe)
+          for file in "${installers[@]}"; do
+            test -s "$file"
+            test ! -L "$file"
+          done
+          files=(*)
+          test "${#files[@]}" -eq "${#installers[@]}"
+          sha256sum "${installers[@]}" > SHA256SUMS.txt
+          gh release create "$TAG" --verify-tag --draft --title "ClipMill 0.5.2" \
+            --notes "Dependency security updates." \
+            "${installers[@]}" SHA256SUMS.txt
