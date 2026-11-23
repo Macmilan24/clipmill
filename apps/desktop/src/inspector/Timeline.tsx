@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import type { Peaks } from '../results/loader.js';
-import { type ClipRow, TICKS_PER_SECOND } from '../results/model.js';
+import { type ClipPart, type ClipRow, TICKS_PER_SECOND, playedSpans } from '../results/model.js';
 import { type Transcript, snapEnd, snapStart } from '../results/transcript.js';
 import { waveformPath } from '../results/waveform.js';
 import type { PlaybackController } from './playback.js';
@@ -106,19 +106,26 @@ export function Overview({
           style={{ left: at(view.startTicks), width: at(view.endTicks - view.startTicks) }}
           aria-hidden="true"
         />
-        {rows.map((row) => (
-          <button
-            key={row.candidateId}
-            type="button"
-            className="review-overview-mark"
-            data-decision={row.decision ?? 'none'}
-            aria-current={row.candidateId === candidateId ? 'true' : undefined}
-            aria-label={`Clip ${String(row.rank).padStart(2, '0')}: ${row.headline || 'Untitled clip'}`}
-            title={`${String(row.rank).padStart(2, '0')} · ${row.headline}`}
-            style={{ left: at(row.startTicks), width: at(row.endTicks - row.startTicks) }}
-            onClick={() => onSelect(row.candidateId)}
-          />
-        ))}
+        {rows.flatMap((row) =>
+          // A clip of parts is marked where each part is, not across the
+          // stretch between them.
+          (row.parts ? playedSpans(row) : [row]).map((stretch, index) => (
+            <button
+              key={`${row.candidateId}:${index}`}
+              type="button"
+              className="review-overview-mark"
+              data-decision={row.decision ?? 'none'}
+              aria-current={row.candidateId === candidateId ? 'true' : undefined}
+              aria-label={`Clip ${String(row.rank).padStart(2, '0')}: ${row.headline || 'Untitled clip'}`}
+              title={`${String(row.rank).padStart(2, '0')} · ${row.headline}`}
+              style={{
+                left: at(stretch.startTicks),
+                width: at(stretch.endTicks - stretch.startTicks),
+              }}
+              onClick={() => onSelect(row.candidateId)}
+            />
+          )),
+        )}
         <Playhead controller={controller} from={0} span={span} />
       </div>
       <span className="review-lane-label mono">
@@ -146,6 +153,12 @@ export interface BoundaryStripProps {
   readonly controller: PlaybackController;
   /** Null while the handles are not the reviewer's to move (auditioning). */
   readonly onCut: ((cut: Cut) => void) | null;
+  /**
+   * A clip of parts, in playback order. What each plays is marked and
+   * numbered, and the rest is set back; there are no handles, since parts
+   * are changed in the editor.
+   */
+  readonly parts?: readonly ClipPart[] | null;
 }
 
 type Grab = 'in' | 'out' | 'playhead';
@@ -164,6 +177,7 @@ export function BoundaryStrip({
   onView,
   controller,
   onCut,
+  parts = null,
 }: BoundaryStripProps) {
   const track = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -431,22 +445,29 @@ export function BoundaryStrip({
             aria-hidden="true"
           />
         )}
-        <span
-          className="review-outside"
-          style={{ left: 0, width: at(cut.startTicks) }}
-          aria-hidden="true"
-        />
-        <span
-          className="review-outside"
-          style={{ left: at(cut.endTicks), right: 0 }}
-          aria-hidden="true"
-        />
-        <span
-          className="review-cut"
-          style={{ left: at(cut.startTicks), width: wide(cut.startTicks, cut.endTicks) }}
-          aria-hidden="true"
-        />
+        {parts ? (
+          <PartMarks parts={parts} at={at} wide={wide} />
+        ) : (
+          <>
+            <span
+              className="review-outside"
+              style={{ left: 0, width: at(cut.startTicks) }}
+              aria-hidden="true"
+            />
+            <span
+              className="review-outside"
+              style={{ left: at(cut.endTicks), right: 0 }}
+              aria-hidden="true"
+            />
+            <span
+              className="review-cut"
+              style={{ left: at(cut.startTicks), width: wide(cut.startTicks, cut.endTicks) }}
+              aria-hidden="true"
+            />
+          </>
+        )}
         {onCut &&
+          !parts &&
           (['in', 'out'] as const).map((edge) => {
             const tick = edge === 'in' ? cut.startTicks : cut.endTicks;
             return (
@@ -478,5 +499,56 @@ export function BoundaryStrip({
         <Playhead controller={controller} from={view.startTicks} span={span} />
       </div>
     </div>
+  );
+}
+
+/**
+ * A clip's parts on the strip: what each plays marked and numbered in the
+ * order it plays, and everything else, what was taken out of a part included,
+ * set back.
+ */
+function PartMarks({
+  parts,
+  at,
+  wide,
+}: {
+  readonly parts: readonly ClipPart[];
+  readonly at: (ticks: number) => string;
+  readonly wide: (from: number, to: number) => string;
+}) {
+  const inOrder = parts
+    .flatMap((part) => part.kept)
+    .toSorted((left, right) => left.startTicks - right.startTicks);
+  const gaps: Cut[] = [];
+  let from = 0;
+  for (const part of inOrder) {
+    if (part.startTicks > from) gaps.push({ startTicks: from, endTicks: part.startTicks });
+    from = Math.max(from, part.endTicks);
+  }
+  return (
+    <>
+      {gaps.map((gap) => (
+        <span
+          key={`gap:${gap.startTicks}`}
+          className="review-outside"
+          style={{ left: at(gap.startTicks), width: wide(gap.startTicks, gap.endTicks) }}
+          aria-hidden="true"
+        />
+      ))}
+      <span className="review-outside" style={{ left: at(from), right: 0 }} aria-hidden="true" />
+      {parts.flatMap((part, index) =>
+        part.kept.map((span, piece) => (
+          <span
+            key={`part:${index}:${span.startTicks}`}
+            className="review-cut review-part"
+            style={{ left: at(span.startTicks), width: wide(span.startTicks, span.endTicks) }}
+            title={`Part ${index + 1} of ${parts.length}, ${part.label.toLowerCase()} · ${clockTenths(span.startTicks)} – ${clockTenths(span.endTicks)}`}
+            aria-hidden="true"
+          >
+            {piece === 0 && <span className="review-part-number mono">{index + 1}</span>}
+          </span>
+        )),
+      )}
+    </>
   );
 }

@@ -21,14 +21,7 @@ import { newest } from '../daemon/ordering.js';
 import type { ClipDecisionRecord, Job, Source } from '../daemon/client.js';
 import { REPROMPT_KIND, publishedArtifact } from '../library/model.js';
 import { type ClipRow, type Summary, clipRows, summarize } from './model.js';
-import {
-  MIND_CANDIDATES_KIND,
-  MIND_RANKING_KIND,
-  type PlannedClip,
-  type PlanRanking,
-  readPlanRanking,
-  readPlans,
-} from './plans.js';
+import { MIND_RANKING_KIND, planRows, planSummary, readPlanRanking } from './plans.js';
 import { type Transcript, readTranscript } from './transcript.js';
 import { type Voices, readVoices } from './voices.js';
 
@@ -119,14 +112,6 @@ export interface ResultsSnapshot {
   readonly speakersArtifactId?: string | null;
   /** The index the rows were joined from, kept for the transcript's sentences. */
   readonly index?: IndexTranscript | null;
-  /**
-   * The mind's clips: plans of parts, best first. Empty for a run without
-   * local editorial, or one that found nothing to build.
-   */
-  readonly plans?: readonly PlannedClip[];
-  readonly editorialRanking?: PlanRanking | null;
-  readonly searchable?: boolean;
-  readonly requestedCount?: number;
   readonly problem: ResultsProblem | null;
 }
 
@@ -144,7 +129,6 @@ export const EMPTY_SNAPSHOT: ResultsSnapshot = {
   transcriptArtifactId: null,
   speakersArtifactId: null,
   index: null,
-  plans: [],
   problem: { kind: 'no-source' },
 };
 
@@ -165,16 +149,6 @@ function analyzed(jobs: readonly Job[], sourceId: string, jobId: string | null):
         (job.sourceId === '' || job.sourceId === sourceId),
     ),
   );
-}
-
-/** Plans from a document that may be absent or unreadable. */
-function plansOf(json: string | null, sourceFingerprint: string): readonly PlannedClip[] {
-  if (!json) return [];
-  try {
-    return readPlans(JSON.parse(json), sourceFingerprint);
-  } catch {
-    return [];
-  }
 }
 
 export class ResultsLoader {
@@ -222,8 +196,8 @@ export class ResultsLoader {
         peaksDoc,
         documents,
         sourceMapDoc,
-        plansDoc,
         editorialDoc,
+        planIds,
       ] = await Promise.all([
         !editorial && ranking ? this.api.readDocument(projectId, ranking) : null,
         !editorial && candidates ? this.api.readDocument(projectId, candidates) : null,
@@ -238,10 +212,8 @@ export class ResultsLoader {
           projectId,
           find('evidence.source_map.v1') ?? (source.sourceMapArtifactId || null),
         ),
-        // The mind's clips, when the run had a local editorial model. A
-        // failure here costs the plans, never the board.
-        !editorial ? this.readOptional(projectId, find(MIND_CANDIDATES_KIND)) : null,
         editorial ? this.api.readDocument(projectId, editorial) : null,
+        editorial ? this.planIds(projectId, source.sourceId, job.jobId) : new Map(),
       ]);
       const editorialRanking = editorialDoc
         ? readPlanRanking(JSON.parse(editorialDoc.json), source.sourceFingerprint)
@@ -256,14 +228,23 @@ export class ResultsLoader {
         ? (JSON.parse(candidateDoc.json) as DiscoveryCandidates)
         : null;
       const index = indexDoc ? (JSON.parse(indexDoc) as IndexTranscript) : null;
-      const rows =
-        rankingSet && candidateSet
+      const sourceDocuments = documents.filter((document) => document.sourceId === source.sourceId);
+      // The mind's clips are rows like any other: a person reviews, approves
+      // and edits them the same way, whatever they are built from.
+      const rows = editorialRanking
+        ? planRows(
+            editorialRanking,
+            planIds,
+            decisions as readonly ClipDecisionRecord[],
+            sourceDocuments,
+          )
+        : rankingSet && candidateSet
           ? clipRows(
               rankingSet,
               candidateSet,
               index,
               decisions as readonly ClipDecisionRecord[],
-              documents.filter((document) => document.sourceId === source.sourceId),
+              sourceDocuments,
             )
           : [];
       const filmstrip: MediaFilmstrip | null = filmstripDoc ? JSON.parse(filmstripDoc) : null;
@@ -287,7 +268,14 @@ export class ResultsLoader {
         source,
         rows,
         sourceDurationTicks,
-        summary: rankingSet ? summarize(rankingSet) : null,
+        summary: editorialRanking
+          ? planSummary(
+              editorialRanking,
+              job.contentProfile === 'scripted' ? 'scripted' : 'interview',
+            )
+          : rankingSet
+            ? summarize(rankingSet)
+            : null,
         proxyArtifactId: find(PROXY_KIND),
         faceTrackArtifactId: find(FACES_KIND),
         run: { jobId: job.jobId, state: job.state, completedUnixMillis: job.updatedUnixMillis },
@@ -315,16 +303,12 @@ export class ResultsLoader {
           : job.analysis && job.analysis.maxTicks > 0
             ? { minTicks: job.analysis.minTicks, maxTicks: job.analysis.maxTicks }
             : null,
-        requestedCount: editorialRanking?.requestedCount || job.analysis?.count || 5,
         // The index names the transcript its word positions refer to, which
         // is the one to read; the job's own is the fallback for a run that
         // published no index.
         transcriptArtifactId: index?.inputs?.transcript_artifact_id ?? find(TRANSCRIPT_KIND),
         speakersArtifactId: find(SPEAKERS_KIND),
         index,
-        plans: editorialRanking?.clips ?? plansOf(plansDoc, source.sourceFingerprint),
-        editorialRanking,
-        searchable: Boolean(find(INDEX_KIND)),
         problem: null,
       };
     } catch (error) {
@@ -388,7 +372,7 @@ export class ResultsLoader {
         names.set(row.candidateId, { title: row.headline, thumbnail: still(row.startTicks) });
       }
     }
-    // The mind's clips are opened by their plan id.
+    // The mind's clips, by the id their edits are stored under.
     if (editorialDoc && job.sourceId) {
       const source = (await this.api.listSources(projectId)).find(
         (candidate) => candidate.sourceId === job.sourceId,
@@ -397,8 +381,10 @@ export class ResultsLoader {
         const planned = source
           ? readPlanRanking(JSON.parse(editorialDoc), source.sourceFingerprint).clips
           : [];
+        const ids =
+          planned.length > 0 ? await this.planIds(projectId, job.sourceId, job.jobId) : new Map();
         for (const plan of planned) {
-          names.set(plan.planId, {
+          names.set(ids.get(plan.planId) ?? plan.planId, {
             title: plan.title,
             thumbnail: still(plan.parts[0]?.startTicks ?? 0),
           });
@@ -433,6 +419,23 @@ export class ResultsLoader {
       );
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * The id each planned clip of a run is stored under, by plan id. Empty when
+   * the engine cannot say: the clips still play and approve, by plan id.
+   */
+  private async planIds(
+    projectId: string,
+    sourceId: string,
+    jobId: string,
+  ): Promise<ReadonlyMap<string, string>> {
+    if (!this.api.planClipIds) return new Map();
+    try {
+      return new Map(Object.entries(await this.api.planClipIds({ projectId, sourceId, jobId })));
+    } catch {
+      return new Map();
     }
   }
 

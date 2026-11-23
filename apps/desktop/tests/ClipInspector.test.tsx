@@ -428,3 +428,73 @@ describe('judging the clip an approval builds', () => {
     }
   });
 });
+
+describe('a clip built from parts', () => {
+  // A cold open: the last sentence plays first, then the middle two, less
+  // "Not a", which was taken out.
+  const hook = WORDS.sentences[3]!;
+  const removedFrom = WORDS.words[WORDS.sentences[2]!.firstWord]!.startTicks - 0.01 * SECOND;
+  const removedTo = WORDS.words[WORDS.sentences[2]!.firstWord + 2]!.startTicks - 0.01 * SECOND;
+  const parts = [
+    {
+      label: 'Hook',
+      startTicks: hook.startTicks - 0.05 * SECOND,
+      endTicks: hook.endTicks + 0.05 * SECOND,
+      kept: [
+        { startTicks: hook.startTicks - 0.05 * SECOND, endTicks: hook.endTicks + 0.05 * SECOND },
+      ],
+    },
+    {
+      label: 'Answer',
+      startTicks: CLIP_START,
+      endTicks: CLIP_END,
+      kept: [
+        { startTicks: CLIP_START, endTicks: removedFrom },
+        { startTicks: removedTo, endTicks: CLIP_END },
+      ],
+    },
+  ];
+  const planned = () =>
+    row({
+      candidateId: 'cand_plan',
+      headline: 'Start small, because confidence is a receipt',
+      startTicks: CLIP_START,
+      endTicks: parts[0]!.endTicks,
+      boundary: null,
+      axes: [],
+      latticeStarts: [],
+      latticeEnds: [],
+      review: { status: 'accepted', reasons: ['A complete thought.'], route: 'local' },
+      parts,
+      planJson: '{}',
+    });
+
+  it('says how many parts it plays, with no handles to move', () => {
+    show({ rows: [planned()], candidateId: 'cand_plan' });
+    expect(screen.getAllByText(/^2 parts · /).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('slider')).toHaveLength(0);
+    expect(screen.getByText('Change it in the editor')).toBeTruthy();
+    expect(document.querySelectorAll('.review-part-number')).toHaveLength(2);
+  });
+
+  it('reads its words part by part, with what was taken out set back', () => {
+    show({ rows: [planned()], candidateId: 'cand_plan' });
+    openTab(/Transcript/);
+    const headings = [...document.querySelectorAll('.review-part-head')].map(
+      (heading) => heading.textContent,
+    );
+    expect(headings[0]).toMatch(/^1 Hook/);
+    expect(headings[1]).toMatch(/^2 Answer/);
+    expect(word('So').dataset.inside).toBe('true');
+    expect(word('Not').dataset.inside).toBe('false');
+    expect(word('ticket.').dataset.inside).toBe('true');
+    expect(screen.queryByText('Most')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start here' })).toBeNull();
+  });
+
+  it('approves the clip as planned', () => {
+    const props = show({ rows: [planned()], candidateId: 'cand_plan' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(props.onApprove).toHaveBeenCalledWith(null, false);
+  });
+});

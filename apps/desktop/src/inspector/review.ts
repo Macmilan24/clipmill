@@ -4,7 +4,7 @@
  * and the platform safe area.
  */
 import type { CropPath } from '../daemon/client.js';
-import { type ClipRow, TICKS_PER_SECOND } from '../results/model.js';
+import { type ClipRow, TICKS_PER_SECOND, playedSpans } from '../results/model.js';
 
 /** One frame at the render rate, 30000/1001. */
 export const FRAME_TICKS = 3_003;
@@ -106,6 +106,45 @@ export function cropRect(
   };
 }
 
+/** How long a clip's spans play, together. */
+export function playedLength(spans: readonly Cut[]): number {
+  return spans.reduce((sum, span) => sum + Math.max(0, span.endTicks - span.startTicks), 0);
+}
+
+/**
+ * Where a moment of the recording falls in a clip of parts, as time into the
+ * clip, and how long the clip plays.
+ *
+ * Inside a part it is that far into the clip. Elsewhere it is the nearest
+ * edge of a part: before the clip's first part it counts down to the start,
+ * as a single cut's pre-roll does.
+ */
+export function clipClock(
+  spans: readonly Cut[],
+  ticks: number,
+): { readonly into: number; readonly length: number } {
+  const length = playedLength(spans);
+  let elapsed = 0;
+  let nearest: { distance: number; into: number } | null = null;
+  for (const [index, span] of spans.entries()) {
+    const size = span.endTicks - span.startTicks;
+    if (ticks >= span.startTicks && ticks < span.endTicks) {
+      return { into: elapsed + ticks - span.startTicks, length };
+    }
+    const before = span.startTicks - ticks;
+    const after = ticks - span.endTicks;
+    const distance = before > 0 ? before : after;
+    if (!nearest || distance < nearest.distance) {
+      nearest = {
+        distance,
+        into: before > 0 ? (index === 0 ? ticks - span.startTicks : elapsed) : elapsed + size,
+      };
+    }
+    elapsed += size;
+  }
+  return { into: nearest?.into ?? 0, length };
+}
+
 /** Another candidate that covers the same ground, and how much of it. */
 export interface Overlap {
   readonly candidateId: string;
@@ -124,11 +163,22 @@ export interface Overlap {
  */
 export function overlapsOf(rows: readonly ClipRow[], row: ClipRow, minimum = 0.25): Overlap[] {
   const found: Overlap[] = [];
+  // What each clip plays: for a clip of parts, its parts and not the
+  // stretch between them.
+  const mine = playedSpans(row);
   for (const other of rows) {
     if (other.candidateId === row.candidateId) continue;
-    const shared =
-      Math.min(row.endTicks, other.endTicks) - Math.max(row.startTicks, other.startTicks);
-    const shorter = Math.min(row.endTicks - row.startTicks, other.endTicks - other.startTicks);
+    const theirs = playedSpans(other);
+    let shared = 0;
+    for (const span of mine) {
+      for (const against of theirs) {
+        shared += Math.max(
+          0,
+          Math.min(span.endTicks, against.endTicks) - Math.max(span.startTicks, against.startTicks),
+        );
+      }
+    }
+    const shorter = Math.min(playedLength(mine), playedLength(theirs));
     if (shared <= 0 || shorter <= 0) continue;
     const share = shared / shorter;
     if (share >= minimum) {

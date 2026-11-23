@@ -10,9 +10,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { newest } from '../daemon/ordering.js';
 import type { ClipDecision, Project } from '../daemon/client.js';
-import { EditorialBrief } from '../results/EditorialBrief.js';
-import { PlanInspector } from '../inspector/PlanInspector.js';
-import type { PlannedClip } from '../results/plans.js';
 import { exactCaptionsOf } from '../editor/exactCaptions.js';
 import { setAutoAdvance, useAutoAdvance } from '../inspector/preferences.js';
 import { nextUndecided } from '../inspector/review.js';
@@ -43,7 +40,6 @@ export interface ResultsScreenProps {
   /** Open a clip's edit document in the editor. */
   readonly onEdit: (clip: ClipRef) => void;
   readonly onBack: () => void;
-  readonly onStarted?: (projectId: string, jobId: string) => void;
   readonly api?: ShellApi;
 }
 
@@ -55,7 +51,6 @@ export function ResultsScreen({
   onInspect,
   onEdit,
   onBack,
-  onStarted,
   api = daemonApi,
 }: ResultsScreenProps) {
   const [manualOpen, setManualOpen] = useState(false);
@@ -127,9 +122,7 @@ export function ResultsScreen({
   /** The breadcrumb's words for a clip: the project's name and the clip's rank. */
   const labelsFor = (id: string) => {
     const row = snapshot.rows.find((candidate) => candidate.candidateId === id);
-    const plan = snapshot.plans?.find((candidate) => candidate.planId === id);
     return {
-      ...(plan ? { clip: plan.title } : {}),
       ...(project ? { project: project.name } : {}),
       // The clip's own title, as everywhere else it is named; the rank is a
       // position on this board and means nothing on the next screen.
@@ -272,35 +265,6 @@ export function ResultsScreen({
     if (manualOpen) requestTranscript();
   }, [manualOpen, requestTranscript]);
 
-  const recordingRun =
-    project && snapshot.source && snapshot.run
-      ? {
-          projectId: project.projectId,
-          sourceId: snapshot.source.sourceId,
-          jobId: snapshot.run.jobId,
-        }
-      : null;
-  const started = (next: string) => {
-    if (project && mounted.current && intentRef.current === intent)
-      onStarted?.(project.projectId, next);
-  };
-  const openPlan = (plan: PlannedClip) => {
-    void results.editPlan(plan).then((directed) => {
-      if (!directed || !mounted.current || intentRef.current !== intent) return;
-      onEdit({
-        projectId: directed.projectId,
-        sourceId: directed.sourceId,
-        candidateId: directed.candidateId,
-        docId: directed.docId,
-        ...(directed.jobId ? { jobId: directed.jobId } : {}),
-        labels: { ...(project ? { project: project.name } : {}), clip: plan.title },
-      });
-    });
-  };
-  const selectedPlan = snapshot.plans?.find((plan) => plan.planId === candidateId);
-  useEffect(() => {
-    if (selectedPlan) previewFor(selectedPlan.planId, null);
-  }, [previewFor, selectedPlan]);
   if (candidateId && (projectsLoading || results.loading))
     return (
       <div className="workspace-page" aria-label="Loading clip" aria-busy="true">
@@ -309,26 +273,6 @@ export function ResultsScreen({
       </div>
     );
 
-  if (selectedPlan && recordingRun) {
-    return (
-      <PlanInspector
-        key={selectedPlan.planId}
-        clip={selectedPlan}
-        api={api}
-        run={recordingRun}
-        preview={planned}
-        transcript={results.transcript.transcript}
-        busy={results.busy}
-        notice={
-          results.notice ??
-          (!api.previewDirect ? 'The preview is unavailable in this session.' : null)
-        }
-        onBack={onBack}
-        onEdit={() => openPlan(selectedPlan)}
-        onStarted={onStarted ? started : undefined}
-      />
-    );
-  }
   if (candidateId) {
     const opened = snapshot.rows.find((row) => row.candidateId === candidateId);
     return (
@@ -414,33 +358,6 @@ export function ResultsScreen({
         notice={results.notice}
         {...(snapshot.source && snapshot.run ? { onManualClip: () => setManualOpen(true) } : {})}
         rows={snapshot.rows}
-        plans={snapshot.plans ?? []}
-        sourceDurationTicks={snapshot.sourceDurationTicks ?? null}
-        onEditPlan={openPlan}
-        brief={
-          snapshot.searchable &&
-          recordingRun &&
-          onStarted && (
-            <EditorialBrief
-              key={recordingRun.jobId}
-              api={api}
-              run={recordingRun}
-              prompt={snapshot.editorialRanking?.prompt ?? ''}
-              defaults={{
-                minSeconds: (snapshot.durationTarget?.minTicks || 20 * 90_000) / 90_000,
-                maxSeconds: (snapshot.durationTarget?.maxTicks || 90 * 90_000) / 90_000,
-                count: snapshot.requestedCount || 5,
-              }}
-              onStarted={started}
-            />
-          )
-        }
-        {...(snapshot.editorialRanking
-          ? {
-              editorialCount: snapshot.editorialRanking.clips.length,
-              cutoff: snapshot.editorialRanking.cutoff,
-            }
-          : {})}
         summary={snapshot.summary}
         problem={
           projectsProblem

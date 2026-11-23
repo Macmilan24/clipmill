@@ -141,6 +141,62 @@ export interface ClipRow {
   readonly payoff: Quote | null;
   /** The ranker recorded a warning or a penalty against it. */
   readonly flagged: boolean;
+  /**
+   * For a clip built from parts of the recording, the parts in the order they
+   * play. Absent for a clip that is one continuous span, which is
+   * `startTicks`–`endTicks`; for a clip of parts those two are only the stretch
+   * of the recording its parts lie in.
+   */
+  readonly parts?: readonly ClipPart[];
+  /** The plan the engine directs a clip of parts from, sent as it was read. */
+  readonly planJson?: string;
+}
+
+/** One part of a clip built from parts. */
+export interface ClipPart {
+  /** What the part does in the clip: its hook, its answer, its payoff. */
+  readonly label: string;
+  readonly startTicks: number;
+  readonly endTicks: number;
+  /** What plays of it, in order: the part less what was taken out of it. */
+  readonly kept: readonly { readonly startTicks: number; readonly endTicks: number }[];
+}
+
+/** A stretch of the recording, in source ticks. */
+export interface Span {
+  readonly startTicks: number;
+  readonly endTicks: number;
+}
+
+/** Where a clip's picture starts: its first part, wherever that sits in the recording. */
+export function openingTicks(row: ClipRow): number {
+  return row.parts?.[0]?.startTicks ?? row.startTicks;
+}
+
+/** The stretches of the recording a clip plays, in the order it plays them. */
+export function playedSpans(row: ClipRow): readonly Span[] {
+  if (!row.parts) return [{ startTicks: row.startTicks, endTicks: row.endTicks }];
+  return row.parts.flatMap((part) => part.kept);
+}
+
+/** The moment of the recording a share of the way through a clip's playback. */
+export function playedTicksAt(row: ClipRow, share: number): number {
+  const spans = playedSpans(row);
+  const total = spans.reduce((sum, span) => sum + span.endTicks - span.startTicks, 0);
+  let left = Math.max(0, Math.min(1, share)) * total;
+  for (const span of spans) {
+    const length = span.endTicks - span.startTicks;
+    if (left <= length) return span.startTicks + left;
+    left -= length;
+  }
+  return spans.at(-1)?.endTicks ?? row.startTicks;
+}
+
+/** Where a clip is in the recording, as a person reads it on a card. */
+export function placeLabel(row: ClipRow): string {
+  return row.parts && row.parts.length > 1
+    ? `${clock(openingTicks(row))} · ${row.parts.length} parts`
+    : `${clock(row.startTicks)} – ${clock(row.endTicks)}`;
 }
 
 /** Sentences, utterances and topics by kind and position, as quotes. */

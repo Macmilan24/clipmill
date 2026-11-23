@@ -5,10 +5,11 @@
 - Plan clips against an editable brief. The local planner can combine distant
   passages, tighten a section or build a montage. A critic checks cuts against
   their original context before the plans are ranked.
-- Search the recording, review plans with their evidence, give a reason for
-  keeping or rejecting one, and try a new brief without transcribing again.
-- Open multi-part plans in Studio. Restore source ranges, adjust a join, and
-  preview the room tone and fades that will be used in the render.
+- Connected agents can search the recording, read each clip's plan and
+  evidence, and try a new brief without transcribing again.
+- Change multi-part clips in the Editor. Restore source ranges, move or remove
+  a part, adjust a join, and preview the room tone and fades that will be used
+  in the render.
 - **Cuts land in pauses.** Analysis measures the pauses heard between words
   and places every clip edge, join and removal inside one, clear of the words
   on either side, so a cut no longer clips a syllable or lands mid-sound. A
@@ -34,10 +35,11 @@
 - **One editorial path.** With a local editorial model, analysis no longer
   runs the built-in moment search and ranking alongside the planner, whose
   results were not shown. Computers without a model still use them.
-- **Planned clips as the Results board.** The planned clips are shown as cards
-  with a still, their form, keep score, length and where their parts sit in
-  the recording, in a grid or a list. The side panel shows how the selected
-  clip is built, why it was chosen and what the review found at its joins.
+- **Multi-part clips in Results and the Clip Inspector.** Clips built from
+  several parts of a recording appear in the Results grid and list like any
+  other clip, with their keep score and length. The Clip Inspector plays their
+  parts in order, marks each part on the timeline and in the transcript, and
+  lists what the review found in its Why tab. Approving one builds its edit.
 - **Endings checked for meaning.** Before planning, a new step tests the
   editorial model on endings whose answer the recording gives, such as a line
   followed by the same speaker's "and…", or by another speaker's question.

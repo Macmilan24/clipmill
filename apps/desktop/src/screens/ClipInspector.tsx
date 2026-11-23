@@ -2,7 +2,8 @@
  * Clip Inspector: review one candidate at a time with its words, framing,
  * surroundings and reasons, then approve, keep or reject. The cut on screen is
  * what an approval builds; a moved cut of a clip with an edit becomes a second
- * edit beside the first.
+ * edit beside the first. A clip built from parts plays them in order and is
+ * reviewed the same way; its parts are changed in the editor.
  */
 import '../inspector/review.css';
 
@@ -34,7 +35,15 @@ import { Monitor, type MonitorView } from '../inspector/Monitor.js';
 import { PlaybackController } from '../inspector/playback.js';
 import { reviewSpeed } from '../inspector/preferences.js';
 import { Queue, type QueueFilter } from '../inspector/Queue.js';
-import { type Cut, clockTenths, lengthLabel, overlapsOf, sameCut } from '../inspector/review.js';
+import {
+  type Cut,
+  FRAME_TICKS,
+  clockTenths,
+  lengthLabel,
+  overlapsOf,
+  playedLength,
+  sameCut,
+} from '../inspector/review.js';
 import { BoundaryStrip, Overview, initialView, zoomView } from '../inspector/Timeline.js';
 import { TipButton } from '../inspector/TipButton.js';
 import { TranscriptPanel } from '../inspector/TranscriptPanel.js';
@@ -42,7 +51,7 @@ import { useReviewKeys } from '../inspector/useReviewKeys.js';
 import { WhyPanel } from '../inspector/WhyPanel.js';
 import { type CoachMark, CoachMarks } from '../onboarding/CoachMarks.js';
 import type { Peaks } from '../results/loader.js';
-import { type ClipRow, TICKS_PER_SECOND } from '../results/model.js';
+import { type ClipRow, TICKS_PER_SECOND, openingTicks, playedSpans } from '../results/model.js';
 import { TONE_INK, stateOf, wash } from '../results/parts/state.js';
 import { snapEnd, snapStart } from '../results/transcript.js';
 import type { TranscriptState } from '../results/useResults.js';
@@ -177,8 +186,16 @@ function Review({
 }: ClipInspectorProps & { readonly row: ClipRow }) {
   // One clock per clip, starting on its first frame.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by clip upstream
-  const controller = useMemo(() => new PlaybackController(row.startTicks, reviewSpeed()), []);
+  const controller = useMemo(() => new PlaybackController(openingTicks(row), reviewSpeed()), []);
   useEffect(() => () => controller.dispose(), [controller]);
+
+  // A clip of parts plays them in order: as its preview builds them once it
+  // has arrived, and as the analysis planned them until then.
+  const program = useMemo(
+    () => (row.parts ? (spansOf(preview) ?? playedSpans(row)) : null),
+    [row, preview],
+  );
+  const parts = row.parts && program ? row.parts : null;
 
   const chosen: Cut = { startTicks: row.startTicks, endTicks: row.endTicks };
   const alternative = row.boundary?.alternative ?? null;
@@ -208,10 +225,14 @@ function Review({
     remembered('clipmill.review.filter', ['all', 'undecided'], 'all'),
   );
 
-  // Playing through the cut on screen stops at its end.
+  // Playing through the cut on screen stops at its end; a clip of parts goes
+  // on from each part to the next.
   useEffect(() => {
-    controller.setCut(shown);
-  }, [controller, shown.startTicks, shown.endTicks]);
+    controller.setCut(program ? null : shown);
+    controller.setProgram(program);
+  }, [controller, program, shown.startTicks, shown.endTicks]);
+  const firstTicks = program?.[0]?.startTicks ?? shown.startTicks;
+  const lastTicks = program?.at(-1)?.endTicks ?? shown.endTicks;
 
   // Ask for the clip an approval of the cut on screen would build, once the
   // cut has stopped moving: a drag is many cuts, and only the last is judged.
@@ -269,6 +290,8 @@ function Review({
     onDecide(row.decision === decision ? null : decision);
   };
   const markAt = (edge: 'in' | 'out') => {
+    // A clip of parts has no single cut to move here.
+    if (parts) return;
     const at = controller.getState().ticks;
     const landed = words ? (edge === 'in' ? snapStart(words, at) : snapEnd(words, at)) : at;
     if (edge === 'in' && landed < shown.endTicks - TICKS_PER_SECOND) moveEdge('in', landed);
@@ -282,10 +305,10 @@ function Review({
     shuttle: (direction) => controller.shuttle(direction),
     step: (frames) => controller.step(frames),
     skip: (seconds) => controller.seek(controller.getState().ticks + seconds * TICKS_PER_SECOND),
-    goToStart: () => controller.seek(shown.startTicks),
-    goToEnd: () => controller.seek(shown.endTicks),
-    playAroundStart: () => controller.playAround(shown.startTicks),
-    playAroundEnd: () => controller.playAround(shown.endTicks),
+    goToStart: () => controller.seek(firstTicks),
+    goToEnd: () => controller.seek(lastTicks),
+    playAroundStart: () => controller.playAround(firstTicks),
+    playAroundEnd: () => controller.playAround(lastTicks),
     markStart: () => markAt('in'),
     markEnd: () => markAt('out'),
     previousClip: () => {
@@ -334,7 +357,9 @@ function Review({
               </span>
               <span aria-hidden="true">·</span>
               <span className="mono">
-                {clockTenths(chosen.startTicks)}–{clockTenths(chosen.endTicks)}
+                {parts && program && parts.length > 1
+                  ? `${parts.length} parts · ${lengthLabel(playedLength(program))}`
+                  : `${clockTenths(chosen.startTicks)}–${clockTenths(chosen.endTicks)}`}
               </span>
               <span
                 className="review-state"
@@ -456,6 +481,7 @@ function Review({
           captions={previewCaptions}
           controller={controller}
           cut={shown}
+          program={program}
           view={monitorView}
           onView={(next) => {
             setMonitorView(next);
@@ -510,6 +536,7 @@ function Review({
                 controller={controller}
                 onStart={(ticks) => moveEdge('in', ticks)}
                 onEnd={(ticks) => moveEdge('out', ticks)}
+                parts={parts}
               />
             </TabsContent>
             <TabsContent value="why" className="review-tab-panel">
@@ -540,24 +567,33 @@ function Review({
           onSeek={(ticks) => controller.seek(ticks)}
         />
         <div className="review-strip-bar" data-coach="cut">
-          <span className="review-cut-summary">
-            <span className="review-lane-label">
-              {auditioning ? 'Alternative' : moved ? 'Your cut' : 'Cut'}
+          {parts && program ? (
+            <span className="review-cut-summary">
+              <span className="review-lane-label">{parts.length === 1 ? 'Part' : 'Parts'}</span>
+              <span className="mono">{parts.length}</span>
+              <span className="mono review-cut-length">{lengthLabel(playedLength(program))}</span>
+              <span className="review-cut-length">Change it in the editor</span>
             </span>
-            <span className="mono">
-              {clockTenths(shown.startTicks)} – {clockTenths(shown.endTicks)}
+          ) : (
+            <span className="review-cut-summary">
+              <span className="review-lane-label">
+                {auditioning ? 'Alternative' : moved ? 'Your cut' : 'Cut'}
+              </span>
+              <span className="mono">
+                {clockTenths(shown.startTicks)} – {clockTenths(shown.endTicks)}
+              </span>
+              <span className="mono review-cut-length">
+                {lengthLabel(shown.endTicks - shown.startTicks)}
+                {moved && lengthDelta !== 0 && (
+                  <span>
+                    {' '}
+                    ({lengthDelta > 0 ? '+' : '−'}
+                    {lengthLabel(Math.abs(lengthDelta))})
+                  </span>
+                )}
+              </span>
             </span>
-            <span className="mono review-cut-length">
-              {lengthLabel(shown.endTicks - shown.startTicks)}
-              {moved && lengthDelta !== 0 && (
-                <span>
-                  {' '}
-                  ({lengthDelta > 0 ? '+' : '−'}
-                  {lengthLabel(Math.abs(lengthDelta))})
-                </span>
-              )}
-            </span>
-          </span>
+          )}
           {auditioning && alternative && (
             <Button
               size="xs"
@@ -581,7 +617,7 @@ function Review({
             size="xs"
             variant="ghost"
             disabled={!proxyUrl}
-            onClick={() => controller.playAround(shown.startTicks)}
+            onClick={() => controller.playAround(firstTicks)}
           >
             <ArrowRightToLine aria-hidden="true" />
             Play the start
@@ -590,7 +626,7 @@ function Review({
             size="xs"
             variant="ghost"
             disabled={!proxyUrl}
-            onClick={() => controller.playAround(shown.endTicks)}
+            onClick={() => controller.playAround(lastTicks)}
           >
             <ArrowLeftToLine aria-hidden="true" />
             Play the end
@@ -635,12 +671,32 @@ function Review({
           view={view}
           onView={setView}
           controller={controller}
-          onCut={auditioning ? null : setCut}
+          onCut={auditioning || parts ? null : setCut}
+          parts={parts}
         />
       </section>
       <PlayingAnnouncer controller={controller} />
     </div>
   );
+}
+
+/**
+ * What a preview plays, in order: its sections' stretches of the recording,
+ * with sections that run on from one another joined, so playing across them
+ * never jumps. Null without a preview.
+ */
+function spansOf(preview: PreviewPlan | null): readonly Cut[] | null {
+  const spans: Cut[] = [];
+  for (const segment of preview?.segments ?? []) {
+    if (segment.endFrame <= segment.firstFrame || segment.outTicks <= segment.inTicks) continue;
+    const last = spans.at(-1);
+    if (last && Math.abs(segment.inTicks - last.endTicks) <= FRAME_TICKS) {
+      spans[spans.length - 1] = { startTicks: last.startTicks, endTicks: segment.outTicks };
+    } else {
+      spans.push({ startTicks: segment.inTicks, endTicks: segment.outTicks });
+    }
+  }
+  return spans.length > 0 ? spans : null;
 }
 
 /** Says play and pause out loud for screen readers, which cannot see the icon. */

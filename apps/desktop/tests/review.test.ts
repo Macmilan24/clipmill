@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CropPath } from '../src/daemon/client.js';
 import {
+  clipClock,
   clockTenths,
   cropRect,
   lengthLabel,
@@ -99,6 +100,39 @@ describe('repeats', () => {
     expect(found.map((overlap) => overlap.candidateId)).toEqual(['c3', 'c2']);
     expect(found[0]!.share).toBe(1);
     expect(found[1]!.share).toBeCloseTo(0.5);
+  });
+
+  it('compares what a clip of parts plays, not the stretch between its parts', () => {
+    const part = (label: string, start: number, end: number) => ({
+      label,
+      startTicks: start * SECOND,
+      endTicks: end * SECOND,
+      kept: [{ startTicks: start * SECOND, endTicks: end * SECOND }],
+    });
+    const stitched = {
+      ...row('c1', 0, 200),
+      parts: [part('Hook', 0, 10), part('Payoff', 190, 200)],
+    } as ClipRow;
+    const rows = [stitched, row('c2', 50, 80), row('c3', 185, 205)];
+    // c2 lies between the parts, which plays none of it; c3 holds the payoff.
+    expect(overlapsOf(rows, stitched).map((overlap) => overlap.candidateId)).toEqual(['c3']);
+  });
+});
+
+describe('the clock of a clip of parts', () => {
+  const spans = [
+    { startTicks: 100 * SECOND, endTicks: 110 * SECOND },
+    { startTicks: 20 * SECOND, endTicks: 30 * SECOND },
+  ];
+
+  it('counts time through the parts in the order they play', () => {
+    expect(clipClock(spans, 105 * SECOND)).toEqual({ into: 5 * SECOND, length: 20 * SECOND });
+    expect(clipClock(spans, 25 * SECOND).into).toBe(15 * SECOND);
+  });
+
+  it('counts down to the first part, and holds at the nearest edge elsewhere', () => {
+    expect(clipClock(spans, 98 * SECOND).into).toBe(-2 * SECOND);
+    expect(clipClock(spans, 32 * SECOND).into).toBe(20 * SECOND);
   });
 });
 

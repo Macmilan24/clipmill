@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { MediaStill } from '../../components/MediaStill.js';
 import { Checkbox } from '../../components/ui/checkbox.js';
-import { type ClipRow, clock, duration } from '../model.js';
+import { type ClipRow, duration, openingTicks, placeLabel } from '../model.js';
 import { bandInk } from './ScoreRing.js';
 import { TONE_INK, signalsFor, stateOf } from './state.js';
 
@@ -130,7 +130,7 @@ export function CandidateTable({
 
               <span className="results-table-clip">
                 <span className="results-table-still">
-                  <MediaStill src={tileUrl?.(row.startTicks) ?? null} />
+                  <MediaStill src={tileUrl?.(openingTicks(row)) ?? null} />
                 </span>
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span
@@ -141,7 +141,7 @@ export function CandidateTable({
                     )}
                   </span>
                   <span className="mono flex items-center gap-2 truncate text-[10px] text-[var(--cm-text-muted)]">
-                    {clock(row.startTicks)} – {clock(row.endTicks)}
+                    {placeLabel(row)}
                     {row.review ? (
                       <span className="font-sans text-[10px] text-[var(--cm-text-secondary)]">
                         Editorial review

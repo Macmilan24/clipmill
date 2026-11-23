@@ -25,11 +25,9 @@ import { CandidateGrid } from '../results/parts/CandidateGrid.js';
 import { CandidateTable } from '../results/parts/CandidateTable.js';
 import { DeclinedMoments } from '../results/parts/DeclinedMoments.js';
 import { DetailRail } from '../results/parts/DetailRail.js';
-import { PlanBoard } from '../results/parts/PlanBoard.js';
 import { StatStrip } from '../results/parts/StatStrip.js';
 import { type BoardView, Toolbar } from '../results/parts/Toolbar.js';
 import { TONE_INK, type Tone, wash } from '../results/parts/state.js';
-import type { PlannedClip } from '../results/plans.js';
 import {
   type ClipRow,
   type Filters,
@@ -66,15 +64,6 @@ export interface ResultsProps {
   readonly onReload: () => void;
   readonly notice?: string | null;
   readonly onManualClip?: () => void;
-  /** The mind's clips, plans of parts, best first. */
-  readonly plans?: readonly PlannedClip[];
-  readonly brief?: React.ReactNode;
-  readonly editorialCount?: number;
-  readonly cutoff?: string | null;
-  /** The recording's length, to place a plan's parts on it. */
-  readonly sourceDurationTicks?: number | null;
-  /** Make an edit from a plan and open it. */
-  readonly onEditPlan?: (plan: PlannedClip) => void;
 }
 
 /** The job's state as the design's badge, from the job rather than assumed. */
@@ -117,12 +106,6 @@ export function Results({
   onReload,
   notice,
   onManualClip,
-  plans = [],
-  brief,
-  editorialCount,
-  cutoff,
-  sourceDurationTicks = null,
-  onEditPlan,
 }: ResultsProps) {
   const rows = useMemo(() => allRows.filter((row) => row.review?.status !== 'rejected'), [allRows]);
   const declined = useMemo(
@@ -189,9 +172,7 @@ export function Results({
             <h1 className="text-[length:var(--cm-type-page-title)] font-semibold tracking-tight text-[var(--cm-text-primary)]">
               {problem
                 ? 'Results'
-                : editorialCount !== undefined
-                  ? `${editorialCount} planned ${editorialCount === 1 ? 'clip' : 'clips'}`
-                  : `${rows.length} clip ${rows.length === 1 ? 'candidate' : 'candidates'}`}
+                : `${rows.length} clip ${rows.length === 1 ? 'candidate' : 'candidates'}`}
             </h1>
             {badge && !problem && (
               <span
@@ -304,7 +285,7 @@ export function Results({
         </Empty>
       )}
 
-      {!problem && summary && editorialCount === undefined && (
+      {!problem && summary && (
         <StatStrip
           summary={summary}
           tallies={tallies}
@@ -316,19 +297,6 @@ export function Results({
         />
       )}
 
-      {!problem && brief}
-      {!problem && cutoff && <p className="text-xs text-[var(--cm-text-secondary)]">{cutoff}</p>}
-      {!problem && plans.length > 0 && onEditPlan && (
-        <PlanBoard
-          plans={plans}
-          sourceDurationTicks={sourceDurationTicks}
-          tileUrl={tileUrl}
-          busy={busy}
-          onEdit={onEditPlan}
-          onInspect={(plan) => onInspect(plan.planId)}
-        />
-      )}
-
       {!problem && declined.length > 0 && (
         <DeclinedMoments
           rows={declined}
@@ -337,17 +305,15 @@ export function Results({
           onInspect={onInspect}
         />
       )}
-      {!problem && rows.length === 0 && declined.length === 0 && plans.length === 0 && (
+      {!problem && rows.length === 0 && declined.length === 0 && (
         <Empty className="workspace-panel min-h-0 flex-1 rounded-[var(--cm-radius-card)]">
           <EmptyHeader>
             <Scissors className="mx-auto size-6 text-[var(--cm-text-muted)]" aria-hidden />
             <EmptyTitle>No clips are ready for review</EmptyTitle>
             <EmptyDescription>
-              {editorialCount === 0
-                ? (cutoff ?? 'The review found no cuts to keep for this brief.')
-                : incomplete
-                  ? 'No clips are ready from this partial analysis. Unassessed sections may still contain worthwhile moments.'
-                  : 'This run returned no clip candidates. You can choose a source interval and make your own edit.'}
+              {incomplete
+                ? 'No clips are ready from this partial analysis. Unassessed sections may still contain worthwhile moments.'
+                : 'This run returned no clip candidates. You can choose a source interval and make your own edit.'}
             </EmptyDescription>
           </EmptyHeader>
           {onManualClip && (

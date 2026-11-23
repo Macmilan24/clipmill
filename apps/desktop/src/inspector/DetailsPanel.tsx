@@ -2,8 +2,15 @@
  * Clip facts, overlapping candidates, and the boundary search's diagnostics,
  * which stay folded until asked for.
  */
-import type { ClipRow } from '../results/model.js';
-import { type Cut, type Overlap, clockTenths, lengthLabel, sameCut } from './review.js';
+import { type ClipRow, playedSpans } from '../results/model.js';
+import {
+  type Cut,
+  type Overlap,
+  clockTenths,
+  lengthLabel,
+  playedLength,
+  sameCut,
+} from './review.js';
 
 export interface DetailsPanelProps {
   readonly row: ClipRow;
@@ -24,9 +31,13 @@ export function DetailsPanel({
 }: DetailsPanelProps) {
   const chosen = { startTicks: row.startTicks, endTicks: row.endTicks };
   const moved = !sameCut(cut, chosen);
-  const length = cut.endTicks - cut.startTicks;
+  // A clip of parts plays its parts, not the stretch of recording between them.
+  const parts = row.parts ?? null;
+  const length = parts ? playedLength(playedSpans(row)) : cut.endTicks - cut.startTicks;
   const outside =
-    durationTarget && (length < durationTarget.minTicks || length > durationTarget.maxTicks)
+    durationTarget &&
+    !parts &&
+    (length < durationTarget.minTicks || length > durationTarget.maxTicks)
       ? `${length < durationTarget.minTicks ? 'Shorter' : 'Longer'} than the ${lengthLabel(durationTarget.minTicks)}–${lengthLabel(durationTarget.maxTicks)} this analysis aimed for.`
       : null;
 
@@ -37,12 +48,21 @@ export function DetailsPanel({
           <dt>Length</dt>
           <dd className="mono">{lengthLabel(length)}</dd>
         </div>
-        <div>
-          <dt>{moved ? 'Your cut' : 'Cut'}</dt>
-          <dd className="mono">
-            {clockTenths(cut.startTicks)} – {clockTenths(cut.endTicks)}
-          </dd>
-        </div>
+        {parts && parts.length > 1 ? (
+          <div>
+            <dt>Parts</dt>
+            <dd>
+              {parts.length}, from {clockTenths(cut.startTicks)} to {clockTenths(cut.endTicks)}
+            </dd>
+          </div>
+        ) : (
+          <div>
+            <dt>{moved ? 'Your cut' : 'Cut'}</dt>
+            <dd className="mono">
+              {clockTenths(cut.startTicks)} – {clockTenths(cut.endTicks)}
+            </dd>
+          </div>
+        )}
         {moved && (
           <div>
             <dt>Suggested cut</dt>

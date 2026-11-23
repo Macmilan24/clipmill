@@ -173,3 +173,48 @@ describe('the shuttle', () => {
     expect(controller.getState().ticks).toBe(SECOND + 2 * 3_003);
   });
 });
+
+describe('playing a clip of parts', () => {
+  const parts = [
+    { startTicks: 100 * SECOND, endTicks: 110 * SECOND },
+    { startTicks: 20 * SECOND, endTicks: 30 * SECOND },
+  ];
+
+  it('goes on from the end of each part to the start of the next, then stops', () => {
+    const { video, controller } = attached(100 * SECOND);
+    video.ready();
+    controller.setProgram(parts);
+    controller.toggle();
+    controller.presented(109.9);
+    expect(controller.getState().playing).toBe(true);
+    controller.presented(110.02);
+    expect(controller.getState().ticks).toBe(20 * SECOND);
+    expect(video.currentTime).toBe(20);
+    expect(controller.getState().playing).toBe(true);
+    controller.presented(29.9);
+    controller.presented(30.02);
+    expect(controller.getState().playing).toBe(false);
+    expect(controller.getState().ticks).toBe(30 * SECOND);
+  });
+
+  it('plays from the first part again when play is pressed at the end', () => {
+    const { video, controller } = attached(30 * SECOND);
+    video.ready();
+    controller.setProgram(parts);
+    controller.toggle();
+    expect(controller.getState().ticks).toBe(100 * SECOND);
+    expect(controller.getState().playing).toBe(true);
+  });
+
+  it('loops back to the first part when looping', () => {
+    const { video, controller } = attached(20 * SECOND);
+    video.ready();
+    controller.setProgram(parts);
+    controller.setLoop(true);
+    controller.toggle();
+    controller.presented(29.9);
+    controller.presented(30.02);
+    expect(controller.getState().ticks).toBe(100 * SECOND);
+    expect(controller.getState().playing).toBe(true);
+  });
+});

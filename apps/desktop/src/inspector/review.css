@@ -759,6 +759,21 @@
   font-size: 10.5px;
 }
 
+/* A clip of parts: where each part starts in the transcript, in playback order. */
+.review-part-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 12px 0 4px;
+  color: var(--cm-text-secondary);
+  font-size: var(--cm-type-label);
+  font-weight: 600;
+}
+
+.review-part-head:first-of-type {
+  margin-top: 0;
+}
+
 /* Who says what follows, above the sentence where the voice changes. */
 .review-voice-line {
   display: flex;
@@ -1388,6 +1403,24 @@
   border-top: 2px solid var(--cm-accent);
   border-bottom: 2px solid var(--cm-accent);
   pointer-events: none;
+}
+
+/* A clip of parts: each part outlined like a cut, with its place in playback. */
+.review-part {
+  border-right: 1px solid var(--cm-accent);
+  border-left: 1px solid var(--cm-accent);
+}
+
+.review-part-number {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--cm-accent);
+  color: var(--cm-accent-foreground);
+  font-size: 10px;
+  line-height: 14px;
 }
 
 .review-cut-ghost {

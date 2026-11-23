@@ -6,7 +6,7 @@ import { Bookmark, Check, Film, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 
 import { Switch } from '../components/ui/switch.js';
-import { type ClipRow, duration } from '../results/model.js';
+import { type ClipRow, duration, openingTicks } from '../results/model.js';
 import { thumbnailPosition } from '../results/thumbnails.js';
 import { overlapsOf, progress } from './review.js';
 
@@ -97,7 +97,7 @@ export function Queue({
         {shown.map((row) => {
           const current = row.candidateId === candidateId;
           const mark = row.decision ? DECISION[row.decision] : null;
-          const still = tileUrl(row.startTicks);
+          const still = tileUrl(openingTicks(row));
           const repeated = overlapsOf(rows, row).find((other) => other.rank < row.rank);
           return (
             <li key={row.candidateId}>

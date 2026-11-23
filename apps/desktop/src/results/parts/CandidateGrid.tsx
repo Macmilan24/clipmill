@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { MediaStill } from '../../components/MediaStill.js';
 import { Checkbox } from '../../components/ui/checkbox.js';
 import { overlapsOf } from '../../inspector/review.js';
-import { type ClipRow, clock, duration } from '../model.js';
+import { type ClipRow, clock, duration, openingTicks, playedTicksAt } from '../model.js';
 import { scrubShare, thumbnailPosition } from '../thumbnails.js';
 import { TONE_INK, signalsFor, stateOf } from './state.js';
 
@@ -100,10 +100,8 @@ export function CandidateGrid({
         const state = stateOf(row);
         const signals = row.review ? [] : signalsFor(row);
         const scrubbing = scrub?.id === row.candidateId ? scrub.share : null;
-        const at =
-          scrubbing === null
-            ? row.startTicks
-            : row.startTicks + scrubbing * (row.endTicks - row.startTicks);
+        // Scrubbing walks the clip as it plays, part after part.
+        const at = scrubbing === null ? openingTicks(row) : playedTicksAt(row, scrubbing);
         const reason = reasonOf(row);
         const repeated = repeats.get(row.candidateId);
         return (
@@ -151,7 +149,7 @@ export function CandidateGrid({
             <div className="results-card-copy">
               <div className="results-card-meta">
                 <span className="mono">
-                  {String(row.rank).padStart(2, '0')} · {clock(row.startTicks)}
+                  {String(row.rank).padStart(2, '0')} · {clock(openingTicks(row))}
                 </span>
                 <span style={{ color: TONE_INK[state.tone] }}>{state.label}</span>
               </div>

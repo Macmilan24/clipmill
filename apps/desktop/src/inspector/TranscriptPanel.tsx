@@ -1,12 +1,16 @@
 /**
  * The clip's words with neighbouring sentences set back. Any word seeks the
- * player; any sentence can become the cut's first or last.
+ * player; any sentence can become the cut's first or last. A clip of parts
+ * shows each part's words in the order they play, with what was taken out of
+ * a part set back; its parts are changed in the editor.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { Skeleton } from '../components/ui/skeleton.js';
+import type { ClipPart } from '../results/model.js';
 import {
   type Transcript,
+  type TranscriptWord,
   endAfter,
   sentencesAround,
   startBefore,
@@ -25,6 +29,8 @@ export interface TranscriptPanelProps {
   readonly controller: PlaybackController;
   readonly onStart: (ticks: number) => void;
   readonly onEnd: (ticks: number) => void;
+  /** A clip of parts, in the order they play; its words are shown part by part. */
+  readonly parts?: readonly ClipPart[] | null;
 }
 
 /** Sentences shown either side of the cut before anyone asks for more. */
@@ -32,7 +38,14 @@ const CONTEXT = 2;
 /** How many more each "earlier" or "later" adds. */
 const MORE = 3;
 
-export function TranscriptPanel({ state, cut, controller, onStart, onEnd }: TranscriptPanelProps) {
+export function TranscriptPanel({
+  state,
+  cut,
+  controller,
+  onStart,
+  onEnd,
+  parts = null,
+}: TranscriptPanelProps) {
   if (state.status !== 'ready') {
     return state.status === 'missing' ? (
       <p className="review-empty-note">
@@ -47,6 +60,9 @@ export function TranscriptPanel({ state, cut, controller, onStart, onEnd }: Tran
         ))}
       </div>
     );
+  }
+  if (parts) {
+    return <PartWords transcript={state.transcript} parts={parts} controller={controller} />;
   }
   return (
     <Words
@@ -220,6 +236,120 @@ function Words({
           Show later
         </button>
       )}
+    </div>
+  );
+}
+
+/** Whether a word plays in a part: inside it, and not in what was taken out. */
+function plays(word: TranscriptWord, part: ClipPart) {
+  return part.kept.some((span) => wordInside(word, span.startTicks, span.endTicks));
+}
+
+/** A clip of parts, read part by part in the order they play. */
+function PartWords({
+  transcript,
+  parts,
+  controller,
+}: {
+  readonly transcript: Transcript;
+  readonly parts: readonly ClipPart[];
+  readonly controller: PlaybackController;
+}) {
+  const live = useSyncExternalStore(controller.subscribe, () =>
+    wordAt(transcript, controller.getState().ticks),
+  );
+  const playing = useSyncExternalStore(controller.subscribe, () => controller.getState().playing);
+  const list = useRef<HTMLDivElement>(null);
+  const touched = useRef(0);
+  const voices = transcript.voices ?? null;
+  const [names, rename] = useVoiceNames(voices?.sourceFingerprint ?? null);
+  const spoken = transcript.words.filter((word) => parts.some((part) => plays(word, part))).length;
+
+  useEffect(() => {
+    if (!playing || live < 0 || Date.now() - touched.current < 4_000) return;
+    list.current
+      ?.querySelector(`[data-word="${live}"]`)
+      ?.closest('.review-sentence')
+      ?.scrollIntoView?.({ block: 'nearest' });
+  }, [live, playing]);
+
+  return (
+    <div
+      ref={list}
+      className="review-transcript"
+      onWheel={() => {
+        touched.current = Date.now();
+      }}
+      onClick={(event) => {
+        const word = (event.target as HTMLElement).closest<HTMLElement>('[data-word]');
+        const at = word ? transcript.words[Number(word.dataset.word)] : undefined;
+        if (at) controller.seek(at.startTicks);
+      }}
+    >
+      <p className="review-transcript-summary">
+        <span className="mono">{spoken}</span> words in {parts.length}{' '}
+        {parts.length === 1 ? 'part' : 'parts'}
+      </p>
+      {parts.map((part, index) => {
+        const around = sentencesAround(transcript, part.startTicks, part.endTicks, 0);
+        const sentences = transcript.sentences.slice(around.first, around.end);
+        return (
+          <section key={`${part.startTicks}:${index}`} aria-label={`Part ${index + 1}`}>
+            <p className="review-part-head">
+              <span className="mono">{index + 1}</span> {part.label}
+              <span className="mono"> · {clockTenths(part.startTicks)}</span>
+            </p>
+            {sentences.map((sentence, shown) => {
+              const words = transcript.words.slice(
+                sentence.firstWord,
+                sentence.firstWord + sentence.wordCount,
+              );
+              const voice = voices ? voiceOfWords(voices, words) : null;
+              const previous =
+                shown > 0 && voices
+                  ? voiceOfWords(
+                      voices,
+                      transcript.words.slice(
+                        sentences[shown - 1]!.firstWord,
+                        sentences[shown - 1]!.firstWord + sentences[shown - 1]!.wordCount,
+                      ),
+                    )
+                  : null;
+              const state = words.every((word) => plays(word, part))
+                ? 'inside'
+                : words.some((word) => plays(word, part))
+                  ? 'partial'
+                  : 'outside';
+              return (
+                <div key={sentence.firstWord} className="review-sentence" data-state={state}>
+                  {voices && voice !== null && (shown === 0 || previous !== voice) && (
+                    <div className="review-voice-line">
+                      <VoiceChip id={voice} voices={voices} names={names} onRename={rename} />
+                    </div>
+                  )}
+                  <p>
+                    {words.map((word, offset) => {
+                      const position = sentence.firstWord + offset;
+                      return (
+                        <span key={position}>
+                          <span
+                            className="review-word"
+                            data-word={position}
+                            data-inside={plays(word, part) ? 'true' : 'false'}
+                            data-live={position === live ? 'true' : undefined}
+                          >
+                            {word.text}
+                          </span>{' '}
+                        </span>
+                      );
+                    })}
+                  </p>
+                </div>
+              );
+            })}
+          </section>
+        );
+      })}
     </div>
   );
 }

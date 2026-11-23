@@ -1,5 +1,5 @@
 //! The recording-scoped editorial operations exposed to the Studio.
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use clipmill_contracts::proto::ipc::v1::{EngineCallRequest, request, response};
 use serde_json::{Value, json};
@@ -38,91 +38,60 @@ async fn editorial_call(
         .to_owned())
 }
 
+/// The id the engine keeps each of a run's planned clips under, by plan id.
+///
+/// A planned clip's decisions and edit are stored under an id derived from
+/// the plan itself, so Results asks the engine rather than deriving it a
+/// second time.
 #[tauri::command]
-pub async fn find_moments(
+pub async fn plan_clip_ids(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
     project_id: String,
     source_id: String,
     job_id: String,
-    query: String,
-) -> Result<Value, String> {
-    editorial_call(
+) -> Result<BTreeMap<String, String>, String> {
+    let listed = editorial_call(
         &supervisor,
-        "find_moments",
-        json!({
-            "project_id": project_id, "source_id": source_id, "job_id": job_id, "query": query
-        }),
+        "list_clips",
+        json!({ "project_id": project_id, "source_id": source_id, "job_id": job_id }),
     )
-    .await
+    .await?;
+    Ok(plan_ids(&listed))
 }
 
-#[derive(Default, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all(deserialize = "camelCase"), deny_unknown_fields)]
-pub struct BriefLimits {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    min_seconds: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_seconds: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    count: Option<u64>,
+fn plan_ids(listed: &Value) -> BTreeMap<String, String> {
+    listed["clips"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|clip| clip["kind"] == "plan")
+        .filter_map(|clip| {
+            Some((
+                clip["clip_id"].as_str()?.to_owned(),
+                clip["candidate_id"].as_str()?.to_owned(),
+            ))
+        })
+        .collect()
 }
 
-#[tauri::command]
-pub async fn reprompt(
-    supervisor: State<'_, Arc<DaemonSupervisor>>,
-    project_id: String,
-    source_id: String,
-    job_id: String,
-    prompt: String,
-    limits: Option<BriefLimits>,
-) -> Result<String, String> {
-    let mut args = json!(limits.unwrap_or_default());
-    args["project_id"] = json!(project_id);
-    args["source_id"] = json!(source_id);
-    args["job_id"] = json!(job_id);
-    args["prompt"] = json!(prompt);
-    let job = editorial_call(&supervisor, "reprompt", args).await?;
-    job["job_id"]
-        .as_str()
-        .filter(|id| !id.is_empty())
-        .map(str::to_owned)
-        .ok_or_else(|| "The engine returned no job for this brief.".to_owned())
-}
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
 
-#[derive(serde::Serialize)]
-pub struct PlanDecision {
-    decision: String,
-    reason: String,
-}
+    use super::plan_ids;
 
-#[tauri::command]
-pub async fn plan_decision(
-    supervisor: State<'_, Arc<DaemonSupervisor>>,
-    project_id: String,
-    source_id: String,
-    job_id: String,
-    clip_id: String,
-    decision: Option<String>,
-    reason: Option<String>,
-) -> Result<PlanDecision, String> {
-    let mut args = json!({
-        "project_id": project_id, "source_id": source_id, "job_id": job_id, "clip_id": clip_id
-    });
-    let op = if let Some(decision) = decision {
-        args["decision"] = json!(decision);
-        if let Some(reason) = reason {
-            args["reason"] = json!(reason);
-        }
-        "set_decision"
-    } else {
-        "describe_clip"
-    };
-    let result = editorial_call(&supervisor, op, args).await?;
-    Ok(PlanDecision {
-        decision: result["decision"]
-            .as_str()
-            .unwrap_or("undecided")
-            .to_owned(),
-        reason: result["reason"].as_str().unwrap_or_default().to_owned(),
-    })
+    #[test]
+    fn planned_clips_are_named_by_their_stored_ids() {
+        let listed = json!({
+            "job_id": "job_1",
+            "clips": [
+                { "clip_id": "plan_a", "kind": "plan", "candidate_id": "cand_0123456789abcdef" },
+                { "clip_id": "cand_moment", "kind": "moment" },
+                { "clip_id": "plan_b", "kind": "plan" },
+            ],
+        });
+        let ids = plan_ids(&listed);
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids["plan_a"], "cand_0123456789abcdef");
+    }
 }

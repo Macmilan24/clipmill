@@ -26,7 +26,7 @@ import { TICKS_PER_SECOND } from '../results/model.js';
 import { type PlaybackController, SPEEDS } from './playback.js';
 import { setReviewSpeed } from './preferences.js';
 import { formatTime, useTimeFormat } from '../shell/timeFormat.js';
-import { type Cut, SAFE_AREA, clockTenths, cropRect } from './review.js';
+import { type Cut, SAFE_AREA, clipClock, clockTenths, cropRect } from './review.js';
 import { TipButton } from './TipButton.js';
 
 export type MonitorView = 'result' | 'source';
@@ -47,6 +47,8 @@ export interface MonitorProps {
   readonly controller: PlaybackController;
   /** The cut on screen, for the clip-relative clock. */
   readonly cut: Cut;
+  /** A clip of parts: what it plays, in order, which the clock counts instead. */
+  readonly program?: readonly Cut[] | null;
   readonly view: MonitorView;
   readonly onView: (view: MonitorView) => void;
   readonly safeArea: boolean;
@@ -65,6 +67,7 @@ export function Monitor({
   captions = null,
   controller,
   cut,
+  program = null,
   view,
   onView,
   safeArea,
@@ -159,7 +162,7 @@ export function Monitor({
         )}
       </div>
 
-      <Transport controller={controller} cut={cut} disabled={!src} />
+      <Transport controller={controller} cut={cut} program={program} disabled={!src} />
     </section>
   );
 }
@@ -480,11 +483,13 @@ function SafeAreaGuide() {
 function Transport({
   controller,
   cut,
+  program,
   disabled,
   fps = 30_000 / 1_001,
 }: {
   readonly controller: PlaybackController;
   readonly cut: Cut;
+  readonly program: readonly Cut[] | null;
   readonly disabled: boolean;
   /** The recording's frame rate, for a frame count. */
   readonly fps?: number;
@@ -494,8 +499,11 @@ function Transport({
   const speed = useSyncExternalStore(controller.subscribe, () => controller.getState().speed);
   const loop = useSyncExternalStore(controller.subscribe, () => controller.getState().loop);
   const muted = useSyncExternalStore(controller.subscribe, () => controller.getState().muted);
-  const into = ticks - cut.startTicks;
-  const length = cut.endTicks - cut.startTicks;
+  const { into, length } = program
+    ? clipClock(program, ticks)
+    : { into: ticks - cut.startTicks, length: cut.endTicks - cut.startTicks };
+  const first = program?.[0]?.startTicks ?? cut.startTicks;
+  const last = program?.at(-1)?.endTicks ?? cut.endTicks;
   const format = useTimeFormat();
   // Clip time, as the Editor and the export count it; where it is in the
   // recording is a hover away rather than a second clock beside it.
@@ -513,7 +521,7 @@ function Transport({
         <TipButton
           label="Go to the start of the cut"
           disabled={disabled}
-          onClick={() => controller.seek(cut.startTicks)}
+          onClick={() => controller.seek(first)}
         >
           <ChevronFirst className="size-4" />
         </TipButton>
@@ -535,7 +543,7 @@ function Transport({
         <TipButton
           label="Go to the end of the cut"
           disabled={disabled}
-          onClick={() => controller.seek(cut.endTicks)}
+          onClick={() => controller.seek(last)}
         >
           <ChevronLast className="size-4" />
         </TipButton>

@@ -319,10 +319,6 @@ export function App(): JSX.Element {
                   onNavigate: navigate,
                 },
                 results: {
-                  onStarted: (projectId, jobId) => {
-                    analysisActivity.markStarted(jobId);
-                    openAnalysis(projectId, jobId, 'results');
-                  },
                   onInspect: (projectId, sourceId, candidateId, labels, jobId) => {
                     setRoute(inspectorRoute(projectId, sourceId, candidateId, labels, jobId));
                   },

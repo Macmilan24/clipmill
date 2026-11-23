@@ -7,7 +7,7 @@ import { ArrowRight, CheckCheck, Scissors, TriangleAlert } from 'lucide-react';
 
 import { MediaStill } from '../../components/MediaStill.js';
 import { Button } from '../../components/ui/button.js';
-import { type ClipRow, clock, duration, topFactors } from '../model.js';
+import { type ClipRow, duration, openingTicks, placeLabel, topFactors } from '../model.js';
 import { TONE_INK, stateOf } from './state.js';
 
 export interface DetailRailProps {
@@ -43,15 +43,13 @@ export function DetailRail({
           <span className="mono">{String(row.rank).padStart(2, '0')}</span>
         </div>
         <div className="results-detail-picture">
-          <MediaStill src={tileUrl(row.startTicks)} />
+          <MediaStill src={tileUrl(openingTicks(row))} />
           <span className="results-card-duration mono">{duration(row.durationSeconds)}</span>
         </div>
         <h2 className="results-detail-title">{row.headline || 'Untitled clip'}</h2>
         <div className="results-detail-meta">
           <span style={{ color: TONE_INK[state.tone] }}>{state.label}</span>
-          <span className="mono">
-            {clock(row.startTicks)} – {clock(row.endTicks)}
-          </span>
+          <span className="mono">{placeLabel(row)}</span>
         </div>
         {row.warnings.length > 0 && (
           <p className="results-caution">

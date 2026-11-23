@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { JobState, TaskState } from '@clipmill/contracts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ResultsLoader } from '../src/results/loader.js';
 import { CANDIDATE, OLD, OLD_JOB, OLD_SOURCE, twoProjects } from './support/clips.js';
@@ -348,15 +348,15 @@ describe('ranked plans from a fresh brief', () => {
     expect(shot.problem).toBeNull();
     expect(shot.run?.jobId).toBe('fresh-brief');
     expect(shot.rows).toEqual([]);
-    expect(shot.plans).toEqual([]);
-    expect(shot.editorialRanking?.cutoff).toBe('No distinct matches.');
+    // The honest cutoff is said where any shortfall is: above the board.
+    expect(shot.summary?.requested).toBe(3);
+    expect(shot.summary?.shortfall).toEqual(['No distinct matches.']);
     expect(shot.proxyArtifactId).toBe('sha256:parent-proxy');
-    expect(shot.searchable).toBe(true);
   });
 });
 
 describe('a run whose clips came from the mind', () => {
-  it('names its clips by their plans outside Results, with no built-in ranking to read', async () => {
+  it('shows its clips as ordinary rows, stored and named by the ids the engine keeps them under', async () => {
     const world = twoProjects();
     const fingerprint = world.sources[OLD]![0]!.sourceFingerprint;
     const stitch = JSON.parse(
@@ -374,46 +374,65 @@ describe('a run whose clips came from the mind', () => {
       jobId: 'mind-run',
       createdUnixMillis: 9_900_000,
     };
-    const loader = new ResultsLoader(
-      fakeApi({
-        ...world,
-        jobs: { ...world.jobs, [OLD]: [run, ...world.jobs[OLD]!] },
-        documents: {
-          ...world.documents,
-          [ranking]: {
-            artifactId: ranking,
-            kind: 'ranking.set.v2',
-            json: JSON.stringify({
-              schema_version: 'clipmill.ranking.set.v2',
-              source_fingerprint: fingerprint,
-              editorial_prompt: '',
-              requested_count: 1,
-              clips: [
-                {
-                  plan: { ...stitch, source_fingerprint: fingerprint },
-                  keep_score: 80,
-                  chapter: 'First customers',
-                  reasons: ['A complete exchange.'],
-                  quality: {
-                    verdict: 'accept',
-                    summary: 'The answer resolves its question.',
-                    issues: [],
-                    joins: [],
-                    repaired: false,
-                  },
-                  strength: 0.8,
+    const stored = 'cand_0123456789abcdef';
+    const api = fakeApi({
+      ...world,
+      jobs: { ...world.jobs, [OLD]: [run, ...world.jobs[OLD]!] },
+      documents: {
+        ...world.documents,
+        [ranking]: {
+          artifactId: ranking,
+          kind: 'ranking.set.v2',
+          json: JSON.stringify({
+            schema_version: 'clipmill.ranking.set.v2',
+            source_fingerprint: fingerprint,
+            editorial_prompt: '',
+            requested_count: 1,
+            clips: [
+              {
+                plan: { ...stitch, source_fingerprint: fingerprint },
+                keep_score: 80,
+                chapter: 'First customers',
+                reasons: ['A complete exchange.'],
+                quality: {
+                  verdict: 'accept',
+                  summary: 'The answer resolves its question.',
+                  issues: [],
+                  joins: [],
+                  repaired: false,
                 },
-              ],
-            }),
-          },
+                strength: 0.8,
+              },
+            ],
+          }),
         },
-      }),
-    );
+      },
+    });
+    const planClipIds = vi.fn(async () => ({ [stitch.plan_id]: stored }));
+    const loader = new ResultsLoader({
+      ...api,
+      planClipIds,
+      listClipDecisions: async () => [
+        { candidateId: stored, decision: 'kept' as const, decidedUnixMillis: 1 },
+      ],
+    });
     const shot = await loader.load(OLD, OLD_SOURCE);
     expect(shot.problem).toBeNull();
-    expect(shot.rows).toEqual([]);
-    expect(shot.plans?.map((plan) => plan.planId)).toEqual([stitch.plan_id]);
+    expect(planClipIds).toHaveBeenCalledWith({
+      projectId: OLD,
+      sourceId: OLD_SOURCE,
+      jobId: 'mind-run',
+    });
+    const [row] = shot.rows;
+    expect(shot.rows).toHaveLength(1);
+    expect(row?.candidateId).toBe(stored);
+    expect(row?.headline).toBe(stitch.title);
+    expect(row?.displayScore).toBe(80);
+    expect(row?.decision).toBe('kept');
+    expect(row?.parts?.map((part) => part.label)).toEqual(['Question', 'Answer', 'Payoff']);
+    expect(JSON.parse(row!.planJson!).plan_id).toBe(stitch.plan_id);
+    expect(shot.summary?.selected).toBe(1);
     const names = await loader.clipNames(OLD, OLD_SOURCE, 'mind-run');
-    expect(names.get(stitch.plan_id)?.title).toBe(stitch.title);
+    expect(names.get(stored)?.title).toBe(stitch.title);
   });
 });

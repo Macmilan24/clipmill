@@ -17,8 +17,7 @@ import type {
 import { kitRequest } from '../editor/brand.js';
 import { highlightFor, lookFor, optionsFor } from './captionLook.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
-import { TICKS_PER_SECOND } from './model.js';
-import type { PlannedClip } from './plans.js';
+import { TICKS_PER_SECOND, openingTicks } from './model.js';
 import type { Transcript } from './transcript.js';
 
 /** The proxy file the media protocol serves for a proxy artifact. */
@@ -80,8 +79,6 @@ export interface ResultsState {
    * redraw after each, and the decisions are already durable after each write.
    */
   readonly approveMany: (candidateIds: readonly string[]) => Promise<void>;
-  /** Make an edit from one of the mind's plans and send it to the editor. */
-  readonly editPlan: (plan: PlannedClip) => Promise<DirectedClip | null>;
   /**
    * The filmstrip frame nearest a moment, as a URL the media protocol serves.
    *
@@ -245,7 +242,9 @@ export function useResults(
       solved.current = key;
       const sequence = ++cropSequence.current;
       setCrop(null);
-      if (!projectId || !row || !faceTrack) {
+      // A clip of several parts is framed by its preview, which solves each
+      // part; one path across everything between them would be wasted work.
+      if (!projectId || !row || !faceTrack || (row.parts?.length ?? 0) > 1) {
         return;
       }
       const limit = snapshot.sourceDurationTicks ?? Number.MAX_SAFE_INTEGER;
@@ -346,7 +345,7 @@ export function useResults(
     const rows = snapshot.rows;
     const key =
       projectId && faceTrack && rows.length > 0 && api.thumbnailFraming
-        ? `${faceTrack}:${rows.map((row) => `${row.candidateId}@${row.startTicks}`).join(',')}`
+        ? `${faceTrack}:${rows.map((row) => `${row.candidateId}@${openingTicks(row)}`).join(',')}`
         : null;
     if (key === framingFor.current) return undefined;
     framingFor.current = key;
@@ -360,7 +359,7 @@ export function useResults(
         api.thumbnailFraming!(
           projectId,
           faceTrack,
-          rows.map((row) => row.startTicks + TICKS_PER_SECOND / 2),
+          rows.map((row) => openingTicks(row) + TICKS_PER_SECOND / 2),
         ),
       )
       .then((centres) => {
@@ -382,17 +381,18 @@ export function useResults(
   const clipRequest = useCallback(
     (candidateId: string, window: Window | null): DirectClipInput | null => {
       const row = snapshot.rows.find((candidate) => candidate.candidateId === candidateId);
-      const plan = snapshot.plans?.find((candidate) => candidate.planId === candidateId);
-      if (projectId && snapshot.source && snapshot.run && plan) {
+      // A clip of parts is built from its plan, as the analysis chose it: its
+      // parts are changed in the editor, so the Inspector never moves them.
+      if (projectId && snapshot.source && snapshot.run && row?.planJson) {
         const styleRef = lookFor(projectId);
         const options = optionsFor(projectId);
         return {
           projectId,
           sourceId: snapshot.source.sourceId,
           jobId: snapshot.run.jobId,
-          candidateId: plan.planId,
+          candidateId,
           cut: 'chosen',
-          planJson: plan.planJson,
+          planJson: row.planJson,
           ...(styleRef ? { styleRef } : {}),
           ...(options ? { captionOptionsJson: options } : {}),
           ...kitRequest(),
@@ -431,7 +431,7 @@ export function useResults(
         ...(snapshot.run ? { jobId: snapshot.run.jobId } : {}),
       };
     },
-    [projectId, snapshot.source, snapshot.run, snapshot.rows, snapshot.plans],
+    [projectId, snapshot.source, snapshot.run, snapshot.rows],
   );
 
   /** The request that builds a span nobody proposed: the manual clip's. */
@@ -566,35 +566,6 @@ export function useResults(
     [api, reload, manualRequest],
   );
 
-  /**
-   * Make an edit from one of the mind's plans: its parts in the order they
-   * play, with their joins and what was cut out of them. Like a manual clip it
-   * is sent to the editor, not approved: a plan is something to watch first.
-   */
-  const editPlan = useCallback(
-    async (plan: PlannedClip): Promise<DirectedClip | null> => {
-      if (!projectId || !snapshot.source || !snapshot.run) return null;
-      const request = clipRequest(plan.planId, null);
-      if (!request) return null;
-      const context = contextSequence.current;
-      setBusy(true);
-      setNotice(null);
-      try {
-        const directed = await api.directClip({ ...request, approve: false });
-        if (context !== contextSequence.current) return null;
-        setNotice(directed.reopened ? 'Opened its edit as it stands.' : 'Sent to the editor.');
-        reload();
-        return directed;
-      } catch (error) {
-        if (context === contextSequence.current) setNotice((error as Error).message);
-        return null;
-      } finally {
-        if (context === contextSequence.current) setBusy(false);
-      }
-    },
-    [api, clipRequest, projectId, reload, snapshot.source, snapshot.run],
-  );
-
   const approveMany = useCallback(
     async (candidateIds: readonly string[]) => {
       if (!projectId || !snapshot.source || candidateIds.length === 0) {
@@ -658,7 +629,6 @@ export function useResults(
     decide,
     approve,
     approveMany,
-    editPlan,
     tileUrl,
     solveFor,
     framing,

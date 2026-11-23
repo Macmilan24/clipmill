@@ -1,7 +1,9 @@
 /**
  * The review clock shared by the monitor, strips and transcript.
  * Readers subscribe to the value they draw. The playhead may go anywhere in the
- * recording; playing through the cut stops at its out point, or loops.
+ * recording; playing through the cut stops at its out point, or loops. A clip
+ * built from parts plays them in order, going on from the end of each to the
+ * start of the next.
  */
 import { TICKS_PER_SECOND } from '../results/model.js';
 import { FRAME_TICKS, type Cut, clamp } from './review.js';
@@ -39,6 +41,7 @@ export class PlaybackController {
   private readonly listeners = new Set<Listener>();
   private state: PlaybackState;
   private cut: Cut | null = null;
+  private program: readonly Cut[] | null = null;
   private around: { readonly until: number; readonly returnTo: number } | null = null;
   private reverse: number | null = null;
   private pending: number | null = null;
@@ -116,6 +119,16 @@ export class PlaybackController {
   }
 
   /**
+   * The stretches of the recording a clip of parts plays, in playback order,
+   * or `null` for a clip that is one cut. Playing through the end of one goes
+   * on at the start of the next; the last one's end stops, or loops back to
+   * the first, as a cut's does.
+   */
+  setProgram(spans: readonly Cut[] | null): void {
+    this.program = spans && spans.length > 0 ? spans : null;
+  }
+
+  /**
    * Put the playhead somewhere. Anywhere in the recording: the cut is where
    * playing stops, not where the playhead is allowed to be.
    */
@@ -149,6 +162,29 @@ export class PlaybackController {
       this.seek(back);
       return;
     }
+    const program = this.program;
+    if (program && !this.around) {
+      // A frame still on its way from before a jump says nothing about
+      // where playback is now.
+      if (this.video?.seeking) return;
+      const at = program.findIndex((span) => previous < span.endTicks && ticks >= span.endTicks);
+      if (at >= 0) {
+        const next = program[at + 1];
+        if (next) {
+          this.seek(next.startTicks);
+          return;
+        }
+        if (this.state.loop) {
+          this.seek(program[0]!.startTicks);
+          return;
+        }
+        this.pause();
+        this.seek(program[at]!.endTicks);
+        return;
+      }
+      this.update({ ticks });
+      return;
+    }
     const cut = this.cut;
     if (cut && !this.around && previous < cut.endTicks && ticks >= cut.endTicks) {
       if (this.state.loop) {
@@ -169,8 +205,11 @@ export class PlaybackController {
       return;
     }
     const cut = this.cut;
+    const program = this.program;
     // Pressing play on the out point means "again", not "past the end".
-    if (cut && Math.abs(this.state.ticks - cut.endTicks) < FRAME_TICKS) {
+    if (program && Math.abs(this.state.ticks - program.at(-1)!.endTicks) < FRAME_TICKS) {
+      this.seek(program[0]!.startTicks);
+    } else if (cut && Math.abs(this.state.ticks - cut.endTicks) < FRAME_TICKS) {
       this.seek(cut.startTicks);
     }
     this.play(this.state.speed);
