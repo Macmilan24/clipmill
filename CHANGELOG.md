@@ -2,13 +2,22 @@
 
 ## Unreleased
 
-## 0.5.2 — Dependency audit maintenance
+## 0.5.2 — Dependency security updates
 
+- **Security updates.** `url` 2.5.9 fixes a crash on deeply nested `blob:`
+  URLs (RUSTSEC-2026-0592), and `cookie` 0.18.3 fixes private-cookie nonces
+  that could repeat after a fork (RUSTSEC-2026-0594). The **Editorial AI**
+  and **Accelerated speech (MLX)** components now install `filelock` 4.2.12,
+  and Editorial AI installs `setuptools` 84.2.1, which fix their published
+  vulnerabilities.
+- **Updating components.** After installing 0.5.2, open **Models →
+  Components** and choose **Update**. Until then, Editorial AI and
+  Accelerated speech report that an earlier version installed them. The
+  update reuses the packages already downloaded.
 - **Dependency audit.** RustSec withdrew its ten advisories for the gtk-rs
   GTK3 bindings (RUSTSEC-2024-0411 to 0420), so `deny.toml` no longer lists
   them as exceptions (#148). Each remaining exception now names the
-  dependency that brings the crate in. Studio, the engine and the `clipmill`
-  command are unchanged from 0.5.1.
+  dependency that brings the crate in.
 
 ## 0.5.1 — Whisper on older Windows PCs and reliable upgrades
 
