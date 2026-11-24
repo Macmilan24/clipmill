@@ -173,7 +173,11 @@ pub const MAX_QUESTION_TICKS: u64 = 12 * SECOND;
 const QUESTION_LINES: usize = 3;
 /// Openings that answer the line before: agreeing or disagreeing with what
 /// another voice said, which a viewer who did not hear it cannot follow.
-const REPLIES: [&str; 11] = [
+const REPLIES: [&str; 15] = [
+    "yes",
+    "no",
+    "yeah",
+    "nope",
     "i agree",
     "i disagree",
     "exactly",
@@ -186,6 +190,24 @@ const REPLIES: [&str; 11] = [
     "fair enough",
     "good point",
 ];
+/// Lines that only greet or thank: a clip neither opens nor finishes on one,
+/// since it carries none of the moment. Matched at the start of a short line.
+const PLEASANTRIES: [&str; 12] = [
+    "thank you",
+    "thanks",
+    "appreciate it",
+    "i appreciate it",
+    "nice to meet you",
+    "good to see you",
+    "hi",
+    "hello",
+    "hey",
+    "welcome",
+    "you too",
+    "my pleasure",
+];
+/// The longest line, in words, read as only a pleasantry.
+const PLEASANTRY_WORDS: usize = 6;
 /// Openings that point back at something said before.
 const POINTS_BACK: [&str; 5] = [
     "that's why",
@@ -417,6 +439,18 @@ fn turns(text: &str) -> bool {
 fn points_back(text: &str) -> bool {
     let lower = text.trim_start().to_lowercase();
     carries_on(text) || POINTS_BACK.iter().any(|phrase| lower.starts_with(phrase))
+}
+
+/// Whether a short line only greets or thanks ("Thank you so much.",
+/// "Hi there, Omar.").
+fn pleasantry(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    lower.split_whitespace().count() <= PLEASANTRY_WORDS
+        && PLEASANTRIES.iter().any(|phrase| {
+            lower
+                .strip_prefix(phrase)
+                .is_some_and(|rest| !rest.starts_with(|c: char| c.is_alphanumeric()))
+        })
 }
 
 /// Whether a line opens by answering the one before it ("I agree…",
@@ -664,15 +698,18 @@ impl Table {
             && unit.needs.is_none()
             && !points_back(&unit.text)
             && !(a > 0 && replies(&unit.text))
+            && !pleasantry(&unit.text)
     }
 
-    /// Whether a clip may finish after line `b`: a part may end there, and
-    /// the line is not a question the next speaker goes on to answer, which
-    /// would leave the clip waiting for a reply it never plays. A stitch's
+    /// Whether a clip may finish after line `b`: a part may end there, the
+    /// line is not only a greeting or thanks, and it is not a question the
+    /// next speaker goes on to answer, which would leave the clip waiting
+    /// for a reply it never plays. A stitch's
     /// question part ends on its question; only a clip's last part closes.
     fn may_close(&self, b: usize) -> bool {
         let unit = &self.units[b];
         self.may_end(b)
+            && !pleasantry(&unit.text)
             && !(unit.asks
                 && self
                     .units

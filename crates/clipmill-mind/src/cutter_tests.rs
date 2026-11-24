@@ -1144,6 +1144,32 @@ fn a_clip_does_not_open_on_a_reply_to_the_line_before() {
 }
 
 #[test]
+fn a_clip_neither_opens_nor_finishes_on_a_greeting_or_thanks() {
+    let (mut source, words) = recording();
+    for line in [
+        "Thank you so much.",
+        "Appreciate it.",
+        "Hi there, Omar.",
+        "Nice to meet you.",
+    ] {
+        source.sentences[27].text = line.to_owned();
+        let table = plain_table(&source, &words);
+        assert!(!table.may_open(27), "{line}");
+        assert!(!table.may_close(27), "{line}");
+    }
+    // A longer line that starts with thanks carries the moment.
+    source.sentences[27].text =
+        "Thank you for asking, because the real answer is the rent.".to_owned();
+    let table = plain_table(&source, &words);
+    assert!(table.may_open(27) && table.may_close(27));
+    // Nor does a line open on a bare yes or no to the line before.
+    source.sentences[27].text = "No, I think you would be good on television.".to_owned();
+    assert!(!plain_table(&source, &words).may_open(27));
+    source.sentences[27].text = "Nobody saw it coming.".to_owned();
+    assert!(plain_table(&source, &words).may_open(27));
+}
+
+#[test]
 fn the_pause_an_ending_needs_follows_how_the_recording_is_spoken() {
     let (mut source, words) = recording();
     let pause_after = |source: &mut Source, gap: u64| {
