@@ -141,31 +141,35 @@ clip, which is what it is.
 
 It needs no pinned media, so it runs in the plain `inspector` CI job.
 
-## Reviewing a planned clip
+## Reviewing a clip built from several parts
 
-With local editorial enabled, an analysis can assemble a clip from several
-parts of the recording. In New Project, enter an **Editorial brief** to name the
-subject or moments you want. The length and count controls apply to that brief.
+With local editorial enabled, an analysis can build a clip from several parts
+of the recording: a strong line lifted to the front, a question joined to its
+answer, or a moment with an aside left out. In New Project, enter an
+**Editorial brief** to name the subject or moments you want. The length and
+count controls apply to that brief.
 
-Results lists the reviewed cuts in their published order. Each one shows its
-form, playback length and keep score. A shortfall is explained below the brief.
-Choose **Review** to play the parts in programme order with their framing and
-captions. The Inspector shows the source time of each part, the lines it plays,
-the passages removed, and the findings on its joins. **Keep** and **Reject**
-record a decision. Select the same decision again to clear it.
+These clips appear in the Results grid and list like any other clip, with their
+title, keep score and playback length. A clip of several parts shows its first
+part and is labelled with its number of parts. Open one in the Clip Inspector to
+play its parts in order, skipping what was left out. Each part is marked on the
+timeline and in the transcript. The **Why** tab lists what the review found,
+including its findings on each join.
 
-In Results, **Find moments** searches the recording and shows excerpts with
-source times. **Make clips from brief** starts a new run using the recording's
-existing analysis. You can change the length and count before submitting it.
-**More like this, shorter** uses the reviewed clip as a reference for a new brief.
+An edit is kept only when the review prefers it to the same moment played
+whole, asked both ways round. When it cannot check that on a recording, the
+clip plays whole instead. The **Why** tab says which happened.
 
-Choose **Edit clip**, then open **Parts**. Move a part earlier or later with
-the arrows, remove it, or restore an omitted passage with its original picture
-and captions. A part may contain several camera shots. Moving the part moves
-all of those shots and the programme content attached to them. Each change
-is one step in the editor's undo history.
+**Approve**, **Keep** and **Reject** work as for any clip. Approving builds the
+edit, and your decisions help later analyses of the same project.
 
-A directed join can blend a short, verified pause from the recording under
-the cut. The draft player and export use the same fade lengths. When a recording
-has no suitable pause, the director keeps the speech fades. The optional reason
-beside **Keep** and **Reject** is saved with the decision.
+To change the parts, approve the clip, choose **Edit clip** and open
+**Parts**. Move a part earlier or later with the arrows, remove it, or restore
+an omitted passage with its original picture and captions. A part may contain
+several camera shots. Moving the part moves all of those shots and the
+programme content attached to them. Each change is one step in the editor's
+undo history.
+
+Every cut is placed in a pause measured in the recording. A join can blend a
+short pause from the recording under the cut, and the draft player and export
+use the same fade lengths.

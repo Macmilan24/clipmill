@@ -67,3 +67,31 @@ keep every call on the same recording and run.
   The new job reuses the recording's observations. To record feedback on
   one of its clips, pass its run and clip IDs, your decision, and an optional
   reason to `clipmill_set_decision`.
+
+## Lend ClipMill your judgement
+
+ClipMill decides some edits by asking narrow yes-or-no questions: whether a
+clip ends before its speaker has finished, whether leaving a passage out
+leaves something dangling, and which of two versions of a clip makes the
+better short. By default the local editorial model answers them, and only
+after it shows on the same recording that it can. A connected agent can
+answer them instead.
+
+1. Call `clipmill_judge_questions` with the project, source and job IDs of a
+   finished analysis. Each question has a `question_id` and its full text.
+2. Answer each one from its text alone, with `yes`, `no` or the probability
+   that the answer is yes.
+3. Call `clipmill_reprompt` with the same IDs and `answers`:
+   `[{"question_id": "q_…", "answer": "yes"}]`. Leave out `prompt` to keep
+   the run's brief. Follow the returned job.
+4. Call `clipmill_judge_questions` on the new run. Your answers can open
+   further questions, such as the comparison for an edit your answers made
+   possible. Answer those the same way until none are left.
+
+Answers are kept with each run and carried into the next, so a round needs
+only the questions still open. Some questions have answers the recording
+itself shows, and the list does not say which. ClipMill puts a kind of
+question to you only once you have answered every question of that kind,
+and uses your answers only if they tell those known cases apart. The
+questions contain the words spoken in the recording, so answering them sends
+that text to your agent's model.

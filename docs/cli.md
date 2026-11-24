@@ -40,6 +40,22 @@ existing directory and state why you may use the recording in your own words.
 The command returns a job ID and destination information. Use
 `clipmill job JOB_ID --wait` to follow rendering.
 
+## Revise a finished analysis
+
+```sh
+clipmill reprompt PROJECT_ID SOURCE_ID "Find the clearest answer" --run JOB_ID --wait
+clipmill questions PROJECT_ID SOURCE_ID --run JOB_ID --json
+clipmill reprompt PROJECT_ID SOURCE_ID --run JOB_ID --answers answers.json --wait
+```
+
+A new brief reuses the recording's transcript and memory. `questions` lists the
+narrow questions the run's judge asked, or would have asked, that have no answer
+yet. To answer them yourself or from another model, write a JSON file of
+`{"question_id": "q_…", "answer": "yes"}` objects, using `yes`, `no` or the
+probability of yes, and pass it with `--answers`. The run keeps its brief, and
+its answers carry into the next run. The [MCP client guide](agents.md) explains
+how the answers are checked.
+
 Pass `--json` for structured output. A command running under the local account
 has read, edit and render scopes by default. A script can instead use a
 revocable connected-client token from its environment. The engine guide lists

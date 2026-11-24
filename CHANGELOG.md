@@ -1,33 +1,83 @@
 # Changelog
 
-## 0.6.0 — Editorial briefs and multi-part clips
+## 0.6.0 — Clips cut like an editor would, checked before they ship
 
-- Plan clips against an editable brief. The local planner can combine distant
-  passages, tighten a section or build a montage. A critic checks cuts against
-  their original context before the plans are ranked.
-- Connected agents can search the recording, read each clip's plan and
-  evidence, and try a new brief without transcribing again.
-- Change multi-part clips in the Editor. Restore source ranges, move or remove
-  a part, adjust a join, and preview the room tone and fades that will be used
-  in the render.
+- **Clips from several parts of a recording, only when they are better.**
+  The local mind can lift a strong line to the front, join a question to an
+  answer given minutes later, open on the question an answer needs, or leave
+  out an aside. Every such edit is set against the same moment played whole,
+  and ships only when a judge prefers it both ways round. That judge is first
+  tested on pairs whose answer the recording shows, and when no judge passes,
+  the moment plays whole. Expect most clips to be single stretches of the
+  recording; the edits that remain are the ones that were checked.
+- **Plan clips against an editable brief.** Name the subject or moments you
+  want in New Project. Connected agents can also search the recording, read
+  each clip's plan and evidence, and try a new brief without transcribing
+  again.
+- **Lend the mind your agent's judgement.** The narrow questions the mind
+  asks, such as whether a clip stops before its speaker has finished or which
+  of two versions makes the better short, can be answered by a connected
+  agent instead of the local model. List them with `clipmill_judge_questions`
+  or `clipmill questions`, and send the answers with a reprompt. An agent is
+  measured on the same known cases as the local model before any answer is
+  used.
+- **Change multi-part clips in the Editor.** Restore source ranges, move or
+  remove a part, adjust a join, and preview the room tone and fades that will
+  be used in the render.
 - **Cuts land in pauses.** Analysis measures the pauses heard between words
   and places every clip edge, join and removal inside one, clear of the words
   on either side, so a cut no longer clips a syllable or lands mid-sound. A
   sentence edge with no pause is not used, and a plan supplied by a connected
   client is moved onto the nearest pause before it is checked.
-- **Cleaner clip shapes.** A clip no longer ends where the speaker carries on
-  with "and" or "but", or opens on one. It ends on a line that closes a
-  sentence and does not end on a promise such as "here's why", and it opens
-  where the line before it closed a sentence. A line that starts in lower case,
-  or that the same speaker opens with "that" or "which", is read as the rest
-  of the thought before it. A cold open plays its first line once,
-  taking it out of the moment that follows. Removals that would save less than
-  2.5 seconds are no longer made.
+- **Clips start and end on whole thoughts.** A clip ends where another
+  speaker takes over, or where the same speaker finishes a sentence and
+  pauses, and it opens at the same kind of place. On a recording whose
+  speakers rarely pause, the pause needed follows how that recording is
+  spoken. A clip no longer ends or opens where the speaker carries on with
+  "and" or "but", turns the point with "right now…", "however…" or "for
+  example…", or points back with "that" or "which", and it never ends on a
+  promise such as "here's why" or a list marker such as "Number two." A line
+  that starts in lower case is read as the rest of the sentence before it.
+- **Endings checked for meaning.** Before planning, a new step tests the
+  editorial model on endings whose answer the recording gives, such as a line
+  followed by the same speaker's "and…", or by another speaker's question.
+  Only a model that tells these apart is then asked whether a candidate clip
+  stops while its speaker is still mid-thought, and the planner drops the
+  endings it hears that way. Each such clip is also offered with up to three
+  later endings, up to where another speaker takes over. A model that does
+  not pass changes nothing. The step is listed as **Check the endings** and
+  adds a few minutes to analysis. The review asks the same judge about the
+  ending of every clip it accepts, and repairs one that cuts the speaker off.
 - **Safer tightening.** A clip leaves out only filler and false starts that
-  the speaker says again in the next line. A passage marked as a tangent
-  stays, and nothing is taken out when the words kept around it would point
-  at it ("here's why", "that's why") or when it holds a question. A clip that
-  opens on an answer is also offered with the question that prompts it.
+  the speaker says again in the next line, and removals that would save less
+  than 2.5 seconds are not made. Nothing is taken out when the words kept
+  around it would point at it ("here's why", "that's why") or when it holds a
+  question. A cold open plays its first line once, taking it out of the
+  moment that follows. A clip that opens on an answer is also offered with
+  the question that prompts it.
+- **Asides left out, when it can be checked.** After a clip is accepted, the
+  planner may choose one passage to leave out as an aside, from passages the
+  cutter allows: whole sentences in one speaker's turn, with nothing kept
+  around them pointing at them. The removal is made only if a measurement on
+  the recording confirms nothing is left dangling, and the shorter clip is
+  reviewed and compared with the whole moment again. That measurement is
+  first tested on removals whose effect the recording shows, and is used only
+  if it passes. It is available with the MLX runtime on Mac; elsewhere the
+  editorial model's own check, or a connected agent's, decides.
+- **Multi-part clips in Results and the Clip Inspector.** Clips built from
+  several parts of a recording appear in the Results grid and list like any
+  other clip, with their keep score and length. The Clip Inspector plays their
+  parts in order, marks each part on the timeline and in the transcript, and
+  lists what the review found in its Why tab, including how an edit fared
+  against the whole moment. Approving one builds its edit.
+- **Decisions teach the mind.** Keeping, approving and rejecting clips in
+  Results or the Clip Inspector, and the edits you make, inform later
+  analyses of the same project, including clips rejected without an edit.
+- **Agents' clips start with your look.** A clip made through MCP or the
+  `clipmill` command starts with the caption look you chose for the project
+  and the brand kit and frame you saved in the Studio.
+- **Cleaner transcripts.** A phrase that speech recognition repeats in a loop
+  is removed, as a single repeated word already was, and the gap is marked.
 - **A shorter markup pass.** The markup step no longer asks the model which
   passages a clip could leave out, which was close to half of what it wrote.
   The cutter finds filler and abandoned restarts itself, by rules it can
@@ -35,35 +85,6 @@
 - **One editorial path.** With a local editorial model, analysis no longer
   runs the built-in moment search and ranking alongside the planner, whose
   results were not shown. Computers without a model still use them.
-- **Multi-part clips in Results and the Clip Inspector.** Clips built from
-  several parts of a recording appear in the Results grid and list like any
-  other clip, with their keep score and length. The Clip Inspector plays their
-  parts in order, marks each part on the timeline and in the transcript, and
-  lists what the review found in its Why tab. Approving one builds its edit.
-- **Endings checked for meaning.** Before planning, a new step tests the
-  editorial model on endings whose answer the recording gives, such as a line
-  followed by the same speaker's "and…", or by another speaker's question.
-  Only a model that tells these apart is then asked whether a candidate clip
-  stops while its speaker is still mid-thought, and the planner drops the
-  endings it hears that way. Each such clip is also offered with up to three
-  later endings, up to where another speaker takes over. A model that does not pass changes nothing. The step is listed as
-  **Check the endings** and adds a few minutes to analysis. The review asks
-  the same model about the ending of every clip it accepts, and repairs one
-  that cuts the speaker off.
-- **Endings on whole thoughts.** Among the endings the rules allow, a clip
-  leans towards one where the other speaker takes over or the speaker pauses,
-  and a clip trimmed to leave out a closing sign-off now ends on the same
-  measured pause as any other edge. A clip no longer ends just before the
-  same speaker turns the point with "right now…", "however…", "for
-  example…" or "the truth is…", or on a list marker such as "Number two."
-- **Asides left out, when it can be checked.** After a clip is accepted, the
-  planner may choose one passage to leave out as an aside, from passages the
-  cutter allows: whole sentences in one speaker's turn, with nothing kept
-  around them pointing at them. The removal is made only if a measurement on
-  the recording confirms nothing is left dangling, and the shorter clip is
-  reviewed again. That measurement is first tested on removals whose effect
-  the recording shows, and is used only if it passes. It is available with
-  the MLX runtime on Mac; elsewhere the editorial model's own check decides.
 
 ## 0.5.2 — Dependency security updates
 
