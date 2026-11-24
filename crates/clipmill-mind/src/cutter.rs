@@ -616,15 +616,19 @@ impl Table {
     }
 
     /// Whether a part may start at line `a`: there is a pause to cut in, the
-    /// line before it closed a sentence, and the line does not open by
-    /// pointing back at an earlier one.
+    /// line starts a thought (another speaker spoke last, or the same
+    /// speaker finished a sentence and paused as long as an ending needs),
+    /// and the line does not open by pointing back at an earlier one.
     fn may_open(&self, a: usize) -> bool {
         let unit = &self.units[a];
-        let starts_sentence = a
-            .checked_sub(1)
-            .is_none_or(|before| self.units[before].ends_sentence);
+        let starts_thought = a.checked_sub(1).is_none_or(|place| {
+            let before = &self.units[place];
+            before.ends_sentence
+                && (!same_voice(before, unit)
+                    || unit.start.saturating_sub(before.end) >= self.ending_pause)
+        });
         unit.open.is_some()
-            && starts_sentence
+            && starts_thought
             && !unit.starts_lower
             && unit.needs.is_none()
             && !points_back(&unit.text)

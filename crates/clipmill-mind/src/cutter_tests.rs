@@ -1065,6 +1065,19 @@ fn a_moment_ends_where_the_speaker_hands_over_or_pauses() {
 }
 
 #[test]
+fn a_clip_starts_only_where_a_thought_starts() {
+    let (mut source, words) = recording();
+    // The guest runs from s26 into s27 without a pause.
+    source.sentences[26].end_ticks = source.sentences[27].start_ticks;
+    let table = plain_table(&source, &words);
+    assert!(!table.may_open(27), "the guest has not finished s26");
+    assert!(table.may_open(28), "after a pause the guest starts afresh");
+    // A new speaker starts a thought however quickly they come in.
+    source.sentences[27].speaker = Some("host".to_owned());
+    assert!(plain_table(&source, &words).may_open(27));
+}
+
+#[test]
 fn the_pause_an_ending_needs_follows_how_the_recording_is_spoken() {
     let (mut source, words) = recording();
     let pause_after = |source: &mut Source, gap: u64| {
