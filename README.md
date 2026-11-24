@@ -24,10 +24,13 @@ that, analysis works without a connection.
 - Import a local video or download a single YouTube video you have permission to
   use, with a choice of download quality.
 - Analyze English podcasts, interviews, and scripted scenes. Give the local
-  editor a brief for a topic or a montage. It can tighten a passage, lift an
-  opening, or join a question to its answer elsewhere in the recording.
-- Review ranked clips, inspect the source at each join, and keep or reject
-  suggestions. A new brief reuses the same recording analysis.
+  editor a brief for a topic or a montage. Clips start and end on whole
+  thoughts, and every cut sits in a measured pause. Where it is the better
+  short, a clip can leave out an aside, lift an opening, or join a question to
+  its answer elsewhere in the recording.
+- Review ranked clips in Results and the Clip Inspector, see what the review
+  found at each join, and keep or reject suggestions. Connected agents can try
+  a new brief on the same recording analysis.
 - Edit trims, caption wording and line breaks, framing, crop movement,
   transitions, and audio. Saved edits support undo and redo within an editing
   session.
@@ -35,7 +38,8 @@ that, analysis works without a connection.
   or in batches. Export jobs and saved document revisions survive restarts.
 
 For a local editorial run, ClipMill checks the complete played transcript and the
-original lines around each cut. A failed check gets one repair attempt. The
+original lines around each cut, and keeps an edit only when it is preferred to
+the same moment played whole. A failed check gets one repair attempt. The
 ranker compares eligible clips in both presentation orders and balances chapters
 and forms. Results explains when fewer clips meet the brief than you requested.
 
