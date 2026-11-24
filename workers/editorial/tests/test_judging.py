@@ -354,3 +354,70 @@ def test_the_review_asks_about_a_final_ending_and_repairs_one_that_cuts_off():
     [row] = review_batch(Review(model), plans, doc, script(), judgments=unchecked)
     assert model.asked == [] and row["plan"]["plan_id"] == first["plan_id"]
     assert CUT_OFF not in row["quality"]["issues"]
+
+
+def test_a_connected_agent_judges_endings_only_after_answering_every_known_case():
+    from clipmill_worker_editorial.judging import Book, Recording, known_endings, question_id
+
+    doc = candidates((plan(3, 4, "a"), plan(3, 6, "b")))
+    # A first run lists every question, the known cases among them.
+    book = Book()
+    traces = []
+    judge(
+        Model(),
+        script(),
+        doc,
+        MEMORY,
+        brief="",
+        count=10,
+        identity={"route": "local", "model": {"name": "test-model"}},
+        traces=traces,
+        progress=lambda *_: None,
+        book=book,
+    )
+    listed = {q["question_id"] for q in book.open()}
+    recording = Recording(script())
+    known = known_endings(recording, MEMORY["chapters"])
+    assert {question_id("judge.ending", recording.question(i)) for i, _ in known} <= listed
+    # An agent that answers everything as the recording says, and calls s4 cut off.
+    answers = {}
+    for q in book.open():
+        text = q["text"]
+        nxt = text.split("Next line:\n")[1].split("\n")[0]
+        last = text.split("Next line:")[0].strip().splitlines()[-1]
+        finished = nxt.split(": ")[0] != last.split(": ")[0] and not last.endswith("Not yet.")
+        if nxt.split(": ", 1)[1].split()[0] in ("And", "But", "Because"):
+            finished = False
+        answers[q["question_id"]] = 1.0 if finished else 0.0
+    local = Model()
+    result = judge(
+        local,
+        script(),
+        doc,
+        MEMORY,
+        brief="",
+        count=10,
+        identity={"route": "local", "model": {"name": "test-model"}},
+        traces=[],
+        progress=lambda *_: None,
+        book=Book(answers),
+    )
+    assert result["judge"]["answered_by"] == "agent"
+    assert result["self_check"]["endings"]["passed"]
+    assert result["endings"] == [{"after_unit": "s4", "score": -1.0, "verdict": "continues"}]
+    assert local.asked == []
+    # Missing one known case, the local model judges instead.
+    partial = dict(list(answers.items())[1:])
+    result = judge(
+        Model(),
+        script(),
+        doc,
+        MEMORY,
+        brief="",
+        count=10,
+        identity={"route": "local", "model": {"name": "test-model"}},
+        traces=[],
+        progress=lambda *_: None,
+        book=Book(partial),
+    )
+    assert result["judge"]["answered_by"] == "model"
