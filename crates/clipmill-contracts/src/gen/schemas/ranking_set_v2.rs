@@ -486,6 +486,49 @@ impl<'de> ::serde::Deserialize<'de> for PlanId {
 #[doc = "    \"verdict\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"compared\": {"]
+#[doc = "      \"description\": \"The edited clip set against its plain version: the longest part played whole, with nothing left out. An edit ships only when the comparison prefers it in both orders, or when the plain version cannot ship.\","]
+#[doc = "      \"type\": \"object\","]
+#[doc = "      \"required\": ["]
+#[doc = "        \"kept\","]
+#[doc = "        \"plain_plan_id\","]
+#[doc = "        \"reason\""]
+#[doc = "      ],"]
+#[doc = "      \"properties\": {"]
+#[doc = "        \"edit_first\": {"]
+#[doc = "          \"description\": \"The probability that the edit is the better short, asked with the edit as version A.\","]
+#[doc = "          \"type\": \"number\","]
+#[doc = "          \"maximum\": 1.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"kept\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"edit\","]
+#[doc = "            \"plain\""]
+#[doc = "          ]"]
+#[doc = "        },"]
+#[doc = "        \"plain_first\": {"]
+#[doc = "          \"description\": \"The probability that the plain version is the better short, asked with it as version A.\","]
+#[doc = "          \"type\": \"number\","]
+#[doc = "          \"maximum\": 1.0,"]
+#[doc = "          \"minimum\": 0.0"]
+#[doc = "        },"]
+#[doc = "        \"plain_plan_id\": {"]
+#[doc = "          \"$ref\": \"#/$defs/plan_id\""]
+#[doc = "        },"]
+#[doc = "        \"reason\": {"]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"edit_preferred\","]
+#[doc = "            \"plain_preferred\","]
+#[doc = "            \"not_measured\","]
+#[doc = "            \"plain_failed_review\","]
+#[doc = "            \"plain_out_of_length\","]
+#[doc = "            \"awaiting_agent\""]
+#[doc = "          ]"]
+#[doc = "        }"]
+#[doc = "      },"]
+#[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
 #[doc = "    \"hook\": {"]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"strong\","]
@@ -513,6 +556,10 @@ impl<'de> ::serde::Deserialize<'de> for PlanId {
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"minLength\": 1"]
 #[doc = "    },"]
+#[doc = "    \"tightened\": {"]
+#[doc = "      \"description\": \"A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.\","]
+#[doc = "      \"type\": \"boolean\""]
+#[doc = "    },"]
 #[doc = "    \"verdict\": {"]
 #[doc = "      \"enum\": ["]
 #[doc = "        \"accept\","]
@@ -527,16 +574,251 @@ impl<'de> ::serde::Deserialize<'de> for PlanId {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Quality {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub compared: ::std::option::Option<QualityCompared>,
     pub hook: QualityHook,
     pub issues: ::std::vec::Vec<QualityIssuesItem>,
     pub joins: ::std::vec::Vec<JoinReview>,
     pub repaired: bool,
     pub summary: QualitySummary,
+    #[doc = "A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub tightened: ::std::option::Option<bool>,
     pub verdict: QualityVerdict,
 }
 impl Quality {
     pub fn builder() -> builder::Quality {
         Default::default()
+    }
+}
+#[doc = "The edited clip set against its plain version: the longest part played whole, with nothing left out. An edit ships only when the comparison prefers it in both orders, or when the plain version cannot ship."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"The edited clip set against its plain version: the longest part played whole, with nothing left out. An edit ships only when the comparison prefers it in both orders, or when the plain version cannot ship.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"kept\","]
+#[doc = "    \"plain_plan_id\","]
+#[doc = "    \"reason\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"edit_first\": {"]
+#[doc = "      \"description\": \"The probability that the edit is the better short, asked with the edit as version A.\","]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"maximum\": 1.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"kept\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"edit\","]
+#[doc = "        \"plain\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"plain_first\": {"]
+#[doc = "      \"description\": \"The probability that the plain version is the better short, asked with it as version A.\","]
+#[doc = "      \"type\": \"number\","]
+#[doc = "      \"maximum\": 1.0,"]
+#[doc = "      \"minimum\": 0.0"]
+#[doc = "    },"]
+#[doc = "    \"plain_plan_id\": {"]
+#[doc = "      \"$ref\": \"#/$defs/plan_id\""]
+#[doc = "    },"]
+#[doc = "    \"reason\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"edit_preferred\","]
+#[doc = "        \"plain_preferred\","]
+#[doc = "        \"not_measured\","]
+#[doc = "        \"plain_failed_review\","]
+#[doc = "        \"plain_out_of_length\","]
+#[doc = "        \"awaiting_agent\""]
+#[doc = "      ]"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct QualityCompared {
+    #[doc = "The probability that the edit is the better short, asked with the edit as version A."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub edit_first: ::std::option::Option<f64>,
+    pub kept: QualityComparedKept,
+    #[doc = "The probability that the plain version is the better short, asked with it as version A."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub plain_first: ::std::option::Option<f64>,
+    pub plain_plan_id: PlanId,
+    pub reason: QualityComparedReason,
+}
+impl QualityCompared {
+    pub fn builder() -> builder::QualityCompared {
+        Default::default()
+    }
+}
+#[doc = "`QualityComparedKept`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"edit\","]
+#[doc = "    \"plain\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum QualityComparedKept {
+    #[serde(rename = "edit")]
+    Edit,
+    #[serde(rename = "plain")]
+    Plain,
+}
+impl ::std::fmt::Display for QualityComparedKept {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Edit => f.write_str("edit"),
+            Self::Plain => f.write_str("plain"),
+        }
+    }
+}
+impl ::std::str::FromStr for QualityComparedKept {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "edit" => Ok(Self::Edit),
+            "plain" => Ok(Self::Plain),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for QualityComparedKept {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for QualityComparedKept {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for QualityComparedKept {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`QualityComparedReason`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"edit_preferred\","]
+#[doc = "    \"plain_preferred\","]
+#[doc = "    \"not_measured\","]
+#[doc = "    \"plain_failed_review\","]
+#[doc = "    \"plain_out_of_length\","]
+#[doc = "    \"awaiting_agent\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum QualityComparedReason {
+    #[serde(rename = "edit_preferred")]
+    EditPreferred,
+    #[serde(rename = "plain_preferred")]
+    PlainPreferred,
+    #[serde(rename = "not_measured")]
+    NotMeasured,
+    #[serde(rename = "plain_failed_review")]
+    PlainFailedReview,
+    #[serde(rename = "plain_out_of_length")]
+    PlainOutOfLength,
+    #[serde(rename = "awaiting_agent")]
+    AwaitingAgent,
+}
+impl ::std::fmt::Display for QualityComparedReason {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::EditPreferred => f.write_str("edit_preferred"),
+            Self::PlainPreferred => f.write_str("plain_preferred"),
+            Self::NotMeasured => f.write_str("not_measured"),
+            Self::PlainFailedReview => f.write_str("plain_failed_review"),
+            Self::PlainOutOfLength => f.write_str("plain_out_of_length"),
+            Self::AwaitingAgent => f.write_str("awaiting_agent"),
+        }
+    }
+}
+impl ::std::str::FromStr for QualityComparedReason {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "edit_preferred" => Ok(Self::EditPreferred),
+            "plain_preferred" => Ok(Self::PlainPreferred),
+            "not_measured" => Ok(Self::NotMeasured),
+            "plain_failed_review" => Ok(Self::PlainFailedReview),
+            "plain_out_of_length" => Ok(Self::PlainOutOfLength),
+            "awaiting_agent" => Ok(Self::AwaitingAgent),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for QualityComparedReason {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for QualityComparedReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for QualityComparedReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`QualityHook`"]
@@ -1464,27 +1746,44 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct Quality {
+        compared: ::std::result::Result<
+            ::std::option::Option<super::QualityCompared>,
+            ::std::string::String,
+        >,
         hook: ::std::result::Result<super::QualityHook, ::std::string::String>,
         issues:
             ::std::result::Result<::std::vec::Vec<super::QualityIssuesItem>, ::std::string::String>,
         joins: ::std::result::Result<::std::vec::Vec<super::JoinReview>, ::std::string::String>,
         repaired: ::std::result::Result<bool, ::std::string::String>,
         summary: ::std::result::Result<super::QualitySummary, ::std::string::String>,
+        tightened: ::std::result::Result<::std::option::Option<bool>, ::std::string::String>,
         verdict: ::std::result::Result<super::QualityVerdict, ::std::string::String>,
     }
     impl ::std::default::Default for Quality {
         fn default() -> Self {
             Self {
+                compared: Ok(Default::default()),
                 hook: Err("no value supplied for hook".to_string()),
                 issues: Err("no value supplied for issues".to_string()),
                 joins: Err("no value supplied for joins".to_string()),
                 repaired: Err("no value supplied for repaired".to_string()),
                 summary: Err("no value supplied for summary".to_string()),
+                tightened: Ok(Default::default()),
                 verdict: Err("no value supplied for verdict".to_string()),
             }
         }
     }
     impl Quality {
+        pub fn compared<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::QualityCompared>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.compared = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for compared: {e}"));
+            self
+        }
         pub fn hook<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::QualityHook>,
@@ -1535,6 +1834,16 @@ pub mod builder {
                 .map_err(|e| format!("error converting supplied value for summary: {e}"));
             self
         }
+        pub fn tightened<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<bool>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.tightened = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for tightened: {e}"));
+            self
+        }
         pub fn verdict<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::QualityVerdict>,
@@ -1550,11 +1859,13 @@ pub mod builder {
         type Error = super::error::ConversionError;
         fn try_from(value: Quality) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                compared: value.compared?,
                 hook: value.hook?,
                 issues: value.issues?,
                 joins: value.joins?,
                 repaired: value.repaired?,
                 summary: value.summary?,
+                tightened: value.tightened?,
                 verdict: value.verdict?,
             })
         }
@@ -1562,12 +1873,110 @@ pub mod builder {
     impl ::std::convert::From<super::Quality> for Quality {
         fn from(value: super::Quality) -> Self {
             Self {
+                compared: Ok(value.compared),
                 hook: Ok(value.hook),
                 issues: Ok(value.issues),
                 joins: Ok(value.joins),
                 repaired: Ok(value.repaired),
                 summary: Ok(value.summary),
+                tightened: Ok(value.tightened),
                 verdict: Ok(value.verdict),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct QualityCompared {
+        edit_first: ::std::result::Result<::std::option::Option<f64>, ::std::string::String>,
+        kept: ::std::result::Result<super::QualityComparedKept, ::std::string::String>,
+        plain_first: ::std::result::Result<::std::option::Option<f64>, ::std::string::String>,
+        plain_plan_id: ::std::result::Result<super::PlanId, ::std::string::String>,
+        reason: ::std::result::Result<super::QualityComparedReason, ::std::string::String>,
+    }
+    impl ::std::default::Default for QualityCompared {
+        fn default() -> Self {
+            Self {
+                edit_first: Ok(Default::default()),
+                kept: Err("no value supplied for kept".to_string()),
+                plain_first: Ok(Default::default()),
+                plain_plan_id: Err("no value supplied for plain_plan_id".to_string()),
+                reason: Err("no value supplied for reason".to_string()),
+            }
+        }
+    }
+    impl QualityCompared {
+        pub fn edit_first<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<f64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.edit_first = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for edit_first: {e}"));
+            self
+        }
+        pub fn kept<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::QualityComparedKept>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.kept = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for kept: {e}"));
+            self
+        }
+        pub fn plain_first<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<f64>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.plain_first = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for plain_first: {e}"));
+            self
+        }
+        pub fn plain_plan_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::PlanId>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.plain_plan_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for plain_plan_id: {e}"));
+            self
+        }
+        pub fn reason<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::QualityComparedReason>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.reason = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for reason: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<QualityCompared> for super::QualityCompared {
+        type Error = super::error::ConversionError;
+        fn try_from(
+            value: QualityCompared,
+        ) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                edit_first: value.edit_first?,
+                kept: value.kept?,
+                plain_first: value.plain_first?,
+                plain_plan_id: value.plain_plan_id?,
+                reason: value.reason?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::QualityCompared> for QualityCompared {
+        fn from(value: super::QualityCompared) -> Self {
+            Self {
+                edit_first: Ok(value.edit_first),
+                kept: Ok(value.kept),
+                plain_first: Ok(value.plain_first),
+                plain_plan_id: Ok(value.plain_plan_id),
+                reason: Ok(value.reason),
             }
         }
     }

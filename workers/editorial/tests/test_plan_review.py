@@ -623,6 +623,43 @@ def test_position_only_votes_cancel_and_stronger_wins_raise_bradley_terry_streng
     assert a > b > c > 0
 
 
+def test_a_ranked_clip_keeps_what_its_review_found_about_tightening_and_its_plain_version():
+    from clipmill_worker_sdk.gen.schemas.ranking_set_v2 import RankingSetV2
+
+    drafts = [plan([part("p1", 0, 2)], name="1"), plan([part("p1", 3, 5)], name="2")]
+    ctx = Calls(lambda *_: {"winner": "A", "reason": "First one."})
+    quality = {
+        "verdict": "accept",
+        "hook": "strong",
+        "summary": "Complete.",
+        "joins": [],
+        "issues": [],
+        "repaired": False,
+        "tightened": True,
+        "compared": {
+            "plain_plan_id": "plan_" + "e" * 24,
+            "kept": "edit",
+            "reason": "edit_preferred",
+            "edit_first": 0.9,
+            "plain_first": 0.1,
+        },
+    }
+    rows = [
+        {"plan": draft, "chapter": str(i), "reasons": ["Specific."], "quality": quality}
+        for i, draft in enumerate(drafts)
+    ]
+    ranked = rank_batch(ctx, {"reviews": rows}, script(), 2)
+    RankingSetV2.model_validate(
+        {
+            "schema_version": "clipmill.ranking.set.v2",
+            "source_fingerprint": drafts[0]["source_fingerprint"],
+            "inputs": {},
+            **ranked,
+        }
+    )
+    assert ranked["clips"][0]["quality"]["compared"]["kept"] == "edit"
+
+
 def test_planner_cannot_invent_source_ranges_and_declines_unsupplied_choice():
     draft = plan([part("p1", 1, 4)])
     ctx = Calls(lambda *_: {"choice": "fabricated", "title": "New range"})

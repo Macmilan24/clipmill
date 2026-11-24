@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://clipmill.dev/schemas/clipmill.ranking.set.v2.json",
   "title": "RankingSetV2",
-  "description": "Distinct independently reviewed plans in editorial order, with counterbalanced comparisons, Bradley\u2013Terry strengths and a reason for any shortfall.",
+  "description": "Distinct independently reviewed plans in editorial order, with counterbalanced comparisons, Bradley–Terry strengths and a reason for any shortfall.",
   "type": "object",
   "required": [
     "schema_version",
@@ -154,6 +154,46 @@
         },
         "repaired": {
           "type": "boolean"
+        },
+        "tightened": {
+          "description": "A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.",
+          "type": "boolean"
+        },
+        "compared": {
+          "description": "The edited clip set against its plain version: the longest part played whole, with nothing left out. An edit ships only when the comparison prefers it in both orders, or when the plain version cannot ship.",
+          "type": "object",
+          "required": ["plain_plan_id", "kept", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "plain_plan_id": {
+              "$ref": "#/$defs/plan_id"
+            },
+            "kept": {
+              "enum": ["edit", "plain"]
+            },
+            "reason": {
+              "enum": [
+                "edit_preferred",
+                "plain_preferred",
+                "not_measured",
+                "plain_failed_review",
+                "plain_out_of_length",
+                "awaiting_agent"
+              ]
+            },
+            "edit_first": {
+              "description": "The probability that the edit is the better short, asked with the edit as version A.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "plain_first": {
+              "description": "The probability that the plain version is the better short, asked with it as version A.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
         }
       }
     },

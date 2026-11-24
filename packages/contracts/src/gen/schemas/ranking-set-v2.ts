@@ -44,6 +44,32 @@ export interface Quality {
   joins: JoinReview[];
   issues: string[];
   repaired: boolean;
+  /**
+   * A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.
+   */
+  tightened?: boolean;
+  /**
+   * The edited clip set against its plain version: the longest part played whole, with nothing left out. An edit ships only when the comparison prefers it in both orders, or when the plain version cannot ship.
+   */
+  compared?: {
+    plain_plan_id: PlanId;
+    kept: "edit" | "plain";
+    reason:
+      | "edit_preferred"
+      | "plain_preferred"
+      | "not_measured"
+      | "plain_failed_review"
+      | "plain_out_of_length"
+      | "awaiting_agent";
+    /**
+     * The probability that the edit is the better short, asked with the edit as version A.
+     */
+    edit_first?: number;
+    /**
+     * The probability that the plain version is the better short, asked with it as version A.
+     */
+    plain_first?: number;
+  };
 }
 export interface JoinReview {
   after: string;

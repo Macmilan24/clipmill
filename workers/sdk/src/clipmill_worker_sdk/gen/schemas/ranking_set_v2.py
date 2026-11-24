@@ -51,6 +51,37 @@ class Hook(Enum):
     weak = 'weak'
 
 
+class Kept(Enum):
+    edit = 'edit'
+    plain = 'plain'
+
+
+class Reason2(Enum):
+    edit_preferred = 'edit_preferred'
+    plain_preferred = 'plain_preferred'
+    not_measured = 'not_measured'
+    plain_failed_review = 'plain_failed_review'
+    plain_out_of_length = 'plain_out_of_length'
+    awaiting_agent = 'awaiting_agent'
+
+
+class Compared(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    plain_plan_id: PlanId
+    kept: Kept
+    reason: Reason2
+    edit_first: confloat(ge=0.0, le=1.0) | None = Field(
+        None,
+        description='The probability that the edit is the better short, asked with the edit as version A.',
+    )
+    plain_first: confloat(ge=0.0, le=1.0) | None = Field(
+        None,
+        description='The probability that the plain version is the better short, asked with it as version A.',
+    )
+
+
 class Verdict1(Enum):
     pass_ = 'pass'
     reject = 'reject'
@@ -75,6 +106,14 @@ class Quality(BaseModel):
     joins: list[JoinReview]
     issues: list[constr(min_length=1)]
     repaired: bool
+    tightened: bool | None = Field(
+        None,
+        description='A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.',
+    )
+    compared: Compared | None = Field(
+        None,
+        description='The edited clip set against its plain version: the longest part played whole, with nothing left out. An edit ships only when the comparison prefers it in both orders, or when the plain version cannot ship.',
+    )
 
 
 class Ranked(BaseModel):
