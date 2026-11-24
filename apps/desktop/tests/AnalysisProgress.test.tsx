@@ -168,7 +168,7 @@ describe('the Analysis Progress screen', () => {
       'Validate candidates',
       'Rank candidates',
       'Check the endings',
-      'Check the joins',
+      'Review each clip',
       'Choose the strongest edits',
     ]) {
       expect(pipeline.getByText(label)).toBeTruthy();

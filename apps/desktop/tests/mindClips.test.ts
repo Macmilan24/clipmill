@@ -125,3 +125,33 @@ describe('what the board says above the mind’s clips', () => {
     expect(readPlanRanking(ranking({ clips: [] }), RECORDING).clips).toEqual([]);
   });
 });
+
+describe('what the review found when it set an edit against the moment played whole', () => {
+  const compared = (kept: string, reason: string) => {
+    const base = ranking();
+    const [clip] = base.clips as { quality: Record<string, unknown> }[];
+    clip!.quality = {
+      ...clip!.quality,
+      compared: { plain_plan_id: `plan_${'e'.repeat(24)}`, kept, reason },
+    };
+    return readPlanRanking(base, RECORDING).clips[0]!.assessment.reasons;
+  };
+
+  it('says why an edit was kept', () => {
+    expect(compared('edit', 'edit_preferred')).toEqual([
+      'A complete exchange.',
+      'Preferred to the same moment played whole, both ways round.',
+    ]);
+  });
+
+  it('says why a moment plays whole', () => {
+    expect(compared('plain', 'not_measured').at(-1)).toMatch(/could not be checked/);
+    expect(compared('plain', 'awaiting_agent').at(-1)).toMatch(/connected agent/);
+  });
+
+  it('says nothing about a clip that was never an edit', () => {
+    expect(readPlanRanking(ranking(), RECORDING).clips[0]!.assessment.reasons).toEqual([
+      'A complete exchange.',
+    ]);
+  });
+});

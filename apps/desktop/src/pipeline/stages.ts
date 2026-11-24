@@ -119,7 +119,7 @@ export const ANALYSIS_STAGES: readonly AnalysisStage[] = [
   },
   {
     kind: 'mind.quality_report.v1',
-    label: 'Check the joins',
+    label: 'Review each clip',
     detail: 'Read each edit against its original context',
   },
   {

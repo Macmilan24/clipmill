@@ -107,6 +107,26 @@ function readable(plan: Plan | undefined, fingerprint: string): plan is Plan {
   );
 }
 
+/**
+ * What the review's comparison with the clip's plain version says, as one
+ * sentence for the Why tab; none when the clip was not an edit.
+ */
+const COMPARISON_NOTES: Readonly<Record<string, string>> = {
+  'edit:edit_preferred': 'Preferred to the same moment played whole, both ways round.',
+  'edit:plain_out_of_length': 'Edited to fit the length; played whole it runs too long or short.',
+  'edit:plain_failed_review': 'Edited because the moment played whole did not pass review.',
+  'plain:plain_preferred': 'Played whole: an edited version of it was not the better short.',
+  'plain:not_measured':
+    'Played whole: an edited version could not be checked against it on this recording.',
+  'plain:awaiting_agent': 'Played whole until a connected agent answers about an edited version.',
+};
+
+function noteOf(quality: Record<string, unknown>): string[] {
+  const compared = record(quality.compared);
+  const note = COMPARISON_NOTES[`${String(compared.kept)}:${String(compared.reason)}`];
+  return note ? [note] : [];
+}
+
 export function readPlanRanking(document: unknown, fingerprint: string): PlanRanking {
   const doc = record(document);
   if (
@@ -153,7 +173,7 @@ export function readPlanRanking(document: unknown, fingerprint: string): PlanRan
       doubts: strings(plan.doubts),
       assessment: {
         keepScore: score,
-        reasons: strings(entry.reasons),
+        reasons: [...strings(entry.reasons), ...noteOf(quality)],
         issues: strings(quality.issues),
         summary: typeof quality.summary === 'string' ? quality.summary : '',
         joinNotes,
