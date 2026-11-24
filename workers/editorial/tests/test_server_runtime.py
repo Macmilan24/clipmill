@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import math
 import os
 import stat
 import sys
@@ -19,7 +20,13 @@ from pathlib import Path
 
 import pytest
 from clipmill_worker_editorial import server_runtime
-from clipmill_worker_editorial.runtime import implementation_suffix, runtime_name
+from clipmill_worker_editorial.runtime import (
+    ANSWER_LEAD,
+    THINK_END,
+    answer_prompt,
+    implementation_suffix,
+    runtime_name,
+)
 from clipmill_worker_editorial.server_runtime import ServerModel, gguf_files, is_gguf
 from clipmill_worker_sdk import CancellationToken, LeaseCancelled
 from clipmill_worker_sdk.weights import VerifiedModel
@@ -67,6 +74,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {{"prompt": prompt}})
         if self.path == "/tokenize":
             return self.reply(200, {{"tokens": list(range(len(body["content"].split())))}})
+        if self.path == "/completion" and body.get("n_probs"):
+            # The answer token: llama-server's shape for n_probs without
+            # post-sampling probabilities.
+            top = behaviour.get("answer", [["Yes", -0.5], [" no", -1.6], ["Maybe", -2.3]])
+            first = {{"token": top[0][0], "logprob": top[0][1]}}
+            entries = [{{"token": token, "logprob": logprob}} for token, logprob in top]
+            first["top_logprobs"] = entries
+            return self.reply(200, {{"content": top[0][0], "completion_probabilities": [first]}})
+        if self.path == "/completion":
+            return self.reply(200, {{"content": "The next line carries the point on."}})
         if self.path != "/v1/chat/completions":
             return self.reply(404, {{}})
         self.send_response(200)
@@ -198,6 +215,54 @@ def test_cancelling_stops_a_reply_in_progress(stand_in, tmp_path, monkeypatch):
     finally:
         runtime.close()
     assert time.monotonic() - started < 5
+
+
+def test_a_judgement_reasons_within_its_budget_then_reads_yes_against_no(stand_in, tmp_path):
+    runtime = ServerModel(gguf_model(tmp_path), CancellationToken())
+    try:
+        probability, thinking = runtime.yes_probability("Has the speaker finished?", 512)
+    finally:
+        runtime.close()
+    # "Yes" and " no" are read; tokens that are neither are ignored.
+    yes, no = math.exp(-0.5), math.exp(-1.6)
+    assert probability == pytest.approx(yes / (yes + no))
+    assert thinking == "The next line carries the point on."
+    (template,) = stand_in("/apply-template")
+    # The server starts with thinking off; a judgement turns it on per request.
+    assert template["chat_template_kwargs"] == {"enable_thinking": True}
+    reasoning, answer = stand_in("/completion")
+    templated = "<user>Has the speaker finished?</user>"
+    assert reasoning["prompt"] == templated
+    assert reasoning["n_predict"] == 512
+    assert reasoning["stop"] == [THINK_END]
+    assert reasoning["temperature"] == 0.0
+    assert answer["prompt"] == answer_prompt(templated, thinking, True)
+    assert answer["prompt"].endswith(THINK_END + "\n\n" + ANSWER_LEAD)
+    assert (answer["n_predict"], answer["n_probs"], answer["temperature"]) == (1, 20, -1)
+
+
+def test_a_judgement_without_a_budget_asks_for_the_answer_at_once(stand_in, tmp_path):
+    runtime = ServerModel(gguf_model(tmp_path), CancellationToken())
+    try:
+        probability, thinking = runtime.yes_probability("Has the speaker finished?", 0)
+    finally:
+        runtime.close()
+    assert thinking == ""
+    (template,) = stand_in("/apply-template")
+    assert template["chat_template_kwargs"] == {"enable_thinking": False}
+    (answer,) = stand_in("/completion")
+    assert answer["prompt"] == "<user>Has the speaker finished?</user>" + ANSWER_LEAD
+    assert 0.5 < probability < 1
+
+
+def test_an_answer_that_is_neither_yes_nor_no_counts_as_one_half(stand_in, tmp_path, monkeypatch):
+    monkeypatch.setenv("STAND_IN", json.dumps({"answer": [["Maybe", -0.1], ["Perhaps", -2.0]]}))
+    runtime = ServerModel(gguf_model(tmp_path), CancellationToken())
+    try:
+        probability, _ = runtime.yes_probability("Has the speaker finished?", 0)
+    finally:
+        runtime.close()
+    assert probability == 0.5
 
 
 def test_close_ends_the_server(stand_in, tmp_path):
