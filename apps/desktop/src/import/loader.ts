@@ -10,6 +10,7 @@ import { type ShellApi, daemonApi } from '../daemon/api.js';
 import { type Job, type Source, type YoutubeImport, isTauri } from '../daemon/client.js';
 import { rememberHighlight, rememberLook, rememberOptions } from '../results/captionLook.js';
 import { type ImportSettings, languageSubtag, projectNameFor, secondsToTicks } from './model.js';
+import { shareLook } from '../results/clipDefaults.js';
 
 /**
  * The probe as the daemon canonicalized it.
@@ -123,6 +124,7 @@ export class ImportLoader {
     if (settings.captionLook) rememberLook(chosen.projectId, settings.captionLook);
     rememberHighlight(chosen.projectId, settings.highlightSpokenWord ?? true);
     rememberOptions(chosen.projectId, settings.captionStyle?.options ?? null);
+    shareLook(chosen.projectId);
     return job;
   }
 

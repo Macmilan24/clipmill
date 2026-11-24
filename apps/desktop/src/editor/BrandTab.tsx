@@ -34,6 +34,7 @@ import {
 } from './brand.js';
 import { CommitSlider, Field, Swatch } from './controls.js';
 import { FRAME_SHAPES, shapeOfFrame } from './layouts.js';
+import { shareKit } from '../results/clipDefaults.js';
 
 const CORNERS = [
   ['top_left', 'Top left'],
@@ -163,6 +164,7 @@ export function BrandTab({
                 ...(license ? { logoLicense: license } : {}),
               };
               rememberKit(next);
+              shareKit();
               setKit(next);
             }}
           >

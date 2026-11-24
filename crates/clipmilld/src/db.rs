@@ -43,10 +43,11 @@ pub(crate) use edit_store::{
     ClipIdentity, DirectOptions, DocumentOrigin, EditCommandRecord, EditDocRecord,
 };
 mod decision_store;
+mod defaults_store;
 pub(crate) use decision_store::{Decision, DecisionRecord, Review};
 
 const APPLICATION_ID: i64 = 0x434C_504D; // "CLPM"
-const SCHEMA_VERSION: i64 = 17;
+const SCHEMA_VERSION: i64 = 18;
 const SQLITE_MIN_VERSION: i32 = 3_051_003;
 const COMMAND_CAPACITY: usize = 128;
 
@@ -251,6 +252,28 @@ impl DbActor {
                                         &mut connection,
                                         &review,
                                     ));
+                                }
+                                Command::SetClipDefaults {
+                                    project_id,
+                                    defaults,
+                                    now_unix_millis,
+                                    reply,
+                                } => {
+                                    let _result = reply.send(
+                                        defaults_store::set(
+                                            &connection,
+                                            &project_id,
+                                            &defaults,
+                                            now_unix_millis,
+                                        )
+                                        .map_err(StoreError::from),
+                                    );
+                                }
+                                Command::ClipDefaults { project_id, reply } => {
+                                    let _result = reply.send(
+                                        defaults_store::for_project(&connection, &project_id)
+                                            .map_err(StoreError::from),
+                                    );
                                 }
                                 Command::Taste { project_id, reply } => {
                                     let _result = reply.send(
@@ -1034,6 +1057,40 @@ impl DbHandle {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::Taste { project_id, reply })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// Replace the look one project's clips start with; with no project,
+    /// the installation's kit.
+    pub(crate) async fn set_clip_defaults(
+        &self,
+        project_id: String,
+        defaults: clipmill_contracts::proto::ipc::v1::ClipDefaultsV1,
+        now_unix_millis: u64,
+    ) -> Result<(), StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::SetClipDefaults {
+                project_id,
+                defaults,
+                now_unix_millis,
+                reply,
+            })
+            .await
+            .map_err(|_| StoreError::Stopped)?;
+        received.await.map_err(|_| StoreError::Stopped)?
+    }
+
+    /// What a new clip in this project starts with.
+    pub(crate) async fn clip_defaults(
+        &self,
+        project_id: String,
+    ) -> Result<clipmill_contracts::proto::ipc::v1::ClipDefaultsV1, StoreError> {
+        let (reply, received) = oneshot::channel();
+        self.sender
+            .send(Command::ClipDefaults { project_id, reply })
             .await
             .map_err(|_| StoreError::Stopped)?;
         received.await.map_err(|_| StoreError::Stopped)?
@@ -1871,6 +1928,19 @@ enum Command {
         review: Review,
         reply: oneshot::Sender<Result<Vec<u8>, StoreError>>,
     },
+    /// Replace the look one project's clips start with, or the kit.
+    SetClipDefaults {
+        project_id: String,
+        defaults: clipmill_contracts::proto::ipc::v1::ClipDefaultsV1,
+        now_unix_millis: u64,
+        reply: oneshot::Sender<Result<(), StoreError>>,
+    },
+    /// What a new clip in a project starts with.
+    ClipDefaults {
+        project_id: String,
+        reply:
+            oneshot::Sender<Result<clipmill_contracts::proto::ipc::v1::ClipDefaultsV1, StoreError>>,
+    },
     Taste {
         project_id: String,
         reply: oneshot::Sender<Result<Vec<String>, StoreError>>,
@@ -2203,8 +2273,9 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         transaction.execute_batch(agent_store::CREATE_V15_TABLES)?;
         transaction.execute_batch(agent_store::CREATE_V16_TABLES)?;
         transaction.execute_batch(decision_store::CREATE_V17_TABLES)?;
+        transaction.execute_batch(defaults_store::CREATE_V18_TABLES)?;
         transaction
-            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 17;")?;
+            .execute_batch("PRAGMA application_id = 1129074765; PRAGMA user_version = 18;")?;
         transaction.commit()?;
     } else if version < SCHEMA_VERSION {
         create_schema_backup(connection, backups_dir, version, SCHEMA_VERSION)?;
@@ -2264,7 +2335,10 @@ fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), Daemon
         if version < 17 {
             transaction.execute_batch(decision_store::CREATE_V17_TABLES)?;
         }
-        transaction.execute_batch("PRAGMA user_version = 17;")?;
+        if version < 18 {
+            transaction.execute_batch(defaults_store::CREATE_V18_TABLES)?;
+        }
+        transaction.execute_batch("PRAGMA user_version = 18;")?;
         transaction.commit()?;
     }
     Ok(())

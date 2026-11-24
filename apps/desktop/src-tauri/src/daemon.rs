@@ -24,9 +24,9 @@ use clipmill_contracts::proto::ipc::v1::{
     PlanExportRequest, PlanExportResponse, Project, ReadArtifactRequest, ReadArtifactResponse,
     RegisterSourceRequest, RegisterSourceResponse, RenameProjectRequest, Request,
     ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
-    SetClipDecisionResponse, SolveCropPathRequest, SolveCropPathResponse, Source,
-    SubmitExportBatchRequest, SubmitJobRequest, SubscribeTaskEventsRequest, TaskEvent,
-    UpdateExportBatchItemRequest, request, response,
+    SetClipDecisionResponse, SetClipDefaultsRequest, SetClipDefaultsResponse, SolveCropPathRequest,
+    SolveCropPathResponse, Source, SubmitExportBatchRequest, SubmitJobRequest,
+    SubscribeTaskEventsRequest, TaskEvent, UpdateExportBatchItemRequest, request, response,
 };
 use clipmilld::endpoint::{self, Stream};
 use prost::Message;
@@ -666,6 +666,17 @@ impl DaemonClient {
     ) -> Result<SetClipDecisionResponse, DaemonLinkError> {
         match self.call(request::Body::SetClipDecision(request)).await? {
             response::Body::SetClipDecision(reply) => Ok(reply),
+            _ => Err(DaemonLinkError::Unexpected),
+        }
+    }
+
+    /// Keep the engine's copy of the look clips start with.
+    pub async fn set_clip_defaults(
+        &self,
+        request: SetClipDefaultsRequest,
+    ) -> Result<SetClipDefaultsResponse, DaemonLinkError> {
+        match self.call(request::Body::SetClipDefaults(request)).await? {
+            response::Body::SetClipDefaults(reply) => Ok(reply),
             _ => Err(DaemonLinkError::Unexpected),
         }
     }

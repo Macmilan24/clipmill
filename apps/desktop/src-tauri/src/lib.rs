@@ -994,6 +994,40 @@ async fn set_clip_decision(
     })
 }
 
+/// Send the engine the look this project's clips start with, or with no
+/// project the installation's kit, so clips an agent makes start the same.
+#[tauri::command]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a Tauri command's arguments are its JSON fields"
+)]
+async fn set_clip_defaults(
+    supervisor: State<'_, Arc<DaemonSupervisor>>,
+    project_id: String,
+    style_ref: String,
+    highlight_spoken_word: Option<bool>,
+    caption_options_json: String,
+    brand_json: String,
+    shape: String,
+) -> Result<(), String> {
+    let request = clipmill_contracts::proto::ipc::v1::SetClipDefaultsRequest {
+        project_id,
+        defaults: Some(clipmill_contracts::proto::ipc::v1::ClipDefaultsV1 {
+            style_ref,
+            highlight_spoken_word,
+            caption_options_json,
+            brand_json,
+            shape,
+        }),
+    };
+    supervisor
+        .client()
+        .set_clip_defaults(request)
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 async fn list_clip_decisions(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
@@ -1175,6 +1209,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             solve_crop_path,
             direct_clip,
             set_clip_decision,
+            set_clip_defaults,
             list_clip_decisions,
             rename_project,
             delete_project,

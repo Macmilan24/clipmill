@@ -94,6 +94,9 @@ message Request {
     ListAgentClientsRequest list_agent_clients = 86;
     RevokeAgentClientRequest revoke_agent_client = 87;
     ListEngineAuditRequest list_engine_audit = 88;
+    // The look clips start with, so clips an agent or the command line
+    // makes start like the Studio's.
+    SetClipDefaultsRequest set_clip_defaults = 89;
   }
 }
 
@@ -167,6 +170,7 @@ message Response {
     AgentClientCreated agent_client_created = 69;
     AgentClientsResponse agent_clients = 70;
     EngineAuditResponse engine_audit = 71;
+    SetClipDefaultsResponse set_clip_defaults = 72;
   }
 }
 
@@ -1274,6 +1278,28 @@ message EditDoc {
   // it can read the same run rather than whichever one is newest.
   string job_id = 9;
 }
+
+// The look a person's clips start with. The Studio keeps it and sends it
+// here when it changes, so clips an agent or the command line makes start
+// with the same captions, brand and frame. Each field is as on
+// DirectClipRequest; empty keeps the engine's default.
+message ClipDefaultsV1 {
+  string style_ref = 1;
+  optional bool highlight_spoken_word = 2;
+  string caption_options_json = 3;
+  string brand_json = 4;
+  string shape = 5;
+}
+
+// Replace the defaults for one project's clips: its caption look. With no
+// project, the installation's kit instead: its brand, frame shape, and the
+// caption look new projects start with.
+message SetClipDefaultsRequest {
+  string project_id = 1;
+  ClipDefaultsV1 defaults = 2;
+}
+
+message SetClipDefaultsResponse {}
 
 message CreateEditDocRequest {
   string project_id = 1;

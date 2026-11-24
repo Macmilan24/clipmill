@@ -41,6 +41,7 @@ import { CAPTION_LOOKS, setStartingLook, startingLook } from '../results/caption
 import { forgetOnboarding, openTour, openWelcome } from '../onboarding/state.js';
 import { openShortcuts } from '../shell/ShortcutSheet.js';
 import { type TimeFormat, setTimeFormat, useTimeFormat } from '../shell/timeFormat.js';
+import { shareKit } from '../results/clipDefaults.js';
 
 export function EditingPreferences(): JSX.Element {
   const format = useTimeFormat();
@@ -206,6 +207,7 @@ export function EditingPreferences(): JSX.Element {
               aria-pressed={look === choice.ref}
               onClick={() => {
                 setStartingLook(choice.ref);
+                shareKit();
                 setLook(choice.ref);
               }}
             >

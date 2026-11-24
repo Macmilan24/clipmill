@@ -39,8 +39,9 @@ use clipmill_contracts::proto::ipc::v1::{
     PreviewSourceV1, PreviewWordV1, ProbeSourcePayloadV1, RankCandidatesPayloadV1,
     ReadArtifactRequest, ReadArtifactResponse, RegisterSourceRequest, RenderClipPayloadV1, Request,
     ResolveMediaRequest, ResolveMediaResponse, Response, SetClipDecisionRequest,
-    SetClipDecisionResponse, SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse,
-    StageReadinessV1, SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
+    SetClipDecisionResponse, SetClipDefaultsRequest, SetClipDefaultsResponse,
+    SnapshotEditDocResponse, SolveCropPathRequest, SolveCropPathResponse, StageReadinessV1,
+    SubmitJobRequest, SubscribeTaskEventsRequest, SubscribeTaskEventsResponse,
     ThumbnailFramingRequest, ThumbnailFramingResponse, TranscribeSourcePayloadV1, WorkerPresenceV1,
     request, response,
 };
@@ -554,6 +555,7 @@ impl Service {
             request::Body::SetClipDecision(decide) => {
                 self.set_clip_decision(request_id, &decide).await
             }
+            request::Body::SetClipDefaults(set) => self.set_clip_defaults(request_id, set).await,
             request::Body::ListClipDecisions(list) => {
                 self.list_clip_decisions(request_id, &list).await
             }
@@ -2149,6 +2151,40 @@ impl Service {
         }
         document.brand = (!brand.is_empty()).then_some(brand);
         Ok(())
+    }
+
+    async fn set_clip_defaults(&self, request_id: String, set: SetClipDefaultsRequest) -> Reply {
+        if !set.project_id.is_empty() && set.project_id.parse::<ProjectId>().is_err() {
+            return error_reply(request_id, ErrorCode::InvalidArgument, "no project named");
+        }
+        let defaults = set.defaults.unwrap_or_default();
+        for (name, json) in [
+            ("caption options", &defaults.caption_options_json),
+            ("brand", &defaults.brand_json),
+        ] {
+            if !json.is_empty() && serde_json::from_str::<serde_json::Value>(json).is_err() {
+                return error_reply(
+                    request_id,
+                    ErrorCode::InvalidArgument,
+                    format!("the {name} are not JSON"),
+                );
+            }
+        }
+        let now = match unix_millis() {
+            Ok(now) => now,
+            Err(message) => return error_reply(request_id, ErrorCode::Internal, message),
+        };
+        if let Err(error) = self
+            .database
+            .set_clip_defaults(set.project_id, defaults, now)
+            .await
+        {
+            return store_error_reply(request_id, &error);
+        }
+        response_reply(
+            request_id,
+            response::Body::SetClipDefaults(SetClipDefaultsResponse {}),
+        )
     }
 
     async fn set_clip_decision(
@@ -4245,6 +4281,7 @@ pub(crate) fn request_kind(request: &Request) -> &'static str {
         Some(request::Body::SolveCropPath(_)) => "solve_crop_path",
         Some(request::Body::DirectClip(_)) => "direct_clip",
         Some(request::Body::SetClipDecision(_)) => "set_clip_decision",
+        Some(request::Body::SetClipDefaults(_)) => "set_clip_defaults",
         Some(request::Body::ListClipDecisions(_)) => "list_clip_decisions",
         Some(request::Body::GetPreviewPlan(_)) => "get_preview_plan",
         Some(request::Body::ListEditDocs(_)) => "list_edit_docs",

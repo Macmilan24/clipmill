@@ -809,6 +809,32 @@ export async function setClipDecision(
   });
 }
 
+/** The look clips start with, as the engine keeps it for clips an agent makes. */
+export interface ClipDefaults {
+  readonly styleRef?: string;
+  readonly highlightSpokenWord?: boolean;
+  readonly captionOptionsJson?: string;
+  readonly brandJson?: string;
+  readonly shape?: string;
+}
+
+/**
+ * Send the engine the look a project's clips start with, or with no project
+ * the installation's kit. Outside the shell there is no engine to tell.
+ */
+export async function setClipDefaults(projectId: string, defaults: ClipDefaults): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await core();
+  await invoke('set_clip_defaults', {
+    projectId,
+    styleRef: defaults.styleRef ?? '',
+    highlightSpokenWord: defaults.highlightSpokenWord ?? null,
+    captionOptionsJson: defaults.captionOptionsJson ?? '',
+    brandJson: defaults.brandJson ?? '',
+    shape: defaults.shape ?? '',
+  });
+}
+
 export async function listClipDecisions(
   projectId: string,
   sourceId: string,

@@ -1287,6 +1287,17 @@ impl Service {
         plan_json: String,
         id: Option<String>,
     ) -> ApiResult {
+        // A clip made here starts with the look the person chose in the
+        // Studio for this project, and the installation's brand and frame.
+        let defaults = self
+            .database
+            .clip_defaults(run.project_id.clone())
+            .await
+            .map_err(|error| super::briefs::store_error(&error))?;
+        let shape = match opt_str(args, "shape") {
+            Some(shape) => shape.to_owned(),
+            None => defaults.shape,
+        };
         let body = self
             .v1(
                 request::Body::DirectClip(DirectClipRequest {
@@ -1294,7 +1305,11 @@ impl Service {
                     source_id: run.source_id.clone(),
                     candidate_id: clip_id.to_owned(),
                     job_id: run.job.job_id.clone(),
-                    shape: opt_str(args, "shape").unwrap_or_default().to_owned(),
+                    shape,
+                    style_ref: defaults.style_ref,
+                    highlight_spoken_word: defaults.highlight_spoken_word,
+                    caption_options_json: defaults.caption_options_json,
+                    brand_json: defaults.brand_json,
                     plan_json,
                     ..DirectClipRequest::default()
                 }),

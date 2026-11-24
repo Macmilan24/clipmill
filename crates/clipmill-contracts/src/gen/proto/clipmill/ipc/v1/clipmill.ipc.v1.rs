@@ -19,7 +19,7 @@ pub struct Request {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "request::Body",
-        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88"
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89"
     )]
     pub body: ::core::option::Option<request::Body>,
 }
@@ -187,6 +187,10 @@ pub mod request {
         RevokeAgentClient(super::RevokeAgentClientRequest),
         #[prost(message, tag = "88")]
         ListEngineAudit(super::ListEngineAuditRequest),
+        /// The look clips start with, so clips an agent or the command line
+        /// makes start like the Studio's.
+        #[prost(message, tag = "89")]
+        SetClipDefaults(super::SetClipDefaultsRequest),
     }
 }
 /// One response frame. Either the matching response body or an error.
@@ -197,7 +201,7 @@ pub struct Response {
     pub request_id: ::prost::alloc::string::String,
     #[prost(
         oneof = "response::Body",
-        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71"
+        tags = "9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72"
     )]
     pub body: ::core::option::Option<response::Body>,
 }
@@ -333,6 +337,8 @@ pub mod response {
         AgentClients(super::AgentClientsResponse),
         #[prost(message, tag = "71")]
         EngineAudit(super::EngineAuditResponse),
+        #[prost(message, tag = "72")]
+        SetClipDefaults(super::SetClipDefaultsResponse),
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1705,6 +1711,35 @@ pub struct EditDoc {
     #[prost(string, tag = "9")]
     pub job_id: ::prost::alloc::string::String,
 }
+/// The look a person's clips start with. The Studio keeps it and sends it
+/// here when it changes, so clips an agent or the command line makes start
+/// with the same captions, brand and frame. Each field is as on
+/// DirectClipRequest; empty keeps the engine's default.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ClipDefaultsV1 {
+    #[prost(string, tag = "1")]
+    pub style_ref: ::prost::alloc::string::String,
+    #[prost(bool, optional, tag = "2")]
+    pub highlight_spoken_word: ::core::option::Option<bool>,
+    #[prost(string, tag = "3")]
+    pub caption_options_json: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub brand_json: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub shape: ::prost::alloc::string::String,
+}
+/// Replace the defaults for one project's clips: its caption look. With no
+/// project, the installation's kit instead: its brand, frame shape, and the
+/// caption look new projects start with.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SetClipDefaultsRequest {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub defaults: ::core::option::Option<ClipDefaultsV1>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SetClipDefaultsResponse {}
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateEditDocRequest {
     #[prost(string, tag = "1")]

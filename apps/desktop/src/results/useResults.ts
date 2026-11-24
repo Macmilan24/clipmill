@@ -19,6 +19,7 @@ import { highlightFor, lookFor, optionsFor } from './captionLook.js';
 import { EMPTY_SNAPSHOT, type ResultsSnapshot, ResultsLoader } from './loader.js';
 import { TICKS_PER_SECOND, openingTicks } from './model.js';
 import type { Transcript } from './transcript.js';
+import { shareKit, shareLook } from './clipDefaults.js';
 
 /** The proxy file the media protocol serves for a proxy artifact. */
 const PROXY_FILE = 'proxy.mp4';
@@ -183,6 +184,15 @@ export function useResults(
   );
   const reload = useCallback(() => load(false), [load]);
   const refresh = useCallback(() => load(true), [load]);
+
+  // The engine starts clips an agent makes from the same look: send what this
+  // project and this installation chose, including choices from before the
+  // engine kept a copy.
+  useEffect(() => {
+    if (!projectId) return;
+    shareKit();
+    shareLook(projectId);
+  }, [projectId]);
 
   useEffect(() => {
     setSnapshot(EMPTY_SNAPSHOT);
