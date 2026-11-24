@@ -89,7 +89,8 @@ enum Command {
         /// The new brief; without one, a round of answers keeps the earlier brief.
         #[arg(required_unless_present = "answers")]
         prompt: Option<String>,
-        /// A JSON file with answers: [{"question_id": "q_…", "answer": "yes"}].
+        /// A JSON file of answers, each an object with a `question_id` and an
+        /// `answer` of yes, no or the probability of yes.
         #[arg(long)]
         answers: Option<PathBuf>,
         #[arg(long)]

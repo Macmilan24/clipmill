@@ -997,10 +997,6 @@ async fn set_clip_decision(
 /// Send the engine the look this project's clips start with, or with no
 /// project the installation's kit, so clips an agent makes start the same.
 #[tauri::command]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "a Tauri command's arguments are its JSON fields"
-)]
 async fn set_clip_defaults(
     supervisor: State<'_, Arc<DaemonSupervisor>>,
     project_id: String,

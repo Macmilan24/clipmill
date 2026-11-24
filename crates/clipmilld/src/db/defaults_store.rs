@@ -112,6 +112,7 @@ pub(super) fn for_project(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
     use super::*;
 
     #[test]

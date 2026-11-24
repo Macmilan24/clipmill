@@ -1555,14 +1555,20 @@ mod tests {
             {"question_id": format!("q_{}", "c".repeat(24)), "answer": 0.25},
             {"question_id": format!("q_{}", "d".repeat(24)), "answer": "No"},
         ]});
-        let Ok(merged) = judge_answers(&args, &earlier) else {
-            panic!("well-formed answers");
-        };
-        let pairs: Vec<(char, u32)> = merged
+        let merged = judge_answers(&args, &earlier).unwrap_or_default();
+        let pairs: Vec<(Option<char>, u32)> = merged
             .iter()
-            .map(|a| (a.question_id.chars().nth(2).unwrap(), a.yes_per_mille))
+            .map(|a| (a.question_id.chars().nth(2), a.yes_per_mille))
             .collect();
-        assert_eq!(pairs, [('a', 1000), ('b', 1000), ('c', 250), ('d', 0)]);
+        assert_eq!(
+            pairs,
+            [
+                (Some('a'), 1000),
+                (Some('b'), 1000),
+                (Some('c'), 250),
+                (Some('d'), 0)
+            ]
+        );
         // Without new answers the earlier ones carry over unchanged.
         assert!(judge_answers(&json!({}), &earlier).is_ok_and(|carried| carried == earlier));
         for bad in [

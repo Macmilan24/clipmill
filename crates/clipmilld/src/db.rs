@@ -1096,6 +1096,10 @@ impl DbHandle {
         received.await.map_err(|_| StoreError::Stopped)?
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one value per column of the decision row it writes"
+    )]
     pub(crate) async fn set_clip_decision(
         &self,
         project_id: String,
@@ -2238,6 +2242,10 @@ const CREATE_V2_TABLES: &str = "
         ON project_artifact_roots(artifact_id);
 ";
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one step per schema version, in order, so each upgrade reads as the list it is"
+)]
 fn migrate(connection: &mut Connection, backups_dir: &Path) -> Result<(), DaemonError> {
     let application_id: i64 =
         connection.query_row("PRAGMA application_id", [], |row| row.get(0))?;
