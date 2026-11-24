@@ -338,17 +338,17 @@ fn a_short_event_can_borrow_nearby_setup_and_landing_without_losing_its_evidence
     let answer = (12, 12);
     assert!(
         table
-            .fit_anchored(question, answer, (15 * S, 23 * S))
+            .fit_anchored(question, answer, (15 * S, 23 * S), true)
             .is_none()
     );
     let (start, end) = table
-        .fit_anchored(question, answer, (15 * S, 45 * S))
+        .fit_anchored(question, answer, (15 * S, 45 * S), true)
         .unwrap();
     assert!(start <= 7 && end >= 12);
     table.units[12].cut = Some("tangent");
     assert!(
         table
-            .fit_anchored(question, answer, (15 * S, 45 * S))
+            .fit_anchored(question, answer, (15 * S, 45 * S), true)
             .is_none()
     );
 }
@@ -1105,6 +1105,42 @@ fn a_clip_starts_only_where_a_thought_starts() {
     // A new speaker starts a thought however quickly they come in.
     source.sentences[27].speaker = Some("host".to_owned());
     assert!(plain_table(&source, &words).may_open(27));
+}
+
+#[test]
+fn a_clip_does_not_end_on_a_question_someone_else_answers() {
+    let (mut source, words) = recording();
+    source.sentences[24].text = "Can you tell everyone what that means?".to_owned();
+    let table = plain_table(&source, &words);
+    // The guest asks the guest, so to speak: the same voice goes on.
+    assert!(table.may_close(24));
+    source.sentences[25].speaker = Some("host".to_owned());
+    let table = plain_table(&source, &words);
+    // The host answers it: a part may end there, so a stitch can join the
+    // question to a later answer, but a clip does not finish on it.
+    assert!(table.may_end(24));
+    assert!(!table.may_close(24));
+}
+
+#[test]
+fn a_clip_does_not_open_on_a_reply_to_the_line_before() {
+    let (mut source, words) = recording();
+    for reply in [
+        "I agree they are underpaid.",
+        "Exactly.",
+        "Not necessarily, and here is why.",
+    ] {
+        source.sentences[27].text = reply.to_owned();
+        assert!(!plain_table(&source, &words).may_open(27), "{reply}");
+    }
+    // A line that only starts like a reply is not one.
+    for line in [
+        "Absolutely nobody saw it coming.",
+        "Exactlyish is not a word.",
+    ] {
+        source.sentences[27].text = line.to_owned();
+        assert!(plain_table(&source, &words).may_open(27), "{line}");
+    }
 }
 
 #[test]

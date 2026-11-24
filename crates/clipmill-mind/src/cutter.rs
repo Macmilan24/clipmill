@@ -171,6 +171,21 @@ const COMMON: [&str; 24] = [
 pub const MAX_QUESTION_TICKS: u64 = 12 * SECOND;
 /// Lines of one asker's turn a question may span.
 const QUESTION_LINES: usize = 3;
+/// Openings that answer the line before: agreeing or disagreeing with what
+/// another voice said, which a viewer who did not hear it cannot follow.
+const REPLIES: [&str; 11] = [
+    "i agree",
+    "i disagree",
+    "exactly",
+    "absolutely",
+    "that's true",
+    "that's not true",
+    "that's right",
+    "that's not right",
+    "not necessarily",
+    "fair enough",
+    "good point",
+];
 /// Openings that point back at something said before.
 const POINTS_BACK: [&str; 5] = [
     "that's why",
@@ -404,6 +419,22 @@ fn points_back(text: &str) -> bool {
     carries_on(text) || POINTS_BACK.iter().any(|phrase| lower.starts_with(phrase))
 }
 
+/// Whether a line opens by answering the one before it ("I agree…",
+/// "Exactly."). A phrase must end at a word boundary, and a one-word reply
+/// must stand alone before punctuation: "Absolutely nobody…" is not one.
+fn replies(text: &str) -> bool {
+    let lower = text.trim_start().to_lowercase();
+    REPLIES.iter().any(|phrase| {
+        lower.strip_prefix(phrase).is_some_and(|rest| {
+            if phrase.contains(' ') {
+                !rest.starts_with(|c: char| c.is_alphanumeric())
+            } else {
+                rest.is_empty() || rest.starts_with([',', '.', '!', ';', ':'])
+            }
+        })
+    })
+}
+
 struct Table {
     units: Vec<Unit>,
     position: BTreeMap<u64, usize>,
@@ -632,6 +663,21 @@ impl Table {
             && !unit.starts_lower
             && unit.needs.is_none()
             && !points_back(&unit.text)
+            && !(a > 0 && replies(&unit.text))
+    }
+
+    /// Whether a clip may finish after line `b`: a part may end there, and
+    /// the line is not a question the next speaker goes on to answer, which
+    /// would leave the clip waiting for a reply it never plays. A stitch's
+    /// question part ends on its question; only a clip's last part closes.
+    fn may_close(&self, b: usize) -> bool {
+        let unit = &self.units[b];
+        self.may_end(b)
+            && !(unit.asks
+                && self
+                    .units
+                    .get(b + 1)
+                    .is_some_and(|next| !same_voice(unit, next)))
     }
 
     /// Whether taking out lines `first..=last` would leave what stays
@@ -758,7 +804,13 @@ impl Table {
     /// `(min, max)`: open on the strongest standalone line, close on the
     /// strongest landing.
     fn fit(&self, a: usize, b: usize, length: (u64, u64)) -> Option<(usize, usize)> {
-        self.fit_anchored((a, b), (a, b), length)
+        self.fit_anchored((a, b), (a, b), length, true)
+    }
+
+    /// As [`Table::fit`], for a part another part follows: it may end on a
+    /// question that a later part answers.
+    fn fit_part(&self, a: usize, b: usize, length: (u64, u64)) -> Option<(usize, usize)> {
+        self.fit_anchored((a, b), (a, b), length, false)
     }
 
     /// Keep audible evidence from both events, including any nearby context
@@ -768,6 +820,7 @@ impl Table {
         first: (usize, usize),
         last: (usize, usize),
         length: (u64, u64),
+        closing: bool,
     ) -> Option<(usize, usize)> {
         let (a, last_start) = self.kept_edges(first)?;
         let (first_end, b) = self.kept_edges(last)?;
@@ -784,8 +837,8 @@ impl Table {
         // first quarter, and later only when nothing earlier fits the length.
         // A strong line deep inside a moment is what a cold open is for.
         let near = (a + (b - a) / 4).min(last_start);
-        self.search((a, b), opening..=near, first_end, length)
-            .or_else(|| self.search((a, b), opening..=last_start, first_end, length))
+        self.search((a, b), opening..=near, first_end, length, closing)
+            .or_else(|| self.search((a, b), opening..=last_start, first_end, length, closing))
     }
 
     fn search(
@@ -794,6 +847,7 @@ impl Table {
         openings: RangeInclusive<usize>,
         first_end: usize,
         (min, max): (u64, u64),
+        closing: bool,
     ) -> Option<(usize, usize)> {
         let reach = (b + EXTEND_UNITS).min(self.units.len() - 1);
         let mut best: Option<(i64, usize, usize)> = None;
@@ -803,7 +857,12 @@ impl Table {
                 continue;
             }
             for end in start.max(first_end)..=reach {
-                if self.units[end].cut.is_some() || !self.may_end(end) {
+                let ends = if closing {
+                    self.may_close(end)
+                } else {
+                    self.may_end(end)
+                };
+                if self.units[end].cut.is_some() || !ends {
                     continue;
                 }
                 let kept = self.kept(start, end);
@@ -839,7 +898,7 @@ impl Table {
 
     /// The strongest short stretch of `a..=b` that plays for at most `cap`.
     fn excerpt(&self, a: usize, b: usize, cap: u64) -> Option<(usize, usize)> {
-        self.fit(a, b, (MIN_MONTAGE_ITEM_TICKS, cap))
+        self.fit_part(a, b, (MIN_MONTAGE_ITEM_TICKS, cap))
     }
 
     /// How clearly a thought ends before line `place`: 2 where another
@@ -1176,7 +1235,7 @@ pub fn candidates_for_brief(material: &Material<'_>, prompt: &str) -> Vec<Candid
 pub fn legal_ends(material: &Material<'_>) -> BTreeMap<String, u64> {
     let table = Table::new(material);
     (0..table.units.len())
-        .filter(|&b| table.may_end(b))
+        .filter(|&b| table.may_close(b))
         .map(|b| (format!("s{}", table.units[b].index), table.last(b)))
         .collect()
 }
@@ -1292,7 +1351,7 @@ fn later_endings(material: &Material<'_>, table: &Table, plan: &MindClipPlan) ->
     let mut found = Vec::new();
     for later in (b + 1..table.units.len())
         .take_while(|&end| table.last(end).saturating_sub(start) <= material.length.1)
-        .filter(|&end| table.may_end(end))
+        .filter(|&end| table.may_close(end))
     {
         let draft = Draft {
             form: single_form(table, a, later),
@@ -1465,7 +1524,7 @@ fn joined(
     title: &str,
     evidence: Vec<String>,
 ) -> Option<Candidate> {
-    let (a, b) = table.fit_anchored(first, last, material.length)?;
+    let (a, b) = table.fit_anchored(first, last, material.length, true)?;
     let form = single_form(table, a, b);
     let plan = assemble(
         material,
@@ -1505,7 +1564,7 @@ fn stitched(
         (ta, tb, second_role, to_title),
     ] = ends;
     // The first half sets up: keep it short so the payoff has the time.
-    let (fa, fb) = table.fit(fa, fb, (MIN_PART_TICKS, max * 2 / 5))?;
+    let (fa, fb) = table.fit_part(fa, fb, (MIN_PART_TICKS, max * 2 / 5))?;
     let first = table.kept(fa, fb);
     // Keep the entire payoff when it fits. A longer answer may end on the
     // best available sentence boundary below the remaining time budget.
