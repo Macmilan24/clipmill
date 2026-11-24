@@ -2205,6 +2205,16 @@ impl Service {
         };
         let stored = match decision {
             Some(decision) => {
+                // A rejection with no reason and no edit still says something
+                // about the person's taste, once it names what was rejected.
+                let subject = self
+                    .decision_subject(
+                        project_id.as_str(),
+                        &source_id.to_string(),
+                        &decide.candidate_id,
+                    )
+                    .await
+                    .unwrap_or_default();
                 self.database
                     .set_clip_decision(
                         project_id.to_string(),
@@ -2213,6 +2223,7 @@ impl Service {
                         decision,
                         now,
                         decide.reason.trim().to_owned(),
+                        subject,
                     )
                     .await
             }

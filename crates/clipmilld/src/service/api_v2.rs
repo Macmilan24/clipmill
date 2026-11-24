@@ -257,6 +257,19 @@ pub(super) fn plan_candidate_id(source_id: &str, job_id: &str, plan_json: &str) 
     )
 }
 
+/// How a decision names its clip in the project's taste: the clip's form and
+/// title, within the stored subject's 200 characters.
+fn clip_subject(clip: &Value) -> String {
+    format!(
+        "{} “{}”",
+        clip["form"].as_str().unwrap_or("moment"),
+        clip["title"].as_str().unwrap_or_default()
+    )
+    .chars()
+    .take(200)
+    .collect()
+}
+
 pub(super) fn canonical_json(value: &Value) -> String {
     let mut sorted = value.clone();
     sorted.sort_all_objects();
@@ -925,6 +938,27 @@ impl Service {
             .collect())
     }
 
+    /// What a decision made in the Studio is about, worded as an engine
+    /// review words it, so the project's taste can learn from a clip nobody
+    /// edited and gave no reason for. `None` when the recording's newest
+    /// analysis no longer lists the clip; the decision is kept either way.
+    pub(super) async fn decision_subject(
+        &self,
+        project_id: &str,
+        source_id: &str,
+        candidate_id: &str,
+    ) -> Option<String> {
+        let run = self
+            .run(&json!({"project_id": project_id, "source_id": source_id}))
+            .await
+            .ok()?;
+        let clips = self.clips(&run).await.ok()?;
+        clips
+            .iter()
+            .find(|clip| clip["candidate_id"] == candidate_id || clip["clip_id"] == candidate_id)
+            .map(clip_subject)
+    }
+
     /// The mind's plans and the ranked moments of one analysis, best first.
     async fn clips(&self, run: &Run) -> Result<Vec<Value>, ApiError> {
         let decisions = self.decisions(run).await?;
@@ -1110,11 +1144,7 @@ impl Service {
                 .into_iter()
                 .find(|c| c["clip_id"] == clip_id)
                 .ok_or_else(|| ApiError::not_found("unknown clip in this analysis"))?;
-            let subject = format!(
-                "{} “{}”",
-                clip["form"].as_str().unwrap_or("moment"),
-                clip["title"].as_str().unwrap_or_default()
-            );
+            let subject = clip_subject(&clip);
             let review = crate::db::Review {
                 request_id: id,
                 hash,
@@ -1124,7 +1154,7 @@ impl Service {
                 clip_id: clip_id.to_owned(),
                 decision,
                 reason: reason.to_owned(),
-                subject: subject.chars().take(200).collect(),
+                subject,
                 now: unix_millis().map_err(|e| ApiError::new("internal", e))?,
             };
             self.database

@@ -260,6 +260,7 @@ impl DbActor {
                                 }
                                 Command::SetClipDecision {
                                     reason,
+                                    subject,
                                     project_id,
                                     source_id,
                                     candidate_id,
@@ -268,7 +269,7 @@ impl DbActor {
                                     reply,
                                 } => {
                                     let _result = reply.send(
-                                        decision_store::set_with_reason(
+                                        decision_store::set_with_subject(
                                             &connection,
                                             &project_id,
                                             &source_id,
@@ -276,6 +277,7 @@ impl DbActor {
                                             decision,
                                             now_unix_millis,
                                             &reason,
+                                            &subject,
                                         )
                                         .map_err(StoreError::from),
                                     );
@@ -1045,11 +1047,13 @@ impl DbHandle {
         decision: Decision,
         now_unix_millis: u64,
         reason: String,
+        subject: String,
     ) -> Result<(), StoreError> {
         let (reply, received) = oneshot::channel();
         self.sender
             .send(Command::SetClipDecision {
                 reason,
+                subject,
                 project_id,
                 source_id,
                 candidate_id,
@@ -1873,6 +1877,8 @@ enum Command {
     },
     SetClipDecision {
         reason: String,
+        /// The clip's form and title, or empty when the engine no longer lists it.
+        subject: String,
         project_id: String,
         source_id: String,
         candidate_id: String,
@@ -3253,6 +3259,44 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("backup version");
         assert_eq!(backup_version, 2);
+    }
+
+    /// A rejection made in the Studio carries no reason and builds no edit, yet
+    /// it is still an example of the person's taste once it names the clip.
+    #[test]
+    fn a_studio_rejection_without_a_reason_is_learned_by_name() {
+        let temp = TempDir::new().expect("test directory");
+        let (_path, mut db) = database(&temp);
+        let project = project("prj_01ARZ3NDEKTSV4RRFFQ69G5FAV", "Choices", 1);
+        create_project(&mut db, "make-project", &[0; 32], &project).expect("create project");
+        let id = project.project_id.as_str();
+        // Before the clip is named, nothing about it can be learned.
+        decision_store::set_with_subject(&db, id, "src_1", "cand_a", Decision::Rejected, 1, "", "")
+            .expect("unnamed");
+        assert!(decision_store::taste(&db, id).unwrap().is_empty());
+        let named = "cold open “Why the plan changed”";
+        decision_store::set_with_subject(
+            &db,
+            id,
+            "src_1",
+            "cand_a",
+            Decision::Rejected,
+            2,
+            "",
+            named,
+        )
+        .expect("named");
+        assert_eq!(
+            decision_store::taste(&db, id).unwrap(),
+            ["rejected cold open “Why the plan changed”"]
+        );
+        // A later decision from where the clip is no longer listed keeps the name.
+        decision_store::set_with_subject(&db, id, "src_1", "cand_a", Decision::Kept, 3, "", "")
+            .expect("kept");
+        assert_eq!(
+            decision_store::taste(&db, id).unwrap(),
+            ["kept cold open “Why the plan changed”"]
+        );
     }
 
     /// The claim the Inspector's gate rests on: a decision outlives the process

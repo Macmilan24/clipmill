@@ -131,6 +131,41 @@ pub(crate) fn set_with_reason(
     Ok(())
 }
 
+/// Record a decision with what it was about. An empty subject leaves the one
+/// stored before, so a clip that has since left the analysis keeps its name.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one column per value, as the decision row stores them"
+)]
+pub(crate) fn set_with_subject(
+    connection: &Connection,
+    project_id: &str,
+    source_id: &str,
+    candidate_id: &str,
+    decision: Decision,
+    now: u64,
+    reason: &str,
+    subject: &str,
+) -> rusqlite::Result<()> {
+    set_with_reason(
+        connection,
+        project_id,
+        source_id,
+        candidate_id,
+        decision,
+        now,
+        reason,
+    )?;
+    if !subject.is_empty() {
+        connection.execute(
+            "UPDATE clip_decisions SET subject = ?4
+              WHERE project_id = ?1 AND source_id = ?2 AND candidate_id = ?3",
+            params![project_id, source_id, candidate_id, subject],
+        )?;
+    }
+    Ok(())
+}
+
 /// Take a decision back, so the clip is undecided again.
 ///
 /// A row that is not there is already the answer, so clearing a clip nobody
