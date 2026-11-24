@@ -172,19 +172,37 @@ def test_known_removals_come_from_questions_pointers_filler_and_restarts():
     }
 
 
-def test_a_meter_that_passes_lets_the_planner_leave_out_an_aside():
+def test_a_meter_that_passes_lets_the_planner_leave_out_an_aside(monkeypatch):
+    from clipmill_worker_editorial import critique
+
+    made = []
+    original = critique.plain_version
+
+    def record(plan, transcript):
+        made.append(plan)
+        return original(plan, transcript)
+
+    monkeypatch.setattr(critique, "plain_version", record)
     meter = Meter()
     editor = Editor(meter)
     [row], report = review(editor, candidates())
     plan, quality = row["plan"], row["quality"]
-    assert quality["verdict"] == "accept" and quality["tightened"]
-    assert plan["form"] == "tightened"
-    assert plan["parts"][0]["removed"] == [
+    tightened = made[-1]
+    assert tightened["form"] == "tightened"
+    assert tightened["parts"][0]["removed"] == [
         {"start_ticks": ASIDE["start_ticks"], "end_ticks": ASIDE["end_ticks"], "reason": "tangent"}
     ]
-    assert plan["parts"][0]["units"] == ["s2", "s3", "s5", "s6"]
-    assert plan["duration_ticks"] == answer_plan()["duration_ticks"] - 6 * TICK
-    assert plan["plan_id"] != answer_plan()["plan_id"]
+    assert tightened["parts"][0]["units"] == ["s2", "s3", "s5", "s6"]
+    assert tightened["duration_ticks"] == answer_plan()["duration_ticks"] - 6 * TICK
+    assert tightened["plan_id"] != answer_plan()["plan_id"]
+    # This short exchange holds too few known pairs to measure a comparison,
+    # so the shorter clip is not shipped on trust: its plain version is.
+    assert quality["verdict"] == "accept"
+    assert quality["compared"]["kept"] == "plain"
+    assert quality["compared"]["reason"] == "not_measured"
+    assert plan["form"] == "straight"
+    assert plan["parts"][0]["start_ticks"] == answer_plan()["parts"][0]["start_ticks"]
+    assert plan["parts"][0]["end_ticks"] == answer_plan()["parts"][0]["end_ticks"]
     assert report["removal_checks"]["meter"]["passed"]
     assert report["removal_checks"]["meter"]["separation"] == 1.0
     # The meter passed, so the slower judge was never measured.

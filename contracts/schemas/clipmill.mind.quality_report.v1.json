@@ -37,6 +37,39 @@
           "$ref": "#/$defs/removal_check"
         }
       }
+    },
+    "questions": {
+      "description": "Questions without an answer from a connected agent. An agent answers them through a new run of the same recording; empty or absent when every question was answered.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/question"
+      }
+    },
+    "comparison_check": {
+      "description": "How the judge that compares an edited clip with its plain version measured on pairs whose answer the recording shows: a passage that ends on a finished thought against the same passage cut off while its speaker goes on, or opened where a line points back at the one before it. Each pair is asked in both orders. The comparison is used only when it passed; without it, an edit whose plain version passed review ships as the plain version. Absent when no edited clip was accepted.",
+      "type": "object",
+      "required": ["passed", "answered_by", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "answered_by": {
+          "enum": ["model", "agent"]
+        },
+        "separation": {
+          "description": "The share of (whole version first, broken version first) question pairs scored the right way round: 0.5 is chance, 1 is perfect.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/comparison_case"
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -111,6 +144,42 @@
         "tightened": {
           "description": "A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.",
           "type": "boolean"
+        },
+        "compared": {
+          "description": "The edited clip set against its plain version: the longest part played whole, with nothing left out. An edit ships only when the comparison prefers it in both orders, or when the plain version cannot ship.",
+          "type": "object",
+          "required": ["plain_plan_id", "kept", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "plain_plan_id": {
+              "$ref": "#/$defs/plan_id"
+            },
+            "kept": {
+              "enum": ["edit", "plain"]
+            },
+            "reason": {
+              "enum": [
+                "edit_preferred",
+                "plain_preferred",
+                "not_measured",
+                "plain_failed_review",
+                "plain_out_of_length",
+                "awaiting_agent"
+              ]
+            },
+            "edit_first": {
+              "description": "The probability that the edit is the better short, asked with the edit as version A.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "plain_first": {
+              "description": "The probability that the plain version is the better short, asked with it as version A.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
         }
       }
     },
@@ -170,6 +239,68 @@
               }
             }
           }
+        }
+      }
+    },
+    "comparison_case": {
+      "type": "object",
+      "required": ["kind", "whole", "broken", "whole_first", "broken_first"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["cut_off_ending", "dangling_start"]
+        },
+        "whole": {
+          "$ref": "#/$defs/unit_span"
+        },
+        "broken": {
+          "$ref": "#/$defs/unit_span"
+        },
+        "whole_first": {
+          "description": "The probability that version A is the better short when A is the whole passage.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "broken_first": {
+          "description": "The probability that version A is the better short when A is the broken passage.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "unit_span": {
+      "type": "object",
+      "required": ["first_unit", "last_unit"],
+      "additionalProperties": false,
+      "properties": {
+        "first_unit": {
+          "type": "string",
+          "pattern": "^s[0-9]+$"
+        },
+        "last_unit": {
+          "type": "string",
+          "pattern": "^s[0-9]+$"
+        }
+      }
+    },
+    "question": {
+      "description": "A narrow question this run asked, or would ask, of its judge, for a connected agent to answer. The list never says which questions are known cases of a self-check: an agent's answers are measured on those before any of them is used.",
+      "type": "object",
+      "required": ["question_id", "kind", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "pattern": "^q_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": ["judge.ending", "judge.removal", "judge.compare"]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }

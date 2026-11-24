@@ -667,7 +667,7 @@ pub struct IndexStagePayloadV1 {
 /// as the outputs of the tasks it depends on, and the budget the cut is made
 /// under is the daemon's, recorded in the recipe so that a re-cut under another
 /// budget is a different artifact.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EditorialStagePayloadV1 {
     #[prost(string, tag = "1")]
     pub key_version: ::prost::alloc::string::String,
@@ -693,6 +693,23 @@ pub struct EditorialStagePayloadV1 {
     pub editorial_taste: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(uint64, tag = "10")]
     pub requested_count: u64,
+    /// A connected agent's answers to the narrow questions an earlier run of
+    /// the same recording listed. Only the judge and review stages read them.
+    #[prost(message, repeated, tag = "11")]
+    pub judge_answers: ::prost::alloc::vec::Vec<JudgeAnswerV1>,
+}
+/// One answer from a connected agent: the probability that the answer to a
+/// listed question is yes. An agent's answers count for a kind of question
+/// only after they pass that kind's self-check on the same recording.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct JudgeAnswerV1 {
+    /// As the run listed it: q_ followed by 24 lowercase hex digits.
+    #[prost(string, tag = "1")]
+    pub question_id: ::prost::alloc::string::String,
+    /// From 0 (no) to 1000 (yes): the probability in thousandths, so a job's
+    /// recorded settings compare exactly.
+    #[prost(uint32, tag = "2")]
+    pub yes_per_mille: u32,
 }
 /// Versioned payload for discovery (book ch. 15). The request names a source;
 /// the daemon resolves it to the evidence index, the transcript behind it, and
@@ -809,7 +826,7 @@ pub struct CaptionsStagePayloadV1 {
 /// the speech chain, shot detection, the evidence index, discovery, and
 /// ranking, planned as one DAG whose single rooted artifact names every stage.
 /// This is what a new project submits and what evaluation runs.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AnalyzeSourcePayloadV1 {
     #[prost(string, tag = "1")]
     pub key_version: ::prost::alloc::string::String,
@@ -840,6 +857,9 @@ pub struct AnalyzeSourcePayloadV1 {
     /// Local decision and edit examples resolved by the daemon at submission.
     #[prost(string, repeated, tag = "11")]
     pub editorial_taste: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// A connected agent's answers to questions an earlier run listed.
+    #[prost(message, repeated, tag = "12")]
+    pub judge_answers: ::prost::alloc::vec::Vec<JudgeAnswerV1>,
 }
 /// Explicit consent applies only to this run. Credentials never enter the request.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1019,7 +1039,7 @@ pub struct Job {
     pub analysis: ::core::option::Option<AnalysisSettingsV1>,
 }
 /// The choices an analysis was started with.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AnalysisSettingsV1 {
     #[prost(string, tag = "1")]
     pub language: ::prost::alloc::string::String,
@@ -1034,6 +1054,10 @@ pub struct AnalysisSettingsV1 {
     /// Restore the original brief when retrying this analysis.
     #[prost(string, tag = "6")]
     pub editorial_prompt: ::prost::alloc::string::String,
+    /// A connected agent's answers the analysis was given, carried into the
+    /// next run of the same recording.
+    #[prost(message, repeated, tag = "7")]
+    pub judge_answers: ::prost::alloc::vec::Vec<JudgeAnswerV1>,
 }
 /// The identity of an export, as its job carries it.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

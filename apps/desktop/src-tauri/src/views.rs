@@ -376,6 +376,7 @@ impl AnalyzeRequest {
             local_editorial: self.local_editorial,
             editorial_prompt: self.editorial_prompt,
             editorial_taste: Vec::new(),
+            judge_answers: Vec::new(),
             content_profile: self.content_profile,
             cloud_editorial: self.cloud_editorial.map(|c| {
                 clipmill_contracts::proto::ipc::v1::EditorialCloudV1 {

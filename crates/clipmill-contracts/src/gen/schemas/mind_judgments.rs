@@ -352,6 +352,13 @@ impl ::std::convert::TryFrom<::std::string::String> for EndingVerdict {
 #[doc = "        \"think_tokens\""]
 #[doc = "      ],"]
 #[doc = "      \"properties\": {"]
+#[doc = "        \"answered_by\": {"]
+#[doc = "          \"description\": \"Who answered: the local model, or a connected agent whose answers to every known case of the self-check were supplied with the run.\","]
+#[doc = "          \"enum\": ["]
+#[doc = "            \"model\","]
+#[doc = "            \"agent\""]
+#[doc = "          ]"]
+#[doc = "        },"]
 #[doc = "        \"prompt_version\": {"]
 #[doc = "          \"type\": \"string\","]
 #[doc = "          \"minLength\": 1"]
@@ -363,6 +370,13 @@ impl ::std::convert::TryFrom<::std::string::String> for EndingVerdict {
 #[doc = "        }"]
 #[doc = "      },"]
 #[doc = "      \"additionalProperties\": false"]
+#[doc = "    },"]
+#[doc = "    \"questions\": {"]
+#[doc = "      \"description\": \"Questions without an answer from a connected agent. An agent answers them through a new run of the same recording; empty or absent when every question was answered.\","]
+#[doc = "      \"type\": \"array\","]
+#[doc = "      \"items\": {"]
+#[doc = "        \"$ref\": \"#/$defs/question\""]
+#[doc = "      }"]
 #[doc = "    },"]
 #[doc = "    \"schema_version\": {"]
 #[doc = "      \"const\": \"clipmill.mind.judgments.v1\""]
@@ -398,6 +412,9 @@ pub struct MindJudgments {
     pub endings: ::std::vec::Vec<Ending>,
     pub inputs: ::std::collections::HashMap<::std::string::String, Sha256>,
     pub judge: MindJudgmentsJudge,
+    #[doc = "Questions without an answer from a connected agent. An agent answers them through a new run of the same recording; empty or absent when every question was answered."]
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub questions: ::std::vec::Vec<Question>,
     pub schema_version: ::serde_json::Value,
     pub self_check: MindJudgmentsSelfCheck,
     pub source_fingerprint: Sha256,
@@ -419,6 +436,13 @@ impl MindJudgments {
 #[doc = "    \"think_tokens\""]
 #[doc = "  ],"]
 #[doc = "  \"properties\": {"]
+#[doc = "    \"answered_by\": {"]
+#[doc = "      \"description\": \"Who answered: the local model, or a connected agent whose answers to every known case of the self-check were supplied with the run.\","]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"model\","]
+#[doc = "        \"agent\""]
+#[doc = "      ]"]
+#[doc = "    },"]
 #[doc = "    \"prompt_version\": {"]
 #[doc = "      \"type\": \"string\","]
 #[doc = "      \"minLength\": 1"]
@@ -436,6 +460,9 @@ impl MindJudgments {
 #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct MindJudgmentsJudge {
+    #[doc = "Who answered: the local model, or a connected agent whose answers to every known case of the self-check were supplied with the run."]
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub answered_by: ::std::option::Option<MindJudgmentsJudgeAnsweredBy>,
     pub prompt_version: MindJudgmentsJudgePromptVersion,
     #[doc = "How many tokens the model may reason for before it answers."]
     pub think_tokens: u64,
@@ -443,6 +470,78 @@ pub struct MindJudgmentsJudge {
 impl MindJudgmentsJudge {
     pub fn builder() -> builder::MindJudgmentsJudge {
         Default::default()
+    }
+}
+#[doc = "Who answered: the local model, or a connected agent whose answers to every known case of the self-check were supplied with the run."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"Who answered: the local model, or a connected agent whose answers to every known case of the self-check were supplied with the run.\","]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"model\","]
+#[doc = "    \"agent\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum MindJudgmentsJudgeAnsweredBy {
+    #[serde(rename = "model")]
+    Model,
+    #[serde(rename = "agent")]
+    Agent,
+}
+impl ::std::fmt::Display for MindJudgmentsJudgeAnsweredBy {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Model => f.write_str("model"),
+            Self::Agent => f.write_str("agent"),
+        }
+    }
+}
+impl ::std::str::FromStr for MindJudgmentsJudgeAnsweredBy {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "model" => Ok(Self::Model),
+            "agent" => Ok(Self::Agent),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for MindJudgmentsJudgeAnsweredBy {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for MindJudgmentsJudgeAnsweredBy {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for MindJudgmentsJudgeAnsweredBy {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 #[doc = "`MindJudgmentsJudgePromptVersion`"]
@@ -545,6 +644,266 @@ pub struct MindJudgmentsSelfCheck {
 impl MindJudgmentsSelfCheck {
     pub fn builder() -> builder::MindJudgmentsSelfCheck {
         Default::default()
+    }
+}
+#[doc = "A narrow question this run asked, or would ask, of its judge, for a connected agent to answer. The list never says which questions are known cases of a self-check: an agent's answers are measured on those before any of them is used."]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"description\": \"A narrow question this run asked, or would ask, of its judge, for a connected agent to answer. The list never says which questions are known cases of a self-check: an agent's answers are measured on those before any of them is used.\","]
+#[doc = "  \"type\": \"object\","]
+#[doc = "  \"required\": ["]
+#[doc = "    \"kind\","]
+#[doc = "    \"question_id\","]
+#[doc = "    \"text\""]
+#[doc = "  ],"]
+#[doc = "  \"properties\": {"]
+#[doc = "    \"kind\": {"]
+#[doc = "      \"enum\": ["]
+#[doc = "        \"judge.ending\","]
+#[doc = "        \"judge.removal\","]
+#[doc = "        \"judge.compare\""]
+#[doc = "      ]"]
+#[doc = "    },"]
+#[doc = "    \"question_id\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"pattern\": \"^q_[0-9a-f]{24}$\""]
+#[doc = "    },"]
+#[doc = "    \"text\": {"]
+#[doc = "      \"type\": \"string\","]
+#[doc = "      \"minLength\": 1"]
+#[doc = "    }"]
+#[doc = "  },"]
+#[doc = "  \"additionalProperties\": false"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Question {
+    pub kind: QuestionKind,
+    pub question_id: QuestionQuestionId,
+    pub text: QuestionText,
+}
+impl Question {
+    pub fn builder() -> builder::Question {
+        Default::default()
+    }
+}
+#[doc = "`QuestionKind`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"enum\": ["]
+#[doc = "    \"judge.ending\","]
+#[doc = "    \"judge.removal\","]
+#[doc = "    \"judge.compare\""]
+#[doc = "  ]"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(
+    :: serde :: Deserialize,
+    :: serde :: Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum QuestionKind {
+    #[serde(rename = "judge.ending")]
+    JudgeEnding,
+    #[serde(rename = "judge.removal")]
+    JudgeRemoval,
+    #[serde(rename = "judge.compare")]
+    JudgeCompare,
+}
+impl ::std::fmt::Display for QuestionKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::JudgeEnding => f.write_str("judge.ending"),
+            Self::JudgeRemoval => f.write_str("judge.removal"),
+            Self::JudgeCompare => f.write_str("judge.compare"),
+        }
+    }
+}
+impl ::std::str::FromStr for QuestionKind {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "judge.ending" => Ok(Self::JudgeEnding),
+            "judge.removal" => Ok(Self::JudgeRemoval),
+            "judge.compare" => Ok(Self::JudgeCompare),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for QuestionKind {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for QuestionKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for QuestionKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+#[doc = "`QuestionQuestionId`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"pattern\": \"^q_[0-9a-f]{24}$\""]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct QuestionQuestionId(::std::string::String);
+impl ::std::ops::Deref for QuestionQuestionId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<QuestionQuestionId> for ::std::string::String {
+    fn from(value: QuestionQuestionId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for QuestionQuestionId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^q_[0-9a-f]{24}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^q_[0-9a-f]{24}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for QuestionQuestionId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for QuestionQuestionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for QuestionQuestionId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for QuestionQuestionId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+#[doc = "`QuestionText`"]
+#[doc = r""]
+#[doc = r" <details><summary>JSON schema</summary>"]
+#[doc = r""]
+#[doc = r" ```json"]
+#[doc = "{"]
+#[doc = "  \"type\": \"string\","]
+#[doc = "  \"minLength\": 1"]
+#[doc = "}"]
+#[doc = r" ```"]
+#[doc = r" </details>"]
+#[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct QuestionText(::std::string::String);
+impl ::std::ops::Deref for QuestionText {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<QuestionText> for ::std::string::String {
+    fn from(value: QuestionText) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for QuestionText {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for QuestionText {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for QuestionText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for QuestionText {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for QuestionText {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 #[doc = "The model's probability for the first reading minus its probability for the opposite one, from -1 to 1."]
@@ -950,6 +1309,7 @@ pub mod builder {
             ::std::string::String,
         >,
         judge: ::std::result::Result<super::MindJudgmentsJudge, ::std::string::String>,
+        questions: ::std::result::Result<::std::vec::Vec<super::Question>, ::std::string::String>,
         schema_version: ::std::result::Result<::serde_json::Value, ::std::string::String>,
         self_check: ::std::result::Result<super::MindJudgmentsSelfCheck, ::std::string::String>,
         source_fingerprint: ::std::result::Result<super::Sha256, ::std::string::String>,
@@ -960,6 +1320,7 @@ pub mod builder {
                 endings: Err("no value supplied for endings".to_string()),
                 inputs: Err("no value supplied for inputs".to_string()),
                 judge: Err("no value supplied for judge".to_string()),
+                questions: Ok(Default::default()),
                 schema_version: Err("no value supplied for schema_version".to_string()),
                 self_check: Err("no value supplied for self_check".to_string()),
                 source_fingerprint: Err("no value supplied for source_fingerprint".to_string()),
@@ -997,6 +1358,16 @@ pub mod builder {
             self.judge = value
                 .try_into()
                 .map_err(|e| format!("error converting supplied value for judge: {e}"));
+            self
+        }
+        pub fn questions<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::vec::Vec<super::Question>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.questions = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for questions: {e}"));
             self
         }
         pub fn schema_version<T>(mut self, value: T) -> Self
@@ -1039,6 +1410,7 @@ pub mod builder {
                 endings: value.endings?,
                 inputs: value.inputs?,
                 judge: value.judge?,
+                questions: value.questions?,
                 schema_version: value.schema_version?,
                 self_check: value.self_check?,
                 source_fingerprint: value.source_fingerprint?,
@@ -1051,6 +1423,7 @@ pub mod builder {
                 endings: Ok(value.endings),
                 inputs: Ok(value.inputs),
                 judge: Ok(value.judge),
+                questions: Ok(value.questions),
                 schema_version: Ok(value.schema_version),
                 self_check: Ok(value.self_check),
                 source_fingerprint: Ok(value.source_fingerprint),
@@ -1059,6 +1432,10 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub struct MindJudgmentsJudge {
+        answered_by: ::std::result::Result<
+            ::std::option::Option<super::MindJudgmentsJudgeAnsweredBy>,
+            ::std::string::String,
+        >,
         prompt_version:
             ::std::result::Result<super::MindJudgmentsJudgePromptVersion, ::std::string::String>,
         think_tokens: ::std::result::Result<u64, ::std::string::String>,
@@ -1066,12 +1443,23 @@ pub mod builder {
     impl ::std::default::Default for MindJudgmentsJudge {
         fn default() -> Self {
             Self {
+                answered_by: Ok(Default::default()),
                 prompt_version: Err("no value supplied for prompt_version".to_string()),
                 think_tokens: Err("no value supplied for think_tokens".to_string()),
             }
         }
     }
     impl MindJudgmentsJudge {
+        pub fn answered_by<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<::std::option::Option<super::MindJudgmentsJudgeAnsweredBy>>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.answered_by = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for answered_by: {e}"));
+            self
+        }
         pub fn prompt_version<T>(mut self, value: T) -> Self
         where
             T: ::std::convert::TryInto<super::MindJudgmentsJudgePromptVersion>,
@@ -1099,6 +1487,7 @@ pub mod builder {
             value: MindJudgmentsJudge,
         ) -> ::std::result::Result<Self, super::error::ConversionError> {
             Ok(Self {
+                answered_by: value.answered_by?,
                 prompt_version: value.prompt_version?,
                 think_tokens: value.think_tokens?,
             })
@@ -1107,6 +1496,7 @@ pub mod builder {
     impl ::std::convert::From<super::MindJudgmentsJudge> for MindJudgmentsJudge {
         fn from(value: super::MindJudgmentsJudge) -> Self {
             Self {
+                answered_by: Ok(value.answered_by),
                 prompt_version: Ok(value.prompt_version),
                 think_tokens: Ok(value.think_tokens),
             }
@@ -1163,6 +1553,72 @@ pub mod builder {
             Self {
                 endings: Ok(value.endings),
                 removals: Ok(value.removals),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct Question {
+        kind: ::std::result::Result<super::QuestionKind, ::std::string::String>,
+        question_id: ::std::result::Result<super::QuestionQuestionId, ::std::string::String>,
+        text: ::std::result::Result<super::QuestionText, ::std::string::String>,
+    }
+    impl ::std::default::Default for Question {
+        fn default() -> Self {
+            Self {
+                kind: Err("no value supplied for kind".to_string()),
+                question_id: Err("no value supplied for question_id".to_string()),
+                text: Err("no value supplied for text".to_string()),
+            }
+        }
+    }
+    impl Question {
+        pub fn kind<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::QuestionKind>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.kind = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for kind: {e}"));
+            self
+        }
+        pub fn question_id<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::QuestionQuestionId>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.question_id = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for question_id: {e}"));
+            self
+        }
+        pub fn text<T>(mut self, value: T) -> Self
+        where
+            T: ::std::convert::TryInto<super::QuestionText>,
+            T::Error: ::std::fmt::Display,
+        {
+            self.text = value
+                .try_into()
+                .map_err(|e| format!("error converting supplied value for text: {e}"));
+            self
+        }
+    }
+    impl ::std::convert::TryFrom<Question> for super::Question {
+        type Error = super::error::ConversionError;
+        fn try_from(value: Question) -> ::std::result::Result<Self, super::error::ConversionError> {
+            Ok(Self {
+                kind: value.kind?,
+                question_id: value.question_id?,
+                text: value.text?,
+            })
+        }
+    }
+    impl ::std::convert::From<super::Question> for Question {
+        fn from(value: super::Question) -> Self {
+            Self {
+                kind: Ok(value.kind),
+                question_id: Ok(value.question_id),
+                text: Ok(value.text),
             }
         }
     }

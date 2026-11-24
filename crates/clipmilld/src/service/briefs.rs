@@ -96,7 +96,6 @@ impl Service {
     }
 
     pub(super) async fn reprompt(&self, args: &Value, id: Option<String>) -> ApiResult {
-        let prompt = arg_str(args, "prompt")?.trim();
         let id = id.unwrap_or_else(|| format!("v2_{}", ulid::Ulid::new()));
         let hash: [u8; 32] = Sha256::digest(canonical_json(args).as_bytes()).into();
         if let Some(bytes) = self
@@ -123,6 +122,13 @@ impl Service {
             ));
         }
         let previous = run.job.analysis.unwrap_or_default();
+        // A round of answers keeps the brief the earlier run had.
+        let prompt = match opt_str(args, "prompt") {
+            Some(prompt) => prompt.trim().to_owned(),
+            None if args.get("answers").is_some() => previous.editorial_prompt.clone(),
+            None => return Err(ApiError::invalid("missing string argument `prompt`")),
+        };
+        let judge_answers = super::api_v2::judge_answers(args, &previous.judge_answers)?;
         let duration = requested_duration(args)?.or_else(|| {
             (previous.max_ticks > 0).then_some(ClipDurationV1 {
                 min_ticks: previous.min_ticks,
@@ -141,7 +147,8 @@ impl Service {
             language: previous.language,
             content_profile: run.job.content_profile,
             local_editorial: true,
-            editorial_prompt: prompt.to_owned(),
+            editorial_prompt: prompt,
+            judge_answers,
             editorial_taste: self
                 .database
                 .editorial_taste(run.project_id)

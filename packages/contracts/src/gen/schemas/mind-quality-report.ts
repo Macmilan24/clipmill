@@ -25,6 +25,22 @@ export interface MindQualityReport {
     meter?: RemovalCheck;
     judge?: RemovalCheck;
   };
+  /**
+   * Questions without an answer from a connected agent. An agent answers them through a new run of the same recording; empty or absent when every question was answered.
+   */
+  questions?: Question[];
+  /**
+   * How the judge that compares an edited clip with its plain version measured on pairs whose answer the recording shows: a passage that ends on a finished thought against the same passage cut off while its speaker goes on, or opened where a line points back at the one before it. Each pair is asked in both orders. The comparison is used only when it passed; without it, an edit whose plain version passed review ships as the plain version. Absent when no edited clip was accepted.
+   */
+  comparison_check?: {
+    passed: boolean;
+    answered_by: "model" | "agent";
+    /**
+     * The share of (whole version first, broken version first) question pairs scored the right way round: 0.5 is chance, 1 is perfect.
+     */
+    separation?: number;
+    cases: ComparisonCase[];
+  };
 }
 export interface Review {
   candidate_id: PlanId;
@@ -50,6 +66,28 @@ export interface Quality {
    * A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.
    */
   tightened?: boolean;
+  /**
+   * The edited clip set against its plain version: the longest part played whole, with nothing left out. An edit ships only when the comparison prefers it in both orders, or when the plain version cannot ship.
+   */
+  compared?: {
+    plain_plan_id: PlanId;
+    kept: "edit" | "plain";
+    reason:
+      | "edit_preferred"
+      | "plain_preferred"
+      | "not_measured"
+      | "plain_failed_review"
+      | "plain_out_of_length"
+      | "awaiting_agent";
+    /**
+     * The probability that the edit is the better short, asked with the edit as version A.
+     */
+    edit_first?: number;
+    /**
+     * The probability that the plain version is the better short, asked with it as version A.
+     */
+    plain_first?: number;
+  };
 }
 export interface JoinReview {
   after: string;
@@ -71,4 +109,29 @@ export interface RemovalCheck {
      */
     score: number;
   }[];
+}
+/**
+ * A narrow question this run asked, or would ask, of its judge, for a connected agent to answer. The list never says which questions are known cases of a self-check: an agent's answers are measured on those before any of them is used.
+ */
+export interface Question {
+  question_id: string;
+  kind: "judge.ending" | "judge.removal" | "judge.compare";
+  text: string;
+}
+export interface ComparisonCase {
+  kind: "cut_off_ending" | "dangling_start";
+  whole: UnitSpan;
+  broken: UnitSpan;
+  /**
+   * The probability that version A is the better short when A is the whole passage.
+   */
+  whole_first: number;
+  /**
+   * The probability that version A is the better short when A is the broken passage.
+   */
+  broken_first: number;
+}
+export interface UnitSpan {
+  first_unit: string;
+  last_unit: string;
 }

@@ -9,6 +9,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
 
 
+class AnsweredBy(Enum):
+    model = 'model'
+    agent = 'agent'
+
+
 class Judge(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -17,6 +22,10 @@ class Judge(BaseModel):
         ..., description='How many tokens the model may reason for before it answers.'
     )
     prompt_version: constr(min_length=1)
+    answered_by: AnsweredBy | None = Field(
+        None,
+        description='Who answered: the local model, or a connected agent whose answers to every known case of the self-check were supplied with the run.',
+    )
 
 
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
@@ -64,6 +73,21 @@ class Ending(BaseModel):
     verdict: Verdict
 
 
+class Kind(Enum):
+    judge_ending = 'judge.ending'
+    judge_removal = 'judge.removal'
+    judge_compare = 'judge.compare'
+
+
+class Question(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    question_id: constr(pattern=r'^q_[0-9a-f]{24}$')
+    kind: Kind
+    text: constr(min_length=1)
+
+
 class Check(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -96,4 +120,8 @@ class MindJudgments(BaseModel):
     endings: list[Ending] = Field(
         ...,
         description='Verdicts on candidate endings where the same speaker goes on. Empty when the ending self-check did not pass.',
+    )
+    questions: list[Question] | None = Field(
+        None,
+        description='Questions without an answer from a connected agent. An agent answers them through a new run of the same recording; empty or absent when every question was answered.',
     )

@@ -78,6 +78,20 @@ pub(super) fn schema(operation: &str) -> Value {
             "moments",
             &[("text", "string"), ("start", "number"), ("end", "number")],
         ),
+        "judge_questions" => {
+            let mut result = list(
+                "questions",
+                &[
+                    ("question_id", "string"),
+                    ("kind", "string"),
+                    ("text", "string"),
+                ],
+            );
+            result["properties"]["job_id"] = json!({"type":"string"});
+            result["properties"]["answered"] = json!({"type":"integer"});
+            result["properties"]["how_to_answer"] = json!({"type":"string"});
+            result
+        }
         "memory_overview" => record(&[
             ("job_id", "string"),
             ("chapters", "array"),

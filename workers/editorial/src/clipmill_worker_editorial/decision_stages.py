@@ -16,7 +16,7 @@ from clipmill_worker_sdk.gen.schemas.mind_script import MindScript
 from clipmill_worker_sdk.gen.schemas.ranking_set_v2 import RankingSetV2
 
 from .critique import review_batch
-from .judging import judge
+from .judging import Book, judge
 from .planning import Calls, plan_batch
 from .rank_plans import rank_batch
 from .runtime import implementation_suffix, text_session
@@ -91,6 +91,8 @@ def execute(context, inputs, model, payload, operation):
             > 1
         )
     count = min(100, payload.requested_count or 10)
+    # Answers a connected agent gave to an earlier run's questions.
+    book = Book({a.question_id: min(a.yes_per_mille, 1000) / 1000 for a in payload.judge_answers})
     with text_session(model, context.cancellation, source, needed=needed) as runtime:
         ctx = Calls(runtime, payload, model, context.cancellation, context.report_progress)
         # The same short outline precedes every planning and comparison request.
@@ -116,7 +118,9 @@ def execute(context, inputs, model, payload, operation):
                 identity=ctx.identity,
                 traces=ctx.traces,
                 progress=context.report_progress,
+                book=book,
             )
+            document["questions"] = book.open()
         elif operation == "plan":
             kind, filename, schema = "clipmill.mind.plans.v1", "plans.json", MindPlans
             row_key = "plans"
@@ -131,9 +135,10 @@ def execute(context, inputs, model, payload, operation):
             checks: dict = {}
             document = {
                 row_key: review_batch(
-                    ctx, plans, candidates, script, memory["chapters"], judgments, checks
+                    ctx, plans, candidates, script, memory["chapters"], judgments, checks, book
                 ),
                 **checks,
+                "questions": book.open(),
             }
         else:
             kind, filename, schema = "clipmill.ranking.set.v2", "ranking.json", RankingSetV2

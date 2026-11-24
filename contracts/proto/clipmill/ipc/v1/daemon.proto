@@ -479,6 +479,20 @@ message EditorialStagePayloadV1 {
   string editorial_prompt = 8;
   repeated string editorial_taste = 9;
   uint64 requested_count = 10;
+  // A connected agent's answers to the narrow questions an earlier run of
+  // the same recording listed. Only the judge and review stages read them.
+  repeated JudgeAnswerV1 judge_answers = 11;
+}
+
+// One answer from a connected agent: the probability that the answer to a
+// listed question is yes. An agent's answers count for a kind of question
+// only after they pass that kind's self-check on the same recording.
+message JudgeAnswerV1 {
+  // As the run listed it: q_ followed by 24 lowercase hex digits.
+  string question_id = 1;
+  // From 0 (no) to 1000 (yes): the probability in thousandths, so a job's
+  // recorded settings compare exactly.
+  uint32 yes_per_mille = 2;
 }
 
 // Versioned payload for discovery (book ch. 15). The request names a source;
@@ -599,6 +613,8 @@ message AnalyzeSourcePayloadV1 {
   string editorial_prompt = 10;
   // Local decision and edit examples resolved by the daemon at submission.
   repeated string editorial_taste = 11;
+  // A connected agent's answers to questions an earlier run listed.
+  repeated JudgeAnswerV1 judge_answers = 12;
 }
 
 // Explicit consent applies only to this run. Credentials never enter the request.
@@ -750,6 +766,9 @@ message AnalysisSettingsV1 {
   bool local_editorial = 5;
   // Restore the original brief when retrying this analysis.
   string editorial_prompt = 6;
+  // A connected agent's answers the analysis was given, carried into the
+  // next run of the same recording.
+  repeated JudgeAnswerV1 judge_answers = 7;
 }
 
 // The identity of an export, as its job carries it.

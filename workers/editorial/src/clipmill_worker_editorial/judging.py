@@ -19,6 +19,7 @@ with no change here.
 
 from __future__ import annotations
 
+import hashlib
 import time
 
 from clipmill_worker_sdk import LeaseCancelled
@@ -192,17 +193,93 @@ def endings_to_judge(recording, script, candidates, memory, brief, count) -> lis
     return found[:MAX_ENDINGS]
 
 
-class Asker:
-    """One narrow question at a time, each recorded in the stage's trace."""
+def question_id(kind: str, text: str) -> str:
+    """A stable name for one question: the same kind and words, in any run
+    of any recording, have the same id."""
+    digest = hashlib.sha256(f"{kind}\n{text}".encode()).hexdigest()
+    return f"q_{digest[:24]}"
 
-    def __init__(self, runtime, identity, traces, job, version):
+
+class Unanswered(LookupError):
+    """A question the connected agent has not answered yet."""
+
+
+class Book:
+    """Answers a connected agent gave to this recording's narrow questions,
+    and every question this run asked or would ask, so an agent can answer
+    them for the next run.
+
+    A kind of question is put to the agent only when the agent has answered
+    every known case of that kind's self-check: then the agent is measured
+    on exactly what the local model would be measured on, and a judge is
+    never half agent, half model. The list of questions never says which
+    ones are known cases."""
+
+    def __init__(self, answers: dict[str, float] | None = None):
+        self.answers = dict(answers or {})
+        self.questions: dict[str, dict] = {}
+
+    def note(self, kind: str, text: str) -> str:
+        identifier = question_id(kind, text)
+        self.questions.setdefault(
+            identifier, {"question_id": identifier, "kind": kind, "text": text}
+        )
+        return identifier
+
+    def answer(self, kind: str, text: str) -> float | None:
+        return self.answers.get(self.note(kind, text))
+
+    def covers(self, kind: str, texts: list[str]) -> bool:
+        """Whether the agent answered every one of these questions. Each is
+        listed either way."""
+        answers = [self.answer(kind, text) for text in texts]
+        return bool(answers) and all(answer is not None for answer in answers)
+
+    def open(self) -> list[dict]:
+        """The questions noted in this run that have no answer, in the order asked."""
+        return [q for q in self.questions.values() if q["question_id"] not in self.answers]
+
+
+class Asker:
+    """One narrow question at a time, each recorded in the stage's trace.
+
+    With `agent` set, the answers come from the connected agent's book
+    instead of the local model; a question it has not answered raises
+    `Unanswered` and stays open for the next run."""
+
+    def __init__(self, runtime, identity, traces, job, version, book=None, agent=False):
         self.runtime = runtime
         self.identity = identity
         self.traces = traces
         self.job = job
         self.version = version
+        self.book = book if book is not None else Book()
+        self.agent = agent
 
     def __call__(self, question: str) -> float:
+        self.book.note(self.job, question)
+        if self.agent:
+            answer = self.book.answer(self.job, question)
+            if answer is None:
+                raise Unanswered(question)
+            self.traces.append(
+                {
+                    "index": len(self.traces),
+                    "job": self.job,
+                    **self.identity,
+                    "prompt_version": self.version,
+                    "request_text": question,
+                    "started_unix_millis": time.time_ns() // 1_000_000,
+                    "duration_millis": 0,
+                    "tokens": {"input": 0, "output": 0},
+                    "outcome": "answered",
+                    "response_text": f"answered by a connected agent\n[yes: {answer:.4f}]",
+                }
+            )
+            return answer
+        return self._ask_model(question)
+
+    def _ask_model(self, question: str) -> float:
         started = time.monotonic()
         trace = {
             "index": len(self.traces),
@@ -248,19 +325,31 @@ def threshold_of(check: dict) -> float | None:
     return (median(by_kind["finished"]) + median(by_kind["continues"])) / 2
 
 
-def judge(runtime, script, candidates, memory, *, brief, count, identity, traces, progress):
-    """The self-check, then verdicts on candidate endings when it passes."""
+def judge(
+    runtime, script, candidates, memory, *, brief, count, identity, traces, progress, book=None
+):
+    """The self-check, then verdicts on candidate endings when it passes.
+
+    The judge is the local model, or the connected agent when its book
+    answers every known case; either way it is measured the same way."""
     recording = Recording(script)
     version = ending_version()
-    ask_question = Asker(runtime, identity, traces, "judge.ending", version)
-
-    def ask(index: int) -> float:
-        return ask_question(recording.question(index))
-
+    book = book if book is not None else Book()
     candidates_asked = endings_to_judge(recording, script, candidates, memory, brief, count)
     # With nothing to decide, the model is not measured either.
     known = known_endings(recording, memory.get("chapters", [])) if candidates_asked else []
     known = interleaved(known)
+    agent = book.covers("judge.ending", [recording.question(i) for i, _ in known])
+    for index in candidates_asked:
+        book.note("judge.ending", recording.question(index))
+    ask_question = Asker(runtime, identity, traces, "judge.ending", version, book, agent)
+
+    def ask(index: int) -> float | None:
+        try:
+            return ask_question(recording.question(index))
+        except Unanswered:
+            return None
+
     planned = (
         sum(kind == "finished" for _, kind in known),
         sum(kind == "continues" for _, kind in known),
@@ -301,6 +390,9 @@ def judge(runtime, script, candidates, memory, *, brief, count, identity, traces
             for done, index in enumerate(candidates_asked, start=len(known)):
                 progress("judge_questions", done, total)
                 probability = scores[index] if index in scores else ask(index)
+                if probability is None:
+                    # The agent has not answered this one yet: no verdict.
+                    continue
                 endings.append(
                     {
                         "after_unit": f"s{index}",
@@ -310,7 +402,11 @@ def judge(runtime, script, candidates, memory, *, brief, count, identity, traces
                 )
     progress("judge_questions", total, total)
     return {
-        "judge": {"think_tokens": THINK_TOKENS, "prompt_version": version},
+        "judge": {
+            "think_tokens": 0 if agent else THINK_TOKENS,
+            "prompt_version": version,
+            "answered_by": "agent" if agent else "model",
+        },
         "self_check": {
             "endings": check,
             # No stage proposes a removal that needs judging yet, so the
@@ -333,11 +429,13 @@ class FinalEndings:
     A judge that passed its self-check is asked about each of those once, on
     the same scale; one that did not pass is never asked."""
 
-    def __init__(self, runtime, script, judgments, identity, traces):
+    def __init__(self, runtime, script, judgments, identity, traces, book=None):
         self.recording = Recording(script)
         check = ((judgments or {}).get("self_check") or {}).get("endings") or {}
         self.threshold = threshold_of(check)
-        self.ask = Asker(runtime, identity, traces, "judge.ending", ending_version())
+        # The review asks whichever judge passed before planning.
+        agent = ((judgments or {}).get("judge") or {}).get("answered_by") == "agent"
+        self.ask = Asker(runtime, identity, traces, "judge.ending", ending_version(), book, agent)
         self.probability: dict[str, float] = {
             case["unit"]: (case["score"] + 1) / 2 for case in check.get("cases", [])
         }
@@ -353,18 +451,25 @@ class FinalEndings:
         if index not in self.recording.units or not self.recording.same_voice_goes_on(index):
             return False
         if unit not in self.probability:
-            if self.asked >= MAX_REVIEW_ENDINGS:
+            if self.asked >= MAX_REVIEW_ENDINGS and not self.ask.agent:
                 return False
             self.asked += 1
-            self.probability[unit] = self.ask(self.recording.question(index))
+            try:
+                self.probability[unit] = self.ask(self.recording.question(index))
+            except Unanswered:
+                # Left open for the agent's next answers; the rules stand.
+                return False
         return self.probability[unit] < self.threshold
 
 
 __all__ = [
+    "Book",
     "Recording",
+    "Unanswered",
     "best_separation",
     "endings_to_judge",
     "judge",
     "known_endings",
+    "question_id",
     "separation",
 ]

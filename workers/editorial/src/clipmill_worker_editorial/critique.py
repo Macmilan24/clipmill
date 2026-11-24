@@ -22,6 +22,7 @@ from .planning import (
     unrelated_signoff,
 )
 from .tightening import Gates, tighten
+from .versus import Versus, plain_version
 
 MAX_SPLICE_NOTE = 140
 
@@ -253,13 +254,17 @@ def judge(ctx, plan, transcript):
     }
 
 
-def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None, report=None):
+def review_batch(
+    ctx, plans, candidates, script, chapters=(), judgments=None, report=None, book=None
+):
     transcript = Transcript(script)
     refused = cut_short(judgments)
     runtime, traces = getattr(ctx, "runtime", None), getattr(ctx, "traces", [])
-    endings = FinalEndings(runtime, script, judgments, ctx.identity, traces)
+    endings = FinalEndings(runtime, script, judgments, ctx.identity, traces, book)
     passages = candidates.get("removable") or []
-    gates = Gates(runtime, script, ctx.identity, traces) if passages else None
+    gates = Gates(runtime, script, ctx.identity, traces, book) if passages else None
+    versus = Versus(runtime, script, chapters, ctx.identity, traces, book)
+    length = candidates["length"]
 
     def review(plan):
         quality = judge(ctx, plan, transcript)
@@ -271,6 +276,23 @@ def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None, re
             quality["verdict"] = "reject"
             quality["issues"] = list(dict.fromkeys([CUT_OFF, *quality["issues"]]))
         return quality
+
+    def settle(plan, quality):
+        """An accepted edit, or its plain version when the edit is not the
+        better short. An edit stays when its plain version cannot ship."""
+        plain = plain_version(plan, transcript)
+        if plain is None:
+            return plan, quality
+        compared = {"plain_plan_id": plain["plan_id"], "kept": "edit"}
+        if not length["min_ticks"] <= plain["duration_ticks"] <= length["max_ticks"]:
+            return plan, {**quality, "compared": {**compared, "reason": "plain_out_of_length"}}
+        plain_quality = review(plain)
+        if plain_quality["verdict"] != "accept":
+            return plan, {**quality, "compared": {**compared, "reason": "plain_failed_review"}}
+        verdict = versus.prefers_edit(plan, plain, transcript)
+        if verdict["kept"] == "edit":
+            return plan, {**quality, "compared": verdict}
+        return plain, {**plain_quality, "repaired": quality["repaired"], "compared": verdict}
 
     originals = {c["plan"]["plan_id"]: c for c in candidates["candidates"]}
     reviewed = []
@@ -308,6 +330,8 @@ def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None, re
                     plan = shorter
                     quality = {**verdict, "repaired": quality["repaired"], "tightened": True}
         if quality["verdict"] == "accept":
+            plan, quality = settle(plan, quality)
+        if quality["verdict"] == "accept":
             playback = transcript.evidence(plan)["playback"]
             reasons = [r for r in reasons if check_copy(ctx, r, transcript, playback)[0] is None]
             if not reasons:
@@ -328,4 +352,6 @@ def review_batch(ctx, plans, candidates, script, chapters=(), judgments=None, re
     ctx.progress("review_plans", len(reviewed), len(reviewed))
     if report is not None and gates is not None and gates.checks:
         report["removal_checks"] = gates.checks
+    if report is not None and versus.check is not None:
+        report["comparison_check"] = versus.check
     return reviewed

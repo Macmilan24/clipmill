@@ -2450,7 +2450,8 @@ fn editorial_recipe(operation: &str) -> Option<(&'static str, &'static str)> {
                 prompt!("plan"),
                 prompt!("judge"),
                 prompt!("judge.removal"),
-                prompt!("tighten")
+                prompt!("tighten"),
+                prompt!("judge.compare")
             ),
             "mind.quality_report.v1",
         ),
@@ -2523,6 +2524,13 @@ fn editorial_worker_task(
                 Vec::new()
             },
             requested_count: if uses_brief { request.count } else { 0 },
+            // Only the stages that put questions to a judge read the answers,
+            // so a new answer re-runs those and the stages after them.
+            judge_answers: if matches!(operation, "judge" | "critic") {
+                request.judge_answers.clone()
+            } else {
+                Vec::new()
+            },
         }
         .encode_to_vec(),
         dependencies,
@@ -2777,7 +2785,7 @@ impl From<TaskRecord> for v1::Task {
 /// The kind of the job an export submits: the render, then the delivery.
 pub(crate) const KIND_EXPORT_CLIP: &str = "export-clip";
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct JobRecord {
     pub job_id: String,
     pub project_id: String,
@@ -4568,6 +4576,7 @@ mod analyze_tests {
             local_editorial: false,
             editorial_prompt: String::new(),
             editorial_taste: Vec::new(),
+            judge_answers: Vec::new(),
             content_profile: String::new(),
             cloud_editorial: None,
             key_version: "clipmill.analyze-source.v1".to_owned(),

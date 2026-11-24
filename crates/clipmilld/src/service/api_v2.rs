@@ -36,7 +36,7 @@ const TOKEN_PREFIX: &str = "cmt_";
 const READ_CHUNK: u64 = 4 * 1024 * 1024;
 
 /// Every operation and the scope it needs.
-pub(crate) const OPERATIONS: [(&str, &str); 35] = [
+pub(crate) const OPERATIONS: [(&str, &str); 36] = [
     ("whoami", "authenticated"),
     ("mcp_export_consent", "render"),
     ("read_edit_resource", "read"),
@@ -68,6 +68,7 @@ pub(crate) const OPERATIONS: [(&str, &str); 35] = [
     ("reprompt", "edit"),
     ("create_clip_from_plan", "edit"),
     ("memory_overview", "read"),
+    ("judge_questions", "read"),
     ("set_decision", "edit"),
     ("create_clip", "edit"),
     ("export_clip", "render"),
@@ -255,6 +256,73 @@ pub(super) fn plan_candidate_id(source_id: &str, job_id: &str, plan_json: &str) 
         "cand_{}",
         &hex::encode(Sha256::digest(identity.as_bytes()))[..16]
     )
+}
+
+/// What an agent is told about answering a run's questions.
+const JUDGE_ANSWER_HELP: &str = "Read each question as written and answer it from the text alone, \
+with yes or no, or with the probability that the answer is yes. Send the answers with reprompt \
+as answers: [{question_id, answer}]. Some questions have answers the recording itself shows; \
+ClipMill measures your answers to those before it uses any of them, and a kind of question is \
+put to you only when you have answered every one of its kind. Answers are kept with the run and \
+carried into the next one, so each round needs only the questions still open.";
+
+/// The most answers one run may carry.
+const MAX_JUDGE_ANSWERS: usize = 2_000;
+
+/// An agent's answers, merged over the ones the earlier run carried: a new
+/// answer to the same question replaces the old one.
+pub(super) fn judge_answers(
+    args: &Value,
+    earlier: &[clipmill_contracts::proto::ipc::v1::JudgeAnswerV1],
+) -> Result<Vec<clipmill_contracts::proto::ipc::v1::JudgeAnswerV1>, ApiError> {
+    let mut merged: std::collections::BTreeMap<String, u32> = earlier
+        .iter()
+        .map(|answer| (answer.question_id.clone(), answer.yes_per_mille))
+        .collect();
+    for item in args["answers"].as_array().into_iter().flatten() {
+        let id = item["question_id"].as_str().unwrap_or_default();
+        let well_formed = id.len() == 26
+            && id.starts_with("q_")
+            && id[2..]
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        if !well_formed {
+            return Err(ApiError::invalid(
+                "each answer needs the question_id a run listed",
+            ));
+        }
+        let probability = match &item["answer"] {
+            Value::String(word) if word.eq_ignore_ascii_case("yes") => 1.0,
+            Value::String(word) if word.eq_ignore_ascii_case("no") => 0.0,
+            Value::Number(number) => number.as_f64().unwrap_or(f64::NAN),
+            _ => f64::NAN,
+        };
+        if !(0.0..=1.0).contains(&probability) {
+            return Err(ApiError::invalid(
+                "an answer is yes, no, or a probability of yes from 0 to 1",
+            ));
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a probability from 0 to 1, rounded to thousandths"
+        )]
+        merged.insert(id.to_owned(), (probability * 1000.0).round() as u32);
+    }
+    if merged.len() > MAX_JUDGE_ANSWERS {
+        return Err(ApiError::invalid(format!(
+            "a run carries at most {MAX_JUDGE_ANSWERS} answers"
+        )));
+    }
+    Ok(merged
+        .into_iter()
+        .map(
+            |(question_id, yes_per_mille)| clipmill_contracts::proto::ipc::v1::JudgeAnswerV1 {
+                question_id,
+                yes_per_mille,
+            },
+        )
+        .collect())
 }
 
 /// How a decision names its clip in the project's taste: the clip's form and
@@ -668,6 +736,7 @@ impl Service {
                     "links":memory["links"], "entities":memory["entities"]}),
                 )
             }
+            "judge_questions" => self.judge_questions(args).await,
             "propose_clips" | "reprompt" => self.reprompt(args, id).await,
             "create_clip_from_plan" => self.create_from_plan(args, id).await,
             "find_moments" => self.find_moments(args).await,
@@ -957,6 +1026,42 @@ impl Service {
             .iter()
             .find(|clip| clip["candidate_id"] == candidate_id || clip["clip_id"] == candidate_id)
             .map(clip_subject)
+    }
+
+    /// The narrow questions an analysis put to its judge, or would have,
+    /// that no connected agent has answered yet. An agent answers them with
+    /// `reprompt`; known cases are mixed in and never marked.
+    async fn judge_questions(&self, args: &Value) -> ApiResult {
+        let run = self.run(args).await?;
+        let mut seen = std::collections::BTreeSet::new();
+        let mut questions = Vec::new();
+        for kind in ["mind.judgments.v1", "mind.quality_report.v1"] {
+            let Some(document) = self.optional_document(&run, kind).await? else {
+                continue;
+            };
+            for question in document["questions"].as_array().into_iter().flatten() {
+                if let Some(id) = question["question_id"].as_str()
+                    && seen.insert(id.to_owned())
+                {
+                    questions.push(json!({
+                        "question_id": id,
+                        "kind": question["kind"],
+                        "text": question["text"],
+                    }));
+                }
+            }
+        }
+        let answered = run
+            .job
+            .analysis
+            .as_ref()
+            .map_or(0, |settings| settings.judge_answers.len());
+        Ok(json!({
+            "job_id": run.job.job_id,
+            "questions": questions,
+            "answered": answered,
+            "how_to_answer": JUDGE_ANSWER_HELP,
+        }))
     }
 
     /// The mind's plans and the ranked moments of one analysis, best first.
@@ -1415,6 +1520,44 @@ mod tests {
             id,
             plan_candidate_id("src_1", "job_1", "{\"plan_id\":\"plan_x\"}")
         );
+    }
+
+    #[test]
+    fn an_agents_answers_add_to_the_earlier_runs_and_replace_its_old_ones() {
+        use clipmill_contracts::proto::ipc::v1::JudgeAnswerV1;
+        let earlier = [
+            JudgeAnswerV1 {
+                question_id: format!("q_{}", "a".repeat(24)),
+                yes_per_mille: 1000,
+            },
+            JudgeAnswerV1 {
+                question_id: format!("q_{}", "b".repeat(24)),
+                yes_per_mille: 0,
+            },
+        ];
+        let args = json!({"answers": [
+            {"question_id": format!("q_{}", "b".repeat(24)), "answer": "yes"},
+            {"question_id": format!("q_{}", "c".repeat(24)), "answer": 0.25},
+            {"question_id": format!("q_{}", "d".repeat(24)), "answer": "No"},
+        ]});
+        let Ok(merged) = judge_answers(&args, &earlier) else {
+            panic!("well-formed answers");
+        };
+        let pairs: Vec<(char, u32)> = merged
+            .iter()
+            .map(|a| (a.question_id.chars().nth(2).unwrap(), a.yes_per_mille))
+            .collect();
+        assert_eq!(pairs, [('a', 1000), ('b', 1000), ('c', 250), ('d', 0)]);
+        // Without new answers the earlier ones carry over unchanged.
+        assert!(judge_answers(&json!({}), &earlier).is_ok_and(|carried| carried == earlier));
+        for bad in [
+            json!({"answers": [{"question_id": "q_short", "answer": "yes"}]}),
+            json!({"answers": [{"question_id": format!("q_{}", "A".repeat(24)), "answer": "yes"}]}),
+            json!({"answers": [{"question_id": format!("q_{}", "e".repeat(24)), "answer": "maybe"}]}),
+            json!({"answers": [{"question_id": format!("q_{}", "e".repeat(24)), "answer": 1.5}]}),
+        ] {
+            assert!(judge_answers(&bad, &[]).is_err(), "{bad}");
+        }
     }
 
     #[test]

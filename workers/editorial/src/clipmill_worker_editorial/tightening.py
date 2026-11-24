@@ -31,7 +31,7 @@ from typing import Literal
 from pydantic import create_model
 
 from .inference import prompt_digest, prompt_for
-from .judging import Asker, best_separation, median, separation
+from .judging import Asker, Book, Unanswered, best_separation, median, separation
 from .planning import SENTENCE_END, Reply, ShortText, geometry_id
 
 #: Known removals of each kind measured, at most and at least.
@@ -172,15 +172,17 @@ def spoken(lines: list[str]) -> list[str]:
 class Gates:
     """The instruments that may confirm a removal, measured once per stage."""
 
-    def __init__(self, runtime, script, identity, traces):
+    def __init__(self, runtime, script, identity, traces, book=None):
         self.runtime = runtime
         self.lines = Lines(script)
+        self.book = book if book is not None else Book()
         self.ask = Asker(
             runtime,
             identity,
             traces,
             "judge.removal",
             f"judge.removal.v1/{prompt_digest('judge.removal')}",
+            self.book,
         )
         self.checks: dict[str, dict] = {}
         self.thresholds: dict[str, float] = {}
@@ -196,9 +198,16 @@ class Gates:
         cut = self.runtime.continuation_logprobs("\n".join(before), after)
         return mean(kept) - mean(cut)
 
+    @staticmethod
+    def question(before: list[str], after: str) -> str:
+        return prompt_for("judge.removal").format(text="\n".join([*before[-2:], after]))
+
     def judge(self, before: list[str], after: str) -> float:
-        text = "\n".join([*before[-2:], after])
-        return self.ask(prompt_for("judge.removal").format(text=text))
+        return self.ask(self.question(before, after))
+
+    def note(self, before: list[str], after: str) -> None:
+        """List a removal question for a connected agent without asking it."""
+        self.book.note("judge.removal", self.question(before, after))
 
     def ready(self) -> bool:
         """Whether any instrument passed. Measured the first time it is asked."""
@@ -211,12 +220,6 @@ class Gates:
         cases = [case for case in removal_cases(self.lines) if case["before"]]
         if not cases or self.runtime is None:
             return
-        if getattr(self.runtime, "has_meter", False):
-            scores = [self.meter(c["before"], c["passage"], c["after"]) for c in cases]
-            self.checks["meter"], threshold = check_of(cases, scores)
-            if threshold is not None:
-                self.thresholds["meter"] = threshold
-                return
         # The judge costs a reasoning budget per question: a few cases of
         # each kind, alternately, stopping once the bar is out of reach.
         kinds = {
@@ -226,6 +229,18 @@ class Gates:
         order = [
             case for pair in zip(kinds["dangling"], kinds["intact"], strict=False) for case in pair
         ]
+        # A connected agent that answered every known case is the judge;
+        # otherwise the local model is, measured the same way.
+        self.ask.agent = self.book.covers(
+            "judge.removal", [self.question(c["before"], c["after"]) for c in order]
+        )
+        if getattr(self.runtime, "has_meter", False):
+            scores = [self.meter(c["before"], c["passage"], c["after"]) for c in cases]
+            self.checks["meter"], threshold = check_of(cases, scores)
+            if threshold is not None:
+                self.thresholds["meter"] = threshold
+                if not self.ask.agent:
+                    return
         planned = (len(kinds["dangling"]), len(kinds["intact"]))
         asked, scores = [], []
         for case in order:
@@ -247,9 +262,13 @@ class Gates:
             self.meter(before, passage, after) >= self.thresholds["meter"]
         ):
             return False
-        return not (
-            "judge" in self.thresholds and self.judge(before, after) >= self.thresholds["judge"]
-        )
+        if "judge" not in self.thresholds:
+            return True
+        try:
+            return self.judge(before, after) < self.thresholds["judge"]
+        except Unanswered:
+            # Left open for the agent's next answers; nothing goes meanwhile.
+            return False
 
 
 def options(plan, transcript, passages, length):
@@ -313,7 +332,17 @@ def tighten(ctx, plan, transcript, passages, gates, length):
     """At most one passage the planner chose and the instruments allow,
     left out of an accepted clip; `None` when nothing should go."""
     found, played = options(plan, transcript, passages, length)
-    if not found or not gates.ready():
+    if not found:
+        return None
+    text = [f"{line['speaker'] or '?'}: {line['text'].strip()}" for line in played]
+    for passage in found:
+        # Every passage is listed, so a connected agent can answer for any
+        # the planner might choose once its answers make the judge usable.
+        gates.note(
+            text[max(0, passage["before"] - CONTEXT_LINES) : passage["before"]],
+            text[passage["after"]],
+        )
+    if not gates.ready():
         return None
     names = {f"p{i}": passage for i, passage in enumerate(found, start=1)}
     reply = create_model(
@@ -334,7 +363,6 @@ def tighten(ctx, plan, transcript, passages, gates, length):
     if failure or not answer or answer["choice"] not in names:
         return None
     passage = names[answer["choice"]]
-    text = [f"{line['speaker'] or '?'}: {line['text'].strip()}" for line in played]
     before = text[max(0, passage["before"] - CONTEXT_LINES) : passage["before"]]
     if not gates.allows(before, text[passage["before"] : passage["after"]], text[passage["after"]]):
         return None

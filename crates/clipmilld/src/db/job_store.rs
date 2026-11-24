@@ -2138,6 +2138,7 @@ fn complete_job_record(
                 count: payload.count,
                 local_editorial: payload.local_editorial,
                 editorial_prompt: payload.editorial_prompt.clone(),
+                judge_answers: payload.judge_answers.clone(),
             },
         );
     let content_profile = analyzed

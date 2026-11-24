@@ -32,6 +32,10 @@
         "prompt_version": {
           "type": "string",
           "minLength": 1
+        },
+        "answered_by": {
+          "description": "Who answered: the local model, or a connected agent whose answers to every known case of the self-check were supplied with the run.",
+          "enum": ["model", "agent"]
         }
       }
     },
@@ -53,6 +57,13 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/ending"
+      }
+    },
+    "questions": {
+      "description": "Questions without an answer from a connected agent. An agent answers them through a new run of the same recording; empty or absent when every question was answered.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/question"
       }
     }
   },
@@ -122,6 +133,25 @@
         },
         "verdict": {
           "enum": ["finished", "continues"]
+        }
+      }
+    },
+    "question": {
+      "description": "A narrow question this run asked, or would ask, of its judge, for a connected agent to answer. The list never says which questions are known cases of a self-check: an agent's answers are measured on those before any of them is used.",
+      "type": "object",
+      "required": ["question_id", "kind", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "pattern": "^q_[0-9a-f]{24}$"
+        },
+        "kind": {
+          "enum": ["judge.ending", "judge.removal", "judge.compare"]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }

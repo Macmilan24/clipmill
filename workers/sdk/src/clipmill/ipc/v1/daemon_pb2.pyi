@@ -648,7 +648,7 @@ class IndexStagePayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ...) -> None: ...
 
 class EditorialStagePayloadV1(_message.Message):
-    __slots__ = ("key_version", "stage", "duration", "prompt_digest", "max_output_tokens", "cloud", "content_profile", "editorial_prompt", "editorial_taste", "requested_count")
+    __slots__ = ("key_version", "stage", "duration", "prompt_digest", "max_output_tokens", "cloud", "content_profile", "editorial_prompt", "editorial_taste", "requested_count", "judge_answers")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     STAGE_FIELD_NUMBER: _ClassVar[int]
     DURATION_FIELD_NUMBER: _ClassVar[int]
@@ -659,6 +659,7 @@ class EditorialStagePayloadV1(_message.Message):
     EDITORIAL_PROMPT_FIELD_NUMBER: _ClassVar[int]
     EDITORIAL_TASTE_FIELD_NUMBER: _ClassVar[int]
     REQUESTED_COUNT_FIELD_NUMBER: _ClassVar[int]
+    JUDGE_ANSWERS_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     stage: str
     duration: ClipDurationV1
@@ -669,7 +670,16 @@ class EditorialStagePayloadV1(_message.Message):
     editorial_prompt: str
     editorial_taste: _containers.RepeatedScalarFieldContainer[str]
     requested_count: int
-    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., prompt_digest: _Optional[str] = ..., max_output_tokens: _Optional[int] = ..., cloud: _Optional[_Union[EditorialCloudV1, _Mapping]] = ..., content_profile: _Optional[str] = ..., editorial_prompt: _Optional[str] = ..., editorial_taste: _Optional[_Iterable[str]] = ..., requested_count: _Optional[int] = ...) -> None: ...
+    judge_answers: _containers.RepeatedCompositeFieldContainer[JudgeAnswerV1]
+    def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., prompt_digest: _Optional[str] = ..., max_output_tokens: _Optional[int] = ..., cloud: _Optional[_Union[EditorialCloudV1, _Mapping]] = ..., content_profile: _Optional[str] = ..., editorial_prompt: _Optional[str] = ..., editorial_taste: _Optional[_Iterable[str]] = ..., requested_count: _Optional[int] = ..., judge_answers: _Optional[_Iterable[_Union[JudgeAnswerV1, _Mapping]]] = ...) -> None: ...
+
+class JudgeAnswerV1(_message.Message):
+    __slots__ = ("question_id", "yes_per_mille")
+    QUESTION_ID_FIELD_NUMBER: _ClassVar[int]
+    YES_PER_MILLE_FIELD_NUMBER: _ClassVar[int]
+    question_id: str
+    yes_per_mille: int
+    def __init__(self, question_id: _Optional[str] = ..., yes_per_mille: _Optional[int] = ...) -> None: ...
 
 class DiscoverCandidatesPayloadV1(_message.Message):
     __slots__ = ("key_version", "source_id", "duration")
@@ -750,7 +760,7 @@ class CaptionsStagePayloadV1(_message.Message):
     def __init__(self, key_version: _Optional[str] = ..., stage: _Optional[str] = ..., span_start_ticks: _Optional[int] = ..., span_end_ticks: _Optional[int] = ...) -> None: ...
 
 class AnalyzeSourcePayloadV1(_message.Message):
-    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli", "local_editorial", "cloud_editorial", "content_profile", "editorial_prompt", "editorial_taste")
+    __slots__ = ("key_version", "source_id", "language", "duration", "count", "diversity_milli", "local_editorial", "cloud_editorial", "content_profile", "editorial_prompt", "editorial_taste", "judge_answers")
     KEY_VERSION_FIELD_NUMBER: _ClassVar[int]
     SOURCE_ID_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
@@ -762,6 +772,7 @@ class AnalyzeSourcePayloadV1(_message.Message):
     CONTENT_PROFILE_FIELD_NUMBER: _ClassVar[int]
     EDITORIAL_PROMPT_FIELD_NUMBER: _ClassVar[int]
     EDITORIAL_TASTE_FIELD_NUMBER: _ClassVar[int]
+    JUDGE_ANSWERS_FIELD_NUMBER: _ClassVar[int]
     key_version: str
     source_id: str
     language: str
@@ -773,7 +784,8 @@ class AnalyzeSourcePayloadV1(_message.Message):
     content_profile: str
     editorial_prompt: str
     editorial_taste: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ..., local_editorial: _Optional[bool] = ..., cloud_editorial: _Optional[_Union[EditorialCloudV1, _Mapping]] = ..., content_profile: _Optional[str] = ..., editorial_prompt: _Optional[str] = ..., editorial_taste: _Optional[_Iterable[str]] = ...) -> None: ...
+    judge_answers: _containers.RepeatedCompositeFieldContainer[JudgeAnswerV1]
+    def __init__(self, key_version: _Optional[str] = ..., source_id: _Optional[str] = ..., language: _Optional[str] = ..., duration: _Optional[_Union[ClipDurationV1, _Mapping]] = ..., count: _Optional[int] = ..., diversity_milli: _Optional[int] = ..., local_editorial: _Optional[bool] = ..., cloud_editorial: _Optional[_Union[EditorialCloudV1, _Mapping]] = ..., content_profile: _Optional[str] = ..., editorial_prompt: _Optional[str] = ..., editorial_taste: _Optional[_Iterable[str]] = ..., judge_answers: _Optional[_Iterable[_Union[JudgeAnswerV1, _Mapping]]] = ...) -> None: ...
 
 class EditorialCloudV1(_message.Message):
     __slots__ = ("transcript_consent", "budget_micro_usd", "model")
@@ -916,20 +928,22 @@ class Job(_message.Message):
     def __init__(self, job_id: _Optional[str] = ..., project_id: _Optional[str] = ..., kind: _Optional[str] = ..., state: _Optional[_Union[JobState, str]] = ..., created_unix_millis: _Optional[int] = ..., updated_unix_millis: _Optional[int] = ..., tasks: _Optional[_Iterable[_Union[Task, _Mapping]]] = ..., output_artifact_ids: _Optional[_Iterable[str]] = ..., failure_class: _Optional[_Union[_worker_pb2.FailureClass, str]] = ..., failure_detail: _Optional[str] = ..., source_id: _Optional[str] = ..., export: _Optional[_Union[ExportSummaryV1, _Mapping]] = ..., content_profile: _Optional[str] = ..., analysis: _Optional[_Union[AnalysisSettingsV1, _Mapping]] = ...) -> None: ...
 
 class AnalysisSettingsV1(_message.Message):
-    __slots__ = ("language", "min_ticks", "max_ticks", "count", "local_editorial", "editorial_prompt")
+    __slots__ = ("language", "min_ticks", "max_ticks", "count", "local_editorial", "editorial_prompt", "judge_answers")
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     MIN_TICKS_FIELD_NUMBER: _ClassVar[int]
     MAX_TICKS_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
     LOCAL_EDITORIAL_FIELD_NUMBER: _ClassVar[int]
     EDITORIAL_PROMPT_FIELD_NUMBER: _ClassVar[int]
+    JUDGE_ANSWERS_FIELD_NUMBER: _ClassVar[int]
     language: str
     min_ticks: int
     max_ticks: int
     count: int
     local_editorial: bool
     editorial_prompt: str
-    def __init__(self, language: _Optional[str] = ..., min_ticks: _Optional[int] = ..., max_ticks: _Optional[int] = ..., count: _Optional[int] = ..., local_editorial: _Optional[bool] = ..., editorial_prompt: _Optional[str] = ...) -> None: ...
+    judge_answers: _containers.RepeatedCompositeFieldContainer[JudgeAnswerV1]
+    def __init__(self, language: _Optional[str] = ..., min_ticks: _Optional[int] = ..., max_ticks: _Optional[int] = ..., count: _Optional[int] = ..., local_editorial: _Optional[bool] = ..., editorial_prompt: _Optional[str] = ..., judge_answers: _Optional[_Iterable[_Union[JudgeAnswerV1, _Mapping]]] = ...) -> None: ...
 
 class ExportSummaryV1(_message.Message):
     __slots__ = ("doc_id", "revision", "ir_artifact_id", "destination_dir")

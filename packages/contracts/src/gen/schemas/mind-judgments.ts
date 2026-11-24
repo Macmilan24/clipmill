@@ -27,6 +27,10 @@ export interface MindJudgments {
      */
     think_tokens: number;
     prompt_version: string;
+    /**
+     * Who answered: the local model, or a connected agent whose answers to every known case of the self-check were supplied with the run.
+     */
+    answered_by?: "model" | "agent";
   };
   self_check: {
     endings: Check;
@@ -36,6 +40,10 @@ export interface MindJudgments {
    * Verdicts on candidate endings where the same speaker goes on. Empty when the ending self-check did not pass.
    */
   endings: Ending[];
+  /**
+   * Questions without an answer from a connected agent. An agent answers them through a new run of the same recording; empty or absent when every question was answered.
+   */
+  questions?: Question[];
 }
 export interface Check {
   passed: boolean;
@@ -54,4 +62,12 @@ export interface Ending {
   after_unit: Unit;
   score: Score;
   verdict: "finished" | "continues";
+}
+/**
+ * A narrow question this run asked, or would ask, of its judge, for a connected agent to answer. The list never says which questions are known cases of a self-check: an agent's answers are measured on those before any of them is used.
+ */
+export interface Question {
+  question_id: string;
+  kind: "judge.ending" | "judge.removal" | "judge.compare";
+  text: string;
 }

@@ -81,11 +81,17 @@ enum Command {
         #[arg(long)]
         wait: bool,
     },
-    /// Reuse an analysis to propose clips for a new brief.
+    /// Reuse an analysis to propose clips for a new brief, or with answers
+    /// to the questions it listed.
     Reprompt {
         project: String,
         source: String,
-        prompt: String,
+        /// The new brief; without one, a round of answers keeps the earlier brief.
+        #[arg(required_unless_present = "answers")]
+        prompt: Option<String>,
+        /// A JSON file with answers: [{"question_id": "q_…", "answer": "yes"}].
+        #[arg(long)]
+        answers: Option<PathBuf>,
         #[arg(long)]
         run: Option<String>,
         #[arg(long, requires = "max")]
@@ -109,6 +115,13 @@ enum Command {
     Cancel { job: String },
     /// The transcript of an analyzed recording.
     Transcript {
+        project: String,
+        source: String,
+        #[arg(long)]
+        run: Option<String>,
+    },
+    /// The questions an analysis put to its judge that are still open.
+    Questions {
         project: String,
         source: String,
         #[arg(long)]
@@ -456,6 +469,7 @@ fn request(command: &Command) -> Result<(&str, Value, bool), String> {
             project,
             source,
             prompt,
+            answers,
             run,
             min,
             max,
@@ -463,7 +477,15 @@ fn request(command: &Command) -> Result<(&str, Value, bool), String> {
             wait,
         } => {
             let mut args = run_args(project, source, run.as_ref());
-            args["prompt"] = json!(prompt);
+            if let Some(prompt) = prompt {
+                args["prompt"] = json!(prompt);
+            }
+            if let Some(path) = answers {
+                let text = std::fs::read_to_string(path)
+                    .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+                args["answers"] = serde_json::from_str(&text)
+                    .map_err(|error| format!("{} is not JSON: {error}", path.display()))?;
+            }
             if let Some(count) = count {
                 args["count"] = json!(count);
             }
@@ -482,6 +504,15 @@ fn request(command: &Command) -> Result<(&str, Value, bool), String> {
             run,
         } => (
             "get_transcript",
+            run_args(project, source, run.as_ref()),
+            false,
+        ),
+        Command::Questions {
+            project,
+            source,
+            run,
+        } => (
+            "judge_questions",
             run_args(project, source, run.as_ref()),
             false,
         ),

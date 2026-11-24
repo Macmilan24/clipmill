@@ -63,6 +63,34 @@ fn proposal_args() -> Value {
     object(&args, &["project_id", "source_id", "prompt"])
 }
 
+/// A brief, or a round of answers to the questions an earlier run listed.
+fn reprompt_args() -> Value {
+    let mut schema = proposal_args();
+    schema["properties"]["answers"] = json!({
+        "type": "array",
+        "maxItems": 2000,
+        "description": "Answers to questions from clipmill_judge_questions. Earlier answers are kept; without a prompt the earlier brief is kept too.",
+        "items": {
+            "type": "object",
+            "required": ["question_id", "answer"],
+            "additionalProperties": false,
+            "properties": {
+                "question_id": {"type": "string", "pattern": "^q_[0-9a-f]{24}$"},
+                "answer": {
+                    "description": "yes, no, or the probability that the answer is yes.",
+                    "anyOf": [
+                        {"type": "string", "enum": ["yes", "no"]},
+                        {"type": "number", "minimum": 0, "maximum": 1}
+                    ]
+                }
+            }
+        }
+    });
+    schema["required"] = json!(["project_id", "source_id"]);
+    schema["anyOf"] = json!([{"required": ["prompt"]}, {"required": ["answers"]}]);
+    schema
+}
+
 fn edit_args() -> Value {
     json!({"doc_id":string("The edit document from clipmill_create_clip or clipmill_create_clip_from_plan.")})
 }
@@ -274,11 +302,20 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "clipmill_reprompt",
         title: "Refine a recording's clips",
-        description: "Give an existing analysis a new brief or duration. Reuses the recording's observations and preserves the earlier run. Returns a job.",
+        description: "Give an existing analysis a new brief or duration, or answers to the questions it listed. Reuses the recording's observations and preserves the earlier run. Returns a job.",
         op: "reprompt",
         read_only: false,
         destructive: false,
-        input: proposal_args,
+        input: reprompt_args,
+    },
+    Tool {
+        name: "clipmill_judge_questions",
+        title: "Questions for your judgement",
+        description: "Narrow yes-or-no questions ClipMill's editorial judge asked about an analysis, such as whether a clip ends before its speaker has finished, or which of two versions makes the better short. Answer them with clipmill_reprompt to have your judgement, rather than the local model's, decide those edits. ClipMill first checks your answers on questions the recording itself answers.",
+        op: "judge_questions",
+        read_only: true,
+        destructive: false,
+        input: || object(&run_args(), &["project_id", "source_id"]),
     },
     Tool {
         name: "clipmill_create_clip_from_plan",

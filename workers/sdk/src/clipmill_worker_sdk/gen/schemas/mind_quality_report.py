@@ -9,6 +9,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, constr
 
 
+class AnsweredBy(Enum):
+    model = 'model'
+    agent = 'agent'
+
+
 class Sha256(RootModel[constr(pattern=r'^sha256:[0-9a-f]{64}$')]):
     root: constr(pattern=r'^sha256:[0-9a-f]{64}$')
 
@@ -30,6 +35,37 @@ class Hook(Enum):
     strong = 'strong'
     adequate = 'adequate'
     weak = 'weak'
+
+
+class Kept(Enum):
+    edit = 'edit'
+    plain = 'plain'
+
+
+class Reason1(Enum):
+    edit_preferred = 'edit_preferred'
+    plain_preferred = 'plain_preferred'
+    not_measured = 'not_measured'
+    plain_failed_review = 'plain_failed_review'
+    plain_out_of_length = 'plain_out_of_length'
+    awaiting_agent = 'awaiting_agent'
+
+
+class Compared(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    plain_plan_id: PlanId
+    kept: Kept
+    reason: Reason1
+    edit_first: confloat(ge=0.0, le=1.0) | None = Field(
+        None,
+        description='The probability that the edit is the better short, asked with the edit as version A.',
+    )
+    plain_first: confloat(ge=0.0, le=1.0) | None = Field(
+        None,
+        description='The probability that the plain version is the better short, asked with it as version A.',
+    )
 
 
 class Verdict1(Enum):
@@ -76,6 +112,34 @@ class RemovalCheck(BaseModel):
     cases: list[Case]
 
 
+class Kind(Enum):
+    cut_off_ending = 'cut_off_ending'
+    dangling_start = 'dangling_start'
+
+
+class UnitSpan(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    first_unit: constr(pattern=r'^s[0-9]+$')
+    last_unit: constr(pattern=r'^s[0-9]+$')
+
+
+class Kind1(Enum):
+    judge_ending = 'judge.ending'
+    judge_removal = 'judge.removal'
+    judge_compare = 'judge.compare'
+
+
+class Question(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    question_id: constr(pattern=r'^q_[0-9a-f]{24}$')
+    kind: Kind1
+    text: constr(min_length=1)
+
+
 class RemovalChecks(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -98,6 +162,40 @@ class Quality(BaseModel):
         None,
         description='A passage was left out by meaning after the clip was accepted, and the shorter clip was reviewed and accepted in turn.',
     )
+    compared: Compared | None = Field(
+        None,
+        description='The edited clip set against its plain version: the longest part played whole, with nothing left out. An edit ships only when the comparison prefers it in both orders, or when the plain version cannot ship.',
+    )
+
+
+class ComparisonCase(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Kind
+    whole: UnitSpan
+    broken: UnitSpan
+    whole_first: confloat(ge=0.0, le=1.0) = Field(
+        ...,
+        description='The probability that version A is the better short when A is the whole passage.',
+    )
+    broken_first: confloat(ge=0.0, le=1.0) = Field(
+        ...,
+        description='The probability that version A is the better short when A is the broken passage.',
+    )
+
+
+class ComparisonCheck(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    passed: bool
+    answered_by: AnsweredBy
+    separation: confloat(ge=0.0, le=1.0) | None = Field(
+        None,
+        description='The share of (whole version first, broken version first) question pairs scored the right way round: 0.5 is chance, 1 is perfect.',
+    )
+    cases: list[ComparisonCase]
 
 
 class Review(BaseModel):
@@ -125,4 +223,12 @@ class MindQualityReport(BaseModel):
     removal_checks: RemovalChecks | None = Field(
         None,
         description='How the instruments that guard a removal by meaning measured on removals whose effect the recording shows: taking out a question before its answer, or a line the speaker then points back at, leaves something dangling; taking out filler or an abandoned start does not. An instrument is used only when it passed. Absent when no clip had a passage to consider.',
+    )
+    questions: list[Question] | None = Field(
+        None,
+        description='Questions without an answer from a connected agent. An agent answers them through a new run of the same recording; empty or absent when every question was answered.',
+    )
+    comparison_check: ComparisonCheck | None = Field(
+        None,
+        description='How the judge that compares an edited clip with its plain version measured on pairs whose answer the recording shows: a passage that ends on a finished thought against the same passage cut off while its speaker goes on, or opened where a line points back at the one before it. Each pair is asked in both orders. The comparison is used only when it passed; without it, an edit whose plain version passed review ships as the plain version. Absent when no edited clip was accepted.',
     )
