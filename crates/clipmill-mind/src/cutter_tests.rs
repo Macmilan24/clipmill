@@ -1167,6 +1167,14 @@ fn a_clip_neither_opens_nor_finishes_on_a_greeting_or_thanks() {
     assert!(!plain_table(&source, &words).may_open(27));
     source.sentences[27].text = "Nobody saw it coming.".to_owned();
     assert!(plain_table(&source, &words).may_open(27));
+    // Thanks said straight after a point ends it: the clip may finish on
+    // the point, before the thanks, however short the pause.
+    let (mut source, words) = recording();
+    source.sentences[26].end_ticks = source.sentences[27].start_ticks;
+    source.sentences[27].text = "Appreciate it.".to_owned();
+    let table = plain_table(&source, &words);
+    assert!(table.may_close(26));
+    assert!(!table.may_close(27));
 }
 
 #[test]

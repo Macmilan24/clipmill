@@ -675,8 +675,13 @@ impl Table {
             let close = gap <= ADJACENT_GAP_TICKS;
             let points_back =
                 next.points_at_previous || carries_on(&next.text) || turns(&next.text);
+            // A speaker who thanks or greets straight after a line has
+            // finished the point, however quickly they say it.
+            let signs_off = pleasantry(&next.text);
             !(same_voice(unit, next)
-                && (next.starts_lower || (close && points_back) || gap < self.ending_pause))
+                && (next.starts_lower
+                    || (close && points_back)
+                    || (gap < self.ending_pause && !signs_off)))
         })
     }
 
