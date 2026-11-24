@@ -36,8 +36,11 @@
   spoken. A clip no longer ends or opens where the speaker carries on with
   "and" or "but", turns the point with "right now…", "however…" or "for
   example…", or points back with "that" or "which", and it never ends on a
-  promise such as "here's why" or a list marker such as "Number two." A line
-  that starts in lower case is read as the rest of the sentence before it.
+  promise such as "here's why", a list marker such as "Number two." or a
+  question another speaker then answers. It never opens on a reply such as
+  "I agree…" or "No, …", nor opens or finishes on a greeting or thanks. A line
+  that starts in lower case is read as the rest of the sentence before it, and
+  a cold open lifts only a whole sentence.
 - **Endings checked for meaning.** Before planning, a new step tests the
   editorial model on endings whose answer the recording gives, such as a line
   followed by the same speaker's "and…", or by another speaker's question.
