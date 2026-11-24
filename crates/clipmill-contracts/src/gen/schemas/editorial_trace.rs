@@ -105,6 +105,7 @@ pub mod error {
 #[doc = "        \"compare\","]
 #[doc = "        \"judge.ending\","]
 #[doc = "        \"judge.removal\","]
+#[doc = "        \"judge.compare\","]
 #[doc = "        \"tighten\""]
 #[doc = "      ]"]
 #[doc = "    },"]
@@ -423,6 +424,7 @@ impl CallFramesItem {
 #[doc = "    \"compare\","]
 #[doc = "    \"judge.ending\","]
 #[doc = "    \"judge.removal\","]
+#[doc = "    \"judge.compare\","]
 #[doc = "    \"tighten\""]
 #[doc = "  ]"]
 #[doc = "}"]
@@ -471,6 +473,8 @@ pub enum CallJob {
     JudgeEnding,
     #[serde(rename = "judge.removal")]
     JudgeRemoval,
+    #[serde(rename = "judge.compare")]
+    JudgeCompare,
     #[serde(rename = "tighten")]
     Tighten,
 }
@@ -492,6 +496,7 @@ impl ::std::fmt::Display for CallJob {
             Self::Compare => f.write_str("compare"),
             Self::JudgeEnding => f.write_str("judge.ending"),
             Self::JudgeRemoval => f.write_str("judge.removal"),
+            Self::JudgeCompare => f.write_str("judge.compare"),
             Self::Tighten => f.write_str("tighten"),
         }
     }
@@ -515,6 +520,7 @@ impl ::std::str::FromStr for CallJob {
             "compare" => Ok(Self::Compare),
             "judge.ending" => Ok(Self::JudgeEnding),
             "judge.removal" => Ok(Self::JudgeRemoval),
+            "judge.compare" => Ok(Self::JudgeCompare),
             "tighten" => Ok(Self::Tighten),
             _ => Err("invalid value".into()),
         }

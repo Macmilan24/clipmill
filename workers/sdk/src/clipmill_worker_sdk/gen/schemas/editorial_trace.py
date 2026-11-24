@@ -50,6 +50,7 @@ class Job(StrEnum):
     compare = 'compare'
     judge_ending = 'judge.ending'
     judge_removal = 'judge.removal'
+    judge_compare = 'judge.compare'
     tighten = 'tighten'
 
 

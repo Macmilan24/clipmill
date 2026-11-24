@@ -48,6 +48,7 @@ export interface Call {
     | "compare"
     | "judge.ending"
     | "judge.removal"
+    | "judge.compare"
     | "tighten";
   /**
    * The window a propose call was over.

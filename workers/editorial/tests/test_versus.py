@@ -304,3 +304,43 @@ def test_copying_a_plan_does_not_change_its_plain_version():
     transcript = Transcript(script())
     edit = cold_open()
     assert plain_version(copy.deepcopy(edit), transcript) == plain_version(edit, transcript)
+
+
+def test_the_review_trace_records_its_comparison_questions():
+    from clipmill_worker_sdk.gen.schemas.editorial_trace import EditorialTrace
+
+    runtime = Judge(favourite=LIFTED)
+    critic = Critic(runtime)
+    edit = cold_open()
+    review_batch(
+        critic,
+        {
+            "plans": [
+                {
+                    "candidate_id": edit["plan_id"],
+                    "plan": edit,
+                    "chapter": "Closing the shop",
+                    "reasons": ["Shipping costs closed the site."],
+                }
+            ]
+        },
+        {
+            "length": {"min_ticks": 5 * TICK, "max_ticks": 60 * TICK},
+            "candidates": [{"plan": edit, "alternatives": [], "scout": "pool"}],
+        },
+        script(),
+    )
+    jobs = {call["job"] for call in critic.traces}
+    assert "judge.compare" in jobs
+    EditorialTrace.model_validate(
+        {
+            "schema_version": "clipmill.editorial.trace.v1",
+            "content_profile": "interview",
+            "source_fingerprint": SOURCE,
+            "producer": {
+                "stage": "editorial-critic",
+                "implementation": "clipmill-worker-editorial@0.2.0/critic",
+            },
+            "calls": critic.traces,
+        }
+    )
