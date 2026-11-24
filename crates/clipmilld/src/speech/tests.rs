@@ -313,6 +313,65 @@ fn a_recognizer_loop_keeps_two_words_and_declares_the_rest() {
     assert!(invalid.is_empty());
 }
 
+fn spoken(words: &[&str]) -> Vec<super::SpreadWord> {
+    (0_u64..)
+        .zip(words)
+        .map(|(index, text)| {
+            (
+                index * 9_000,
+                index * 9_000 + 4_500,
+                (*text).to_owned(),
+                transcript::WordTiming::Aligned,
+                0.9,
+                0.8,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_phrase_the_recognizer_loops_on_keeps_two_repeats_and_declares_the_rest() {
+    use super::drop_repeated_loops;
+    let mut words = vec!["Well,"];
+    for _ in 0..20 {
+        words.extend(["That's", "wild."]);
+    }
+    words.push("Anyway.");
+    let ordered = spoken(&words);
+    let (kept, invalid) = drop_repeated_loops(&ordered);
+    assert_eq!(
+        kept.iter().map(|word| word.2.as_str()).collect::<Vec<_>>(),
+        ["Well,", "That's", "wild.", "That's", "wild.", "Anyway."]
+    );
+    let [region] = invalid.as_slice() else {
+        panic!("one region, not {invalid:?}");
+    };
+    assert_eq!(region.start_ticks, ordered[5].0);
+    assert_eq!(region.end_ticks, ordered[40].1);
+    assert!(
+        region
+            .detail
+            .as_ref()
+            .is_some_and(|detail| detail.contains("phrase"))
+    );
+}
+
+#[test]
+fn a_phrase_said_three_times_is_speech() {
+    use super::drop_repeated_loops;
+    let ordered = spoken(&["I", "know,", "I", "know,", "I", "know.", "Go", "on."]);
+    let (kept, invalid) = drop_repeated_loops(&ordered);
+    assert_eq!(kept.len(), ordered.len());
+    assert!(invalid.is_empty());
+    // Words differing only in case and punctuation are the same words.
+    let looped = spoken(&[
+        "Thank", "you.", "thank", "you", "THANK", "YOU!", "Thank", "you.",
+    ]);
+    let (kept, invalid) = drop_repeated_loops(&looped);
+    assert_eq!(kept.len(), 4);
+    assert_eq!(invalid.len(), 1);
+}
+
 /// A single out-of-vocabulary word goes back between its neighbours rather
 /// than at the end, or the transcript's word order stops matching what was
 /// said.

@@ -395,8 +395,14 @@ const COLLAPSED_WORD_MAX_TICKS: u64 = 36_000;
 /// The fewest times one word may repeat back to back before the run is read
 /// as a recognizer loop rather than speech.
 const LOOP_MIN_REPEATS: usize = 5;
-/// How many of a looped word are kept: a stutter is real speech, twenty of
-/// them in a row is the decoder repeating itself.
+/// The fewest times a phrase of two or more words may repeat back to back
+/// before it is read as a loop. A speaker says "I know, I know, I know"; four
+/// times in a row, with nothing between, is the decoder.
+const PHRASE_LOOP_MIN_REPEATS: usize = 4;
+/// The longest phrase, in words, looked for as a loop.
+const LOOP_MAX_PHRASE_WORDS: usize = 8;
+/// How many of a looped word or phrase are kept: a stutter is real speech,
+/// twenty of them in a row is the decoder repeating itself.
 const LOOP_KEPT: usize = 2;
 
 /// Give each run of words the aligner collapsed onto one tick its own time.
@@ -473,50 +479,89 @@ fn syllables(text: &str) -> u64 {
     groups.max(1)
 }
 
-/// Remove a word the recognizer repeated far past anything a speaker says.
+/// Remove a word or phrase the recognizer repeated far past anything a
+/// speaker says.
 ///
 /// Whisper's small models fall into loops on noise and music: "it" twenty
-/// times, "I" thirteen. Captions and the editorial model would read those as
-/// speech. A run of one normalized word repeated [`LOOP_MIN_REPEATS`] or more
-/// times keeps its first [`LOOP_KEPT`] and the rest is declared invalid, so
-/// the gap stays visible to anyone reading the transcript.
+/// times, "I" thirteen, or a short sentence over and over for a minute.
+/// Captions and the editorial model would read those as speech. A run of one
+/// normalized word repeated [`LOOP_MIN_REPEATS`] or more times, or of a phrase
+/// of up to [`LOOP_MAX_PHRASE_WORDS`] words repeated
+/// [`PHRASE_LOOP_MIN_REPEATS`] or more times, keeps its first [`LOOP_KEPT`]
+/// repeats and the rest is declared invalid, so the gap stays visible to
+/// anyone reading the transcript.
 fn drop_repeated_loops(
     ordered: &[SpreadWord],
 ) -> (Vec<SpreadWord>, Vec<transcript::InvalidRegion>) {
-    let key = |text: &str| {
-        text.chars()
-            .filter(|character| character.is_alphanumeric())
-            .flat_map(char::to_lowercase)
-            .collect::<String>()
-    };
+    let keys = ordered
+        .iter()
+        .map(|word| {
+            word.2
+                .chars()
+                .filter(|character| character.is_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
     let mut kept = Vec::with_capacity(ordered.len());
     let mut invalid = Vec::new();
     let mut index = 0;
     while index < ordered.len() {
-        let word = key(&ordered[index].2);
-        let mut end = index + 1;
-        while end < ordered.len() && !word.is_empty() && key(&ordered[end].2) == word {
-            end += 1;
-        }
-        if end - index >= LOOP_MIN_REPEATS {
-            kept.extend(ordered[index..index + LOOP_KEPT].iter().cloned());
-            invalid.push(transcript::InvalidRegion {
-                start_ticks: ordered[index + LOOP_KEPT].0,
-                end_ticks: ordered[end - 1].1,
-                reason: transcript::InvalidRegionReason::DecodeFailed,
-                detail: Some(
-                    "the recognizer repeated one word in a loop; the repeats were removed"
-                        .to_owned()
-                        .try_into()
-                        .unwrap_or_else(|_| unreachable!("a non-empty literal")),
-                ),
-            });
+        let Some((length, repeats)) = repeated_run(&keys, index) else {
+            kept.push(ordered[index].clone());
+            index += 1;
+            continue;
+        };
+        let end = index + length * repeats;
+        let first_dropped = index + length * LOOP_KEPT;
+        kept.extend(ordered[index..first_dropped].iter().cloned());
+        let detail = if length == 1 {
+            "the recognizer repeated one word in a loop; the repeats were removed"
         } else {
-            kept.extend(ordered[index..end].iter().cloned());
-        }
+            "the recognizer repeated a phrase in a loop; the repeats were removed"
+        };
+        invalid.push(transcript::InvalidRegion {
+            start_ticks: ordered[first_dropped].0,
+            end_ticks: ordered[end - 1].1,
+            reason: transcript::InvalidRegionReason::DecodeFailed,
+            detail: Some(
+                detail
+                    .to_owned()
+                    .try_into()
+                    .unwrap_or_else(|_| unreachable!("a non-empty literal")),
+            ),
+        });
         index = end;
     }
     (kept, invalid)
+}
+
+/// The shortest phrase starting at `index` that repeats back to back often
+/// enough to be a loop, as its length in words and how many times it
+/// repeats. A phrase must hold at least one word with letters or digits.
+fn repeated_run(keys: &[String], index: usize) -> Option<(usize, usize)> {
+    for length in 1..=LOOP_MAX_PHRASE_WORDS {
+        let phrase = keys.get(index..index + length)?;
+        if phrase.iter().all(String::is_empty) {
+            continue;
+        }
+        let mut repeats = 1;
+        while keys
+            .get(index + length * repeats..index + length * (repeats + 1))
+            .is_some_and(|next| next == phrase)
+        {
+            repeats += 1;
+        }
+        let needed = if length == 1 {
+            LOOP_MIN_REPEATS
+        } else {
+            PHRASE_LOOP_MIN_REPEATS
+        };
+        if repeats >= needed {
+            return Some((length, repeats));
+        }
+    }
+    None
 }
 
 /// The artifacts this transcript was fused from.
@@ -775,8 +820,9 @@ fn strip_annotations(text: &str) -> String {
 /// The task kind this module executes.
 pub(crate) const KIND_TRANSCRIPT: &str = "speech-transcript";
 /// 1.2.0 leaves out the annotations recognition writes as words; 1.3.0 keeps
-/// words in time order across utterances.
-pub(crate) const IMPLEMENTATION: &str = "clipmill-transcript-assembly@1.3.0";
+/// words in time order across utterances; 1.4.0 removes a phrase the
+/// recognizer repeated in a loop, not only a single word.
+pub(crate) const IMPLEMENTATION: &str = "clipmill-transcript-assembly@1.4.0";
 const OUTPUT_FILE: &str = "transcript.json";
 
 /// Read the three published artifacts and publish the transcript that fuses
