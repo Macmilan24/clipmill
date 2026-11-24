@@ -2155,11 +2155,19 @@ fn cold_opens(material: &Material<'_>, table: &Table, found: &mut Vec<Candidate>
         };
         // The lifted line is taken out of the body, so it needs a pause to
         // cut at on both sides and kept neighbours, and it is never the
-        // body's own first or last line.
+        // body's own first or last line. Heard first and alone, it must be a
+        // whole sentence: not the lower-case rest of one, not cut off by the
+        // next line's lower-case rest, not pointing back, promising nothing.
         let Some(lift) = (a + 2..b)
             .filter(|&place| {
                 let unit = &table.units[place];
                 unit.hook == 3
+                    && unit.ends_sentence
+                    && !unit.starts_lower
+                    && !unit.promises
+                    && !points_back(&unit.text)
+                    && table.units[place - 1].ends_sentence
+                    && !table.units[place + 1].starts_lower
                     && unit.needs.is_none()
                     && unit.cut.is_none()
                     && table.units[place - 1].cut.is_none()

@@ -245,6 +245,36 @@ fn a_strong_line_inside_a_story_opens_it_cold_without_playing_twice() {
 }
 
 #[test]
+fn a_cold_open_lifts_only_a_whole_sentence() {
+    let cold_opens = |source: &Source, words: &[(u64, u64)]| {
+        let scores = scores();
+        let memory = memory();
+        candidates(&Material {
+            source_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+            source,
+            words,
+            lattice: None,
+            scores: Some(&scores),
+            memory: Some(&memory),
+            length: (15 * S, 60 * S),
+        })
+        .iter()
+        .flat_map(|c| std::iter::once(c.plan.clone()).chain(c.alternatives.iter().cloned()))
+        .filter(|plan| plan.form == MindClipPlanForm::ColdOpen)
+        .count()
+    };
+    let (mut source, words) = recording();
+    assert!(cold_opens(&source, &words) > 0);
+    // The strong line is the lower-case rest of the sentence before it.
+    source.sentences[25].text = "at Northwind, back when we were there.".to_owned();
+    assert_eq!(cold_opens(&source, &words), 0);
+    // Or the line after it finishes its sentence.
+    let (mut source, words) = recording();
+    source.sentences[26].text = "and nobody else did.".to_owned();
+    assert_eq!(cold_opens(&source, &words), 0);
+}
+
+#[test]
 fn three_moments_about_one_company_make_a_montage() {
     let found = cut(true);
     let montage = find(&found, MindClipPlanForm::ThemeMontage);
