@@ -52,7 +52,10 @@ FILLER = {
     "um", "uh", "er", "erm", "ah", "hmm", "mm", "like", "you", "know", "i", "mean", "yeah",
     "yes", "right", "okay", "ok", "sure",
 }  # fmt: skip
-POINTERS = ("that's why", "that is why", "which", "that", "this", "these", "those")
+#: Openings that can only point back at what came just before them. A bare
+#: "that" or "this" so often points further back, past the passage, that a
+#: removal before one is no known case either way.
+POINTERS = ("that's why", "that is why", "this is why", "which is why", "that's what", "as i said")
 
 
 def tokens(text: str) -> list[str]:
@@ -199,15 +202,20 @@ class Gates:
         return mean(kept) - mean(cut)
 
     @staticmethod
-    def question(before: list[str], after: str) -> str:
-        return prompt_for("judge.removal").format(text="\n".join([*before[-2:], after]))
+    def question(before: list[str], passage: list[str], after: str) -> str:
+        """The removal as a reader sees it: the kept lines around the passage,
+        and the passage itself, so the question is about what the removal
+        takes away rather than about everything the lines leave unsaid."""
+        return prompt_for("judge.removal").format(
+            before="\n".join(before[-2:]), passage="\n".join(passage), after=after
+        )
 
-    def judge(self, before: list[str], after: str) -> float:
-        return self.ask(self.question(before, after))
+    def judge(self, before: list[str], passage: list[str], after: str) -> float:
+        return self.ask(self.question(before, passage, after))
 
-    def note(self, before: list[str], after: str) -> None:
+    def note(self, before: list[str], passage: list[str], after: str) -> None:
         """List a removal question for a connected agent without asking it."""
-        self.book.note("judge.removal", self.question(before, after))
+        self.book.note("judge.removal", self.question(before, passage, after))
 
     def ready(self) -> bool:
         """Whether any instrument passed. Measured the first time it is asked."""
@@ -232,7 +240,8 @@ class Gates:
         # A connected agent that answered every known case is the judge;
         # otherwise the local model is, measured the same way.
         self.ask.agent = self.book.covers(
-            "judge.removal", [self.question(c["before"], c["after"]) for c in order]
+            "judge.removal",
+            [self.question(c["before"], c["passage"], c["after"]) for c in order],
         )
         if getattr(self.runtime, "has_meter", False):
             scores = [self.meter(c["before"], c["passage"], c["after"]) for c in cases]
@@ -245,7 +254,7 @@ class Gates:
         asked, scores = [], []
         for case in order:
             asked.append(case)
-            scores.append(self.judge(case["before"], case["after"]))
+            scores.append(self.judge(case["before"], case["passage"], case["after"]))
             high = [s for c, s in zip(asked, scores, strict=True) if c["expected"] == "dangling"]
             low = [s for c, s in zip(asked, scores, strict=True) if c["expected"] == "intact"]
             if best_separation(high, low, planned) < MIN_SEPARATION:
@@ -265,7 +274,7 @@ class Gates:
         if "judge" not in self.thresholds:
             return True
         try:
-            return self.judge(before, after) < self.thresholds["judge"]
+            return self.judge(before, passage, after) < self.thresholds["judge"]
         except Unanswered:
             # Left open for the agent's next answers; nothing goes meanwhile.
             return False
@@ -340,6 +349,7 @@ def tighten(ctx, plan, transcript, passages, gates, length):
         # the planner might choose once its answers make the judge usable.
         gates.note(
             text[max(0, passage["before"] - CONTEXT_LINES) : passage["before"]],
+            text[passage["before"] : passage["after"]],
             text[passage["after"]],
         )
     if not gates.ready():

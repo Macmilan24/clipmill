@@ -258,3 +258,23 @@ def test_a_passing_meter_still_refuses_a_passage_the_next_line_relies_on():
     assert gates.ready()
     assert gates.allows(["B: I left."], ["B: The office was old."], "B: The work stopped.")
     assert not gates.allows(["B: I left."], ["B: My manager never noticed."], "B: That's why.")
+
+
+def test_a_removal_question_shows_what_is_left_out():
+    text = Gates.question(
+        ["A: Why did you leave?", "B: The pay was flat."],
+        ["B: Um, yeah."],
+        "B: That's why I quit.",
+    )
+    assert "Left out:\nB: Um, yeah." in text
+    assert "Kept lines before:\nA: Why did you leave?\nB: The pay was flat." in text
+    assert "Kept line after:\nB: That's why I quit." in text
+
+
+def test_a_bare_that_after_a_passage_is_no_known_case():
+    source = script()
+    # "That proves it." can point at the line before the passage as easily
+    # as at the passage, so taking out s6 before it proves nothing.
+    source["units"][7]["text"] = "That proves it."
+    cases = {c["first_unit"]: c["expected"] for c in removal_cases(Lines(source))}
+    assert "s6" not in cases

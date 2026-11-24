@@ -1,5 +1,12 @@
-Here is part of a conversation, exactly as a viewer of a short clip hears it.
+Part of a conversation is shown as a short clip would play it, with one passage left out.
 
-{text}
+Kept lines before:
+{before}
 
-Does any line refer to, answer, or promise something that is not there, so that a viewer would be left wondering what it means? Answer with one word: yes or no.
+Left out:
+{passage}
+
+Kept line after:
+{after}
+
+Without the left-out passage, does a kept line answer, point back to, or carry on from something that only the left-out passage said, so that a viewer would be left wondering what it means? Answer with one word: yes or no.
