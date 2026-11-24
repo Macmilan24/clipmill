@@ -46,6 +46,14 @@ pub const EXTEND_UNITS: usize = 8;
 /// A pause between two lines at least this long marks the end of a thought
 /// more often than not, so the search leans towards edges at one.
 pub const THOUGHT_PAUSE_TICKS: u64 = 7 * SECOND / 10;
+/// The least pause after a line that may end a clip while the same speaker
+/// goes on: a clean cut point. A recording whose speakers rarely pause as
+/// long as [`THOUGHT_PAUSE_TICKS`] is held to its own longer pauses instead,
+/// but never to less than this.
+pub const MIN_ENDING_PAUSE_TICKS: u64 = 3 * SECOND / 10;
+/// Which of a recording's own pauses after a finished sentence, before the
+/// same speaker goes on, count as long for it: the longest 15 per cent.
+const LONG_PAUSE_PERCENTILE: usize = 85;
 /// The longest line a cold open lifts to the front.
 pub const MAX_LIFT_TICKS: u64 = 10 * SECOND;
 /// The shortest moment worth a place in a montage.
@@ -399,6 +407,33 @@ fn points_back(text: &str) -> bool {
 struct Table {
     units: Vec<Unit>,
     position: BTreeMap<u64, usize>,
+    /// The pause a line needs after it to end a clip while its speaker
+    /// goes on: [`THOUGHT_PAUSE_TICKS`], or less on a recording whose
+    /// speakers rarely pause that long.
+    ending_pause: u64,
+}
+
+/// Whether two lines are by the same voice, as far as anyone can tell.
+fn same_voice(a: &Unit, b: &Unit) -> bool {
+    a.speaker.is_none() || b.speaker.is_none() || a.speaker == b.speaker
+}
+
+/// How long a pause must be on this recording to mark a speaker finishing
+/// one thought before starting the next: the longer of its own long pauses
+/// and a clean cut point, at most [`THOUGHT_PAUSE_TICKS`]. A speaker who
+/// runs straight on into their next sentence has rarely finished.
+fn ending_pause(units: &[Unit]) -> u64 {
+    let mut gaps: Vec<u64> = units
+        .windows(2)
+        .filter(|pair| pair[0].ends_sentence && same_voice(&pair[0], &pair[1]))
+        .map(|pair| pair[1].start.saturating_sub(pair[0].end))
+        .collect();
+    if gaps.is_empty() {
+        return THOUGHT_PAUSE_TICKS;
+    }
+    gaps.sort_unstable();
+    let long = gaps[(gaps.len() - 1) * LONG_PAUSE_PERCENTILE / 100];
+    long.clamp(MIN_ENDING_PAUSE_TICKS, THOUGHT_PAUSE_TICKS)
 }
 
 const fn level(level: Level) -> u8 {
@@ -521,7 +556,12 @@ impl Table {
                 unit.cut = None;
             }
         }
-        Self { units, position }
+        let ending_pause = ending_pause(&units);
+        Self {
+            units,
+            position,
+            ending_pause,
+        }
     }
 
     /// The same recording with every cut mark set aside, so a moment the
@@ -535,6 +575,7 @@ impl Table {
                 .map(|unit| Unit { cut: None, ..unit })
                 .collect(),
             position: self.position.clone(),
+            ending_pause: self.ending_pause,
         }
     }
 
@@ -553,23 +594,24 @@ impl Table {
     }
 
     /// Whether a part may end after line `b`: there is a pause to cut in,
-    /// the line closes a sentence and promises nothing still to come, and the
-    /// same speaker does not carry the thought on in the next line, whether
-    /// with a connective ("and…", "but…"), a pointer back ("that…", "which…"),
-    /// a turn ("right now…", "the truth is…") or a lower-case rest of the
-    /// sentence.
+    /// the line closes a sentence and promises nothing still to come, and
+    /// either another speaker takes over, or the same speaker pauses long
+    /// enough to have finished ([`Table::ending_pause`]) and does not carry
+    /// the thought on in the next line, whether with a connective ("and…",
+    /// "but…"), a pointer back ("that…", "which…"), a turn ("right now…",
+    /// "the truth is…") or a lower-case rest of the sentence.
     fn may_end(&self, b: usize) -> bool {
         let unit = &self.units[b];
         if unit.close.is_none() || !unit.ends_sentence || unit.promises {
             return false;
         }
         self.units.get(b + 1).is_none_or(|next| {
-            let same_voice =
-                unit.speaker.is_none() || next.speaker.is_none() || unit.speaker == next.speaker;
-            let close = next.start.saturating_sub(unit.end) <= ADJACENT_GAP_TICKS;
+            let gap = next.start.saturating_sub(unit.end);
+            let close = gap <= ADJACENT_GAP_TICKS;
             let points_back =
                 next.points_at_previous || carries_on(&next.text) || turns(&next.text);
-            !(same_voice && (next.starts_lower || (close && points_back)))
+            !(same_voice(unit, next)
+                && (next.starts_lower || (close && points_back) || gap < self.ending_pause))
         })
     }
 

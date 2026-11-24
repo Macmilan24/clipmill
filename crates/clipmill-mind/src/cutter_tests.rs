@@ -1043,24 +1043,52 @@ fn a_moment_that_stops_while_its_speaker_goes_on_gets_a_later_ending_too() {
 }
 
 #[test]
-fn a_moment_leans_towards_ending_where_the_speaker_hands_over() {
+fn a_moment_ends_where_the_speaker_hands_over_or_pauses() {
     let (mut source, words) = recording();
-    // The guest talks without a pause from s26 to s33; the host takes over
-    // at s31.
+    // The guest talks without a pause from s26 to s34.
     for line in 26..=33 {
         source.sentences[line].end_ticks = source.sentences[line + 1].start_ticks;
     }
     let length = (15 * S, 60 * S);
     let table = plain_table(&source, &words);
-    assert_eq!(table.fit(26, 29, length), Some((26, 29)));
+    // A speaker running straight on has not finished: the moment reaches the
+    // first pause, after s34.
+    assert_eq!(table.fit(26, 29, length), Some((26, 34)));
+    // Where the host takes over, the guest has finished.
     source.sentences[31].speaker = Some("host".to_owned());
     let table = plain_table(&source, &words);
     assert_eq!(table.fit(26, 29, length), Some((26, 30)));
-    // Two lines past the moment is too far to reach for it.
     source.sentences[31].speaker = Some("guest".to_owned());
     source.sentences[32].speaker = Some("host".to_owned());
     let table = plain_table(&source, &words);
-    assert_eq!(table.fit(26, 29, length), Some((26, 29)));
+    assert_eq!(table.fit(26, 29, length), Some((26, 31)));
+}
+
+#[test]
+fn the_pause_an_ending_needs_follows_how_the_recording_is_spoken() {
+    let (mut source, words) = recording();
+    let pause_after = |source: &mut Source, gap: u64| {
+        for line in 0..59 {
+            source.sentences[line].end_ticks = source.sentences[line + 1].start_ticks - gap;
+        }
+    };
+    // Speakers who pause a second between sentences need the full pause.
+    assert_eq!(
+        plain_table(&source, &words).ending_pause,
+        THOUGHT_PAUSE_TICKS
+    );
+    // Speakers who never pause that long are held to their own long pauses.
+    pause_after(&mut source, 4 * S / 10);
+    let table = plain_table(&source, &words);
+    assert_eq!(table.ending_pause, 4 * S / 10);
+    assert!(table.may_end(27));
+    // But never to less than a clean cut point.
+    pause_after(&mut source, S / 10);
+    let table = plain_table(&source, &words);
+    assert_eq!(table.ending_pause, MIN_ENDING_PAUSE_TICKS);
+    assert!(!table.may_end(27));
+    // Another speaker taking over ends a thought whatever the pause.
+    assert!(table.may_end(19));
 }
 
 #[test]
@@ -1068,15 +1096,9 @@ fn a_clip_does_not_end_on_a_setup_before_the_same_speaker_turns_it() {
     let (mut source, words) = recording();
     source.sentences[30].text = "The rent used to be cheap.".to_owned();
     for (turn, ends) in [
-        (
-            "Right now, nobody can afford a flat downtown.",
-            false,
-        ),
+        ("Right now, nobody can afford a flat downtown.", false),
         ("However, those days are over.", false),
-        (
-            "The simple reality is that wages stayed flat.",
-            false,
-        ),
+        ("The simple reality is that wages stayed flat.", false),
         ("For example, my aunt paid three hundred a month.", false),
         ("Now let's talk about transport.", true),
         ("The bus costs two dollars.", true),
