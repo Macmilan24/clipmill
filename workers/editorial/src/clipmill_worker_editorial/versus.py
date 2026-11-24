@@ -171,7 +171,7 @@ class Passages:
     def cut_off(self) -> list[dict]:
         """A passage ending on a finished thought, against the same passage
         stopped where its speaker carries on."""
-        known = known_endings(self.recording, self.chapters)
+        known = known_endings(self.recording, self.chapters, per_kind=None)
         finished = sorted(i for i, kind in known if kind == "finished")
         pairs = []
         for index, kind in known:
@@ -196,7 +196,7 @@ class Passages:
     def dangling(self) -> list[dict]:
         """A passage, against the same passage opened on a line that points
         back at the one before it."""
-        known = known_endings(self.recording, self.chapters)
+        known = known_endings(self.recording, self.chapters, per_kind=None)
         finished = sorted(i for i, kind in known if kind == "finished")
         units, order = self.recording.units, self.recording.order
         pairs = []

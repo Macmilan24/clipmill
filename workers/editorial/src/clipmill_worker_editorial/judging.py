@@ -103,8 +103,11 @@ def spread(items: list, count: int) -> list:
     return [items[int(step * i + step / 2)] for i in range(count)]
 
 
-def known_endings(recording: Recording, chapters=()) -> list[tuple[int, str]]:
-    """Endings whose answer the recording gives, as (sentence, expected)."""
+def known_endings(
+    recording: Recording, chapters=(), per_kind: int | None = CASES_PER_KIND
+) -> list[tuple[int, str]]:
+    """Endings whose answer the recording gives, as (sentence, expected):
+    `per_kind` of each, spread through the recording, or all of them."""
     goes_on, closed = [], []
     for index in recording.order:
         following = recording.next(index)
@@ -140,7 +143,9 @@ def known_endings(recording: Recording, chapters=()) -> list[tuple[int, str]]:
                 and all(index != known for known, _ in closed)
             ):
                 closed.append((index, "finished"))
-    return spread(goes_on, CASES_PER_KIND) + spread(closed, CASES_PER_KIND)
+    if per_kind is None:
+        return goes_on + closed
+    return spread(goes_on, per_kind) + spread(closed, per_kind)
 
 
 def median(values: list[float]) -> float:
