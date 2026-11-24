@@ -56,7 +56,8 @@ As on Linux, the editorial model runs in llama.cpp; see
 ### Older processors
 
 From 0.5.1, Whisper on 64-bit Windows selects a build for your processor.
-It supports x86-64-v2 and newer processors, including the Intel Core i7-3770.
+It supports x86-64-v2 and newer processors, including those with AVX but
+without AVX2.
 If you already set up ClipMill in 0.4 or 0.5.0, open **Models → Components**
 after installing the update and choose **Update**. Once **Transcription** is
 installed, reopen the affected project and run its analysis again. Your
